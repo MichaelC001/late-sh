@@ -476,6 +476,10 @@ fn make_app_with_chat_service_and_permissions(
         clubhouse_lobby: None,
         clubhouse_tutorial_done: true,
         show_aquarium_tray: false,
+        // No SSH key: test apps follow the account default and persist no
+        // per-device layout, which is also what ghost bot sessions do.
+        key_fingerprint: None,
+        key_layout: None,
         afk_users: crate::state::new_afk_users(),
         username_directory: None,
         flair_directory: None,
@@ -653,6 +657,10 @@ pub fn make_app_with_paired_client(
         clubhouse_lobby: None,
         clubhouse_tutorial_done: true,
         show_aquarium_tray: false,
+        // No SSH key: test apps follow the account default and persist no
+        // per-device layout, which is also what ghost bot sessions do.
+        key_fingerprint: None,
+        key_layout: None,
         afk_users: crate::state::new_afk_users(),
         username_directory: None,
         flair_directory: None,
@@ -669,6 +677,15 @@ pub fn make_app_with_paired_client(
     .expect("app");
     app.skip_splash_for_tests();
     (app, rx)
+}
+
+/// Give a test app a device identity: the SSH key a real session would have
+/// authenticated with. Without it an app is keyless, so per-device settings
+/// apply for the session but persist nowhere. The caller must have created the
+/// matching `user_ssh_keys` row (as `auth_publickey` does) for writes to land.
+pub fn with_session_key(mut app: App, fingerprint: &str) -> App {
+    app.key_fingerprint = Some(fingerprint.to_string());
+    app
 }
 
 pub async fn wait_until<F, Fut>(mut predicate: F, label: &str)
