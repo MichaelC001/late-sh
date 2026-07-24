@@ -49,8 +49,22 @@ enum OutboundCommand {
 pub struct BrogueProcess {
     cmd_tx: mpsc::Sender<OutboundCommand>,
     task: JoinHandle<()>,
-    parser: Arc<Mutex<vt100::Parser>>,
+    parser: Arc<Mutex<vt100::Parser<HonorResize>>>,
     status: Arc<Mutex<ProxyStatus>>,
+}
+
+/// vt100's default callbacks ignore the terminal-resize request (`ESC [ 8 ;
+/// rows ; cols t`). brogue emits exactly one at startup (term.c's
+/// `term_set_size`) announcing its fixed 100x34 grid; honoring it shrinks the
+/// parser to the game's real geometry, so the blit stops copying the cells
+/// ncurses' startup clear painted outside it and the renderer can center the
+/// grid. Clamped to >=1 like `resize`: a 0-sized vt100 grid is invalid.
+struct HonorResize;
+
+impl vt100::Callbacks for HonorResize {
+    fn resize(&mut self, screen: &mut vt100::Screen, (rows, cols): (u16, u16)) {
+        screen.set_size(rows.max(1), cols.max(1));
+    }
 }
 
 pub struct ProcessConfig {
@@ -74,7 +88,12 @@ pub struct ProcessConfig {
 impl BrogueProcess {
     pub fn spawn(cfg: ProcessConfig) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<OutboundCommand>(256);
-        let parser = Arc::new(Mutex::new(vt100::Parser::new(cfg.rows, cfg.cols, 0)));
+        let parser = Arc::new(Mutex::new(vt100::Parser::new_with_callbacks(
+            cfg.rows,
+            cfg.cols,
+            0,
+            HonorResize,
+        )));
         let status = Arc::new(Mutex::new(ProxyStatus::Connecting));
 
         let task_parser = parser.clone();
@@ -139,10 +158,82 @@ impl Drop for BrogueProcess {
     }
 }
 
+/// Rewrite CSI HVP (`ESC [ Pl ; Pc f`) into CUP (`ESC [ Pl ; Pc H`) so the
+/// vt100 parser honors it. brogue's truecolor renderer (`buffer_render_24bit`
+/// in term.c, selected by the COLORTERM the host exports) positions the cursor
+/// exclusively with the `f` final byte, which the vt100 crate does not
+/// implement: every move is silently dropped and the frame smears sequentially
+/// across the grid. HVP and CUP are semantically identical, so the rewrite is
+/// lossless. Stateful because an escape sequence can be split across SSH data
+/// chunks; an unterminated candidate tail is carried into the next call.
+struct HvpNormalizer {
+    carry: Vec<u8>,
+}
+
+/// A real HVP is `ESC [` + short numeric params + `f`; anything longer than
+/// this is not one, so flush it verbatim instead of buffering unbounded.
+const HVP_CARRY_MAX: usize = 16;
+
+impl HvpNormalizer {
+    fn new() -> Self {
+        Self { carry: Vec::new() }
+    }
+
+    fn feed(&mut self, data: &[u8]) -> Vec<u8> {
+        let mut input = std::mem::take(&mut self.carry);
+        input.extend_from_slice(data);
+
+        let mut out = Vec::with_capacity(input.len());
+        let mut i = 0;
+        while i < input.len() {
+            if input[i] != 0x1b {
+                out.push(input[i]);
+                i += 1;
+                continue;
+            }
+            // Candidate CSI: ESC [ digits/; ... final. Walk to the final byte.
+            let seq_start = i;
+            let mut j = i + 1;
+            if j >= input.len() {
+                self.carry = input[seq_start..].to_vec();
+                break;
+            }
+            if input[j] != b'[' {
+                out.push(input[i]);
+                i += 1;
+                continue;
+            }
+            j += 1;
+            while j < input.len() && (input[j].is_ascii_digit() || input[j] == b';') {
+                j += 1;
+            }
+            if j >= input.len() {
+                // Unterminated numeric CSI at the chunk edge: hold it back if
+                // it could still become an HVP, else flush verbatim.
+                let tail = &input[seq_start..];
+                if tail.len() <= HVP_CARRY_MAX {
+                    self.carry = tail.to_vec();
+                } else {
+                    out.extend_from_slice(tail);
+                }
+                break;
+            }
+            if input[j] == b'f' && j - seq_start <= HVP_CARRY_MAX {
+                out.extend_from_slice(&input[seq_start..j]);
+                out.push(b'H');
+            } else {
+                out.extend_from_slice(&input[seq_start..=j]);
+            }
+            i = j + 1;
+        }
+        out
+    }
+}
+
 async fn run_bridge(
     cfg: ProcessConfig,
     mut cmd_rx: mpsc::Receiver<OutboundCommand>,
-    parser: Arc<Mutex<vt100::Parser>>,
+    parser: Arc<Mutex<vt100::Parser<HonorResize>>>,
     status: Arc<Mutex<ProxyStatus>>,
 ) -> Result<()> {
     let config = Arc::new(Config {
@@ -191,6 +282,7 @@ async fn run_bridge(
 
     *status.lock().expect("status mutex") = ProxyStatus::Running;
 
+    let mut norm = HvpNormalizer::new();
     loop {
         tokio::select! {
             cmd = cmd_rx.recv() => {
@@ -212,7 +304,8 @@ async fn run_bridge(
                 let Some(msg) = msg else { break };
                 match msg {
                     ChannelMsg::Data { data } | ChannelMsg::ExtendedData { data, .. } => {
-                        parser.lock().expect("parser mutex").process(&data);
+                        let bytes = norm.feed(&data);
+                        parser.lock().expect("parser mutex").process(&bytes);
                         if let Some(sig) = &cfg.repaint {
                             sig.wake();
                         }
@@ -230,3 +323,7 @@ async fn run_bridge(
         .await;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "proxy_test.rs"]
+mod proxy_test;

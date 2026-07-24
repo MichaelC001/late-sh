@@ -225,9 +225,44 @@ fn draw_running(frame: &mut Frame, area: Rect, state: &State) {
     };
     let buf = frame.buffer_mut();
     proxy.with_screen(|screen| {
-        blit_screen(buf, area, screen);
-        clear_canvas_black(buf, area);
+        let grid = grid_rect(area, screen);
+        clear_letterbox(buf, area);
+        blit_screen(buf, grid, screen);
+        clear_canvas_black(buf, grid);
     });
+}
+
+/// Center brogue's fixed grid inside the viewport. The parser tracks the
+/// game's own geometry (brogue emits `ESC[8;34;100t` at startup, honored by
+/// the proxy's `HonorResize` callback; vt100 ignores it by default), so the
+/// screen is usually exactly 100x34 while the viewport is larger. A viewport
+/// smaller than the grid pins to the top-left so the sidebar and message line
+/// stay visible.
+fn grid_rect(area: Rect, screen: &vt100::Screen) -> Rect {
+    let (rows, cols) = screen.size();
+    let w = cols.min(area.width);
+    let h = rows.min(area.height);
+    Rect::new(
+        area.x + (area.width - w) / 2,
+        area.y + (area.height - h) / 2,
+        w,
+        h,
+    )
+}
+
+/// The app root paints every page over `BG_CANVAS`, and `blit_screen` never
+/// touches cells outside the game grid, so without this the fixed 100x34 game
+/// floats in a page-colored frame. Reset the whole door area first: the
+/// letterbox then shares one canvas (`Reset`, the terminal default) with the
+/// keyed-out game interior below, matching how nethack and dcss render.
+fn clear_letterbox(buf: &mut ratatui::buffer::Buffer, area: Rect) {
+    for y in area.y..area.y.saturating_add(area.height) {
+        for x in area.x..area.x.saturating_add(area.width) {
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                cell.reset();
+            }
+        }
+    }
 }
 
 /// Turn brogue's canvas black transparent so the late.sh theme background shows
@@ -236,7 +271,12 @@ fn draw_running(frame: &mut Frame, area: Rect, state: &State) {
 /// does (its curses build paints every cell an explicit color, black included),
 /// so the equivalent is keying out its black after the blit. Rgb(0,0,0) is the
 /// host's 24-bit output (COLORTERM=truecolor); Indexed(16), the color-cube
-/// black, covers a host still on the 256-color coercion path.
+/// black, covers a host still on the 256-color coercion path. Indexed(0) is
+/// ANSI black: ncurses' startup clear runs `ESC[2J` with SGR 40 active, and
+/// vt100 erases with the current attributes (BCE), so every cell the game
+/// never repaints carries that bg. Left unkeyed it renders as the viewer's
+/// palette slot 0, which modern terminal themes often tint blue-gray, and the
+/// canvas shows as a gray frame instead of the terminal default.
 fn clear_canvas_black(buf: &mut ratatui::buffer::Buffer, area: Rect) {
     for y in area.y..area.y.saturating_add(area.height) {
         for x in area.x..area.x.saturating_add(area.width) {
@@ -244,7 +284,10 @@ fn clear_canvas_black(buf: &mut ratatui::buffer::Buffer, area: Rect) {
                 continue;
             };
             let bg = cell.style().bg;
-            if bg == Some(Color::Rgb(0, 0, 0)) || bg == Some(Color::Indexed(16)) {
+            if bg == Some(Color::Rgb(0, 0, 0))
+                || bg == Some(Color::Indexed(16))
+                || bg == Some(Color::Indexed(0))
+            {
                 cell.set_style(cell.style().bg(Color::Reset));
             }
         }
