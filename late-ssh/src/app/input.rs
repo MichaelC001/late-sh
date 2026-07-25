@@ -1,7 +1,7 @@
 use super::{
     audio::booth as audio_booth,
     chat, dashboard, help_modal, hub, icon_picker, mod_modal, profile_modal, quit_confirm,
-    room_search_modal, settings_modal, sheet_modal,
+    room_info_modal, room_search_modal, settings_modal, sheet_modal,
     state::{App, IconPickerTarget},
 };
 use late_core::models::user::{RightSidebarMode, RoomListMode};
@@ -814,6 +814,11 @@ fn handle_parsed_input_inner(app: &mut App, event: ParsedInput) {
 
     if app.show_quit_confirm {
         quit_confirm::input::handle_input(app, event);
+        return;
+    }
+
+    if app.room_info_modal_state.is_open() {
+        room_info_modal::input::handle_input(app, event);
         return;
     }
 
@@ -2374,6 +2379,10 @@ fn dispatch_escape(app: &mut App) {
     }
     if app.icon_picker_open {
         close_icon_picker(app);
+        return;
+    }
+    if app.room_info_modal_state.is_open() {
+        room_info_modal::input::handle_escape(app);
         return;
     }
     if app.room_search_modal_state.is_open() {

@@ -634,6 +634,9 @@ fn make_room(
             language_code: None,
             dm_user_a: None,
             dm_user_b: None,
+            topic: None,
+            rules: None,
+            created_by: None,
         },
         Vec::new(),
     )
@@ -1023,6 +1026,9 @@ fn room_slug_for_uses_explicit_room_id() {
                 language_code: None,
                 dm_user_a: None,
                 dm_user_b: None,
+                topic: None,
+                rules: None,
+                created_by: None,
             },
             vec![],
         ),
@@ -1039,6 +1045,9 @@ fn room_slug_for_uses_explicit_room_id() {
                 language_code: None,
                 dm_user_a: None,
                 dm_user_b: None,
+                topic: None,
+                rules: None,
+                created_by: None,
             },
             vec![],
         ),
@@ -1758,6 +1767,9 @@ fn make_dm(user_a: Uuid, user_b: Uuid) -> ChatRoom {
         language_code: None,
         dm_user_a: Some(user_a),
         dm_user_b: Some(user_b),
+        topic: None,
+        rules: None,
+        created_by: None,
     }
 }
 
