@@ -235,6 +235,7 @@ pub fn test_app_state(db: Db, config: Config) -> State {
         pair_ws_counts: Arc::new(Mutex::new(HashMap::<IpAddr, usize>::new())),
         active_users,
         clubhouse_lobby: crate::app::clubhouse::lobby::SharedLobby::with_seed(7),
+        scratchpad_registry: crate::app::scratchpad::registry::SharedScratchpadRegistry::new(),
         afk_users,
         username_directory,
         flair_directory: crate::app::common::username_effect::new_directory(),
@@ -315,7 +316,14 @@ pub fn make_app_with_permissions(
     session_token: &str,
     permissions: Permissions,
 ) -> App {
-    make_app_with_chat_service_and_permissions(db, user_id, session_token, permissions).0
+    make_app_with_chat_service_and_permissions(
+        db,
+        user_id,
+        session_token,
+        permissions,
+        SessionWorld::default(),
+    )
+    .0
 }
 
 pub fn make_app_with_chat_service(
@@ -323,7 +331,35 @@ pub fn make_app_with_chat_service(
     user_id: Uuid,
     session_token: &str,
 ) -> (App, ChatService) {
-    make_app_with_chat_service_and_permissions(db, user_id, session_token, Permissions::default())
+    make_app_with_chat_service_and_permissions(
+        db,
+        user_id,
+        session_token,
+        Permissions::default(),
+        SessionWorld::default(),
+    )
+}
+
+/// The process-global handles a test shares between two apps when it needs
+/// them to see each other. `make_app` leaves all of these unset, which keeps
+/// a single-app test session-local; a cross-session test (`/pair`, presence
+/// lookups) hands the same `SessionWorld` to both apps.
+#[derive(Clone, Default)]
+pub struct SessionWorld {
+    pub username: Option<String>,
+    pub active_users: Option<crate::state::ActiveUsers>,
+    pub scratchpad_registry: Option<crate::app::scratchpad::registry::SharedScratchpadRegistry>,
+}
+
+pub fn make_app_in_world(db: Db, user_id: Uuid, session_token: &str, world: SessionWorld) -> App {
+    make_app_with_chat_service_and_permissions(
+        db,
+        user_id,
+        session_token,
+        Permissions::default(),
+        world,
+    )
+    .0
 }
 
 fn make_app_with_chat_service_and_permissions(
@@ -331,6 +367,7 @@ fn make_app_with_chat_service_and_permissions(
     user_id: Uuid,
     session_token: &str,
     permissions: Permissions,
+    world: SessionWorld,
 ) -> (App, ChatService) {
     // One shared instance between ChatService and SessionConfig, mirroring
     // main.rs: mention events broadcast on the instance's channel, so a second
@@ -421,7 +458,7 @@ fn make_app_with_chat_service_and_permissions(
         artboard_snapshot_service: crate::app::artboard::svc::ArtboardSnapshotService::new(
             db.clone(),
         ),
-        username: "test-user".to_string(),
+        username: world.username.unwrap_or_else(|| "test-user".to_string()),
         bonsai_service: BonsaiService::new(db.clone(), broadcast::channel::<ActivityEvent>(64).0),
         initial_bonsai_tree: None,
         initial_bonsai_care: None,
@@ -476,8 +513,9 @@ fn make_app_with_chat_service_and_permissions(
         permissions,
         artboard_banned: false,
         artboard_ban_expires_at: None,
-        active_users: None,
+        active_users: world.active_users,
         clubhouse_lobby: None,
+        scratchpad_registry: world.scratchpad_registry,
         clubhouse_tutorial_done: true,
         show_aquarium_tray: false,
         // No SSH key: test apps follow the account default and persist no
@@ -662,6 +700,7 @@ pub fn make_app_with_paired_client(
         artboard_ban_expires_at: None,
         active_users: None,
         clubhouse_lobby: None,
+        scratchpad_registry: None,
         clubhouse_tutorial_done: true,
         show_aquarium_tray: false,
         // No SSH key: test apps follow the account default and persist no
