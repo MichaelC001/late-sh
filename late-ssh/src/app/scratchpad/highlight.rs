@@ -168,9 +168,6 @@ pub(crate) fn gutter_lines(total_lines: usize) -> Vec<Line<'static>> {
 #[derive(Default)]
 pub(crate) struct HighlightCache {
     entry: Option<CacheEntry>,
-    /// How many times syntect has actually run. Not used in the render path;
-    /// caching is this type's entire behavior, so the tests assert on it.
-    parses: u64,
 }
 
 struct CacheEntry {
@@ -203,9 +200,14 @@ impl CacheEntry {
 
 impl HighlightCache {
     /// Styled body lines for the current buffer, down to `visible_end`
-    /// (exclusive). Cloned out because `Paragraph` takes its text by value;
-    /// cloning finished spans is three orders of magnitude cheaper than
-    /// re-running syntect.
+    /// (exclusive), or the previous render when nothing it depends on moved.
+    /// Cloned out because `Paragraph` takes its text by value; cloning
+    /// finished spans is three orders of magnitude cheaper than re-running
+    /// syntect.
+    ///
+    /// A reused render can be longer than `visible_end` asked for, which is
+    /// both harmless (`Paragraph` draws only what fits) and the one way a hit
+    /// is observable from outside.
     pub(crate) fn body(
         &mut self,
         lines: &[String],
@@ -214,18 +216,11 @@ impl HighlightCache {
     ) -> Vec<Line<'static>> {
         let entry = match self.entry.take() {
             Some(entry) if entry.covers(lines, language, visible_end) => entry,
-            _ => {
-                self.parses += 1;
-                CacheEntry::build(lines, language, visible_end)
-            }
+            _ => CacheEntry::build(lines, language, visible_end),
         };
         let rendered = entry.rendered.clone();
         self.entry = Some(entry);
         rendered
-    }
-
-    pub(crate) fn parses(&self) -> u64 {
-        self.parses
     }
 }
 

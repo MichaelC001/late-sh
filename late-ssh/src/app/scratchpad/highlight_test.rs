@@ -34,27 +34,32 @@ fn rust_snippet_produces_more_than_one_style() {
     );
 }
 
+/// Whether a call re-parsed is observable without reaching inside the cache:
+/// a reused render comes back at the length it was originally built to, while
+/// a fresh one comes back at exactly the viewport asked for. So a longer
+/// result than requested means a hit, and an exact-length one means a miss.
 #[test]
-fn cache_reparses_only_when_the_text_or_language_changes() {
+fn cache_reuses_the_render_until_the_text_or_language_changes() {
     let mut cache = HighlightCache::default();
-    let lines = vec!["fn main() {".to_string(), "    let x = 1;".to_string()];
+    let lines: Vec<String> = (0..8).map(|n| format!("let x{n} = {n};")).collect();
 
-    let first = cache.body(&lines, Language::Rust, 2);
-    assert_eq!(cache.parses(), 1);
+    let first = cache.body(&lines, Language::Rust, 8);
+    assert_eq!(first.len(), 8);
 
-    // A cursor move, a scroll, a resize, a partner cursor update: same text,
-    // same language, no syntect.
-    let second = cache.body(&lines, Language::Rust, 2);
-    assert_eq!(cache.parses(), 1, "unchanged text must not re-parse");
-    assert_eq!(first, second);
+    // A cursor move, a scroll, a resize, a partner cursor update: the text is
+    // untouched, so syntect must not run again.
+    let hit = cache.body(&lines, Language::Rust, 4);
+    assert_eq!(hit.len(), 8, "unchanged text must not re-parse");
+    assert_eq!(hit, first);
 
-    cache.body(&lines, Language::Python, 2);
-    assert_eq!(cache.parses(), 2, "a language cycle re-parses");
+    let after_language = cache.body(&lines, Language::Python, 4);
+    assert_eq!(after_language.len(), 4, "a language cycle re-parses");
 
-    let edited = vec!["fn main() {".to_string(), "    let x = 2;".to_string()];
-    let after_edit = cache.body(&edited, Language::Python, 2);
-    assert_eq!(cache.parses(), 3, "a keystroke re-parses");
-    assert!(after_edit[1].spans.iter().any(|s| s.content.contains('2')));
+    assert_eq!(cache.body(&lines, Language::Python, 8).len(), 8);
+    let mut edited = lines.clone();
+    edited[1] = "let x1 = 99;".to_string();
+    let after_edit = cache.body(&edited, Language::Python, 4);
+    assert_eq!(after_edit.len(), 4, "a keystroke re-parses");
 }
 
 #[test]
@@ -64,20 +69,19 @@ fn cache_styles_only_down_to_the_viewport() {
 
     // A 10-row viewport at the top of a 100-line buffer: the 90 lines below
     // the fold are never styled, which is where the cost lives.
-    let body = cache.body(&lines, Language::Rust, 10);
-    assert_eq!(body.len(), 10);
+    assert_eq!(cache.body(&lines, Language::Rust, 10).len(), 10);
 
     // Scrolling further down needs lines the cached render stopped short of.
-    cache.body(&lines, Language::Rust, 40);
-    assert_eq!(cache.parses(), 2);
+    assert_eq!(cache.body(&lines, Language::Rust, 40).len(), 40);
 
     // Scrolling back up is served from the deeper render already in hand.
-    let back_up = cache.body(&lines, Language::Rust, 10);
-    assert_eq!(cache.parses(), 2, "a shorter viewport is still covered");
-    assert_eq!(back_up.len(), 40);
+    assert_eq!(
+        cache.body(&lines, Language::Rust, 10).len(),
+        40,
+        "a shorter viewport is still covered"
+    );
 
     // A viewport past the end of the buffer is clamped, not padded.
-    cache.body(&lines, Language::Rust, 500);
     assert_eq!(cache.body(&lines, Language::Rust, 500).len(), 100);
 }
 
