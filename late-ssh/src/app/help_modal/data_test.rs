@@ -42,8 +42,28 @@ fn bot_context_includes_hub_guide_facts() {
     assert!(context.contains("## Economy\n"));
     assert!(context.contains("Monthly Top Chips counts net chip delta."));
     assert!(context.contains("Lateris, 2048, Snake, and Traffic record run scores."));
-    assert!(context.contains("Blackjack form: name, pace, stake."));
     assert!(context.contains("Four-seat fixed-stack Texas Hold'em"));
+}
+
+/// The Lobby replaced the rooms-era Tables screen: no table creation, no
+/// setup forms, and chess moved to the daily correspondence board. The guide
+/// described the old screen long after it was gone, so pin the new shape.
+#[test]
+fn hub_guide_describes_the_lobby_not_the_rooms_era_tables() {
+    let context = bot_app_context();
+    assert!(context.contains("There is one fixed table per game: no creating tables"));
+    assert!(context.contains("Poker, Blackjack, Asterion, Tron, and Super Snake."));
+    assert!(context.contains("Chess and the other daily games are correspondence matches now"));
+    for gone in [
+        "Open Tables with 4",
+        "Create Table Forms",
+        "Blackjack form: name, pace, stake",
+        "Room stacks: 100, 500, 1000",
+        "Tic-Tac-Toe",
+        "Clock presets",
+    ] {
+        assert!(!context.contains(gone), "hub guide still describes {gone}");
+    }
 }
 
 /// "How do I earn chips" is the question the bot gets most, so the Chips tab

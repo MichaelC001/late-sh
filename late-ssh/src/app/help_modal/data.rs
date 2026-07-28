@@ -356,8 +356,14 @@ fn chips_help_lines() -> Vec<String> {
         "  Sudoku, Nonograms, and Minesweeper each have all three difficulties.".to_string(),
         format!("  Solitaire draw-1   {medium} chips"),
         format!("  Solitaire draw-3   {hard} chips"),
-        format!("  Le Word daily      {easy} chips"),
-        format!("  Rubik's Cube daily {medium} chips"),
+        format!(
+            "  Le Word daily      {} chips",
+            crate::app::arcade::le_word::state::DAILY_WIN_REWARD_CHIPS
+        ),
+        format!(
+            "  Rubik's Cube daily {} chips",
+            crate::app::arcade::rubiks_cube::state::DAILY_WIN_REWARD_CHIPS
+        ),
         "  Personal (non-daily) boards pay nothing; only the daily board pays.".to_string(),
         "  The high-score games (2048, Lateris, Snake, Traffic) pay no chips for a run on their own. They pay through Quests, and they rank you on the monthly leaderboards.".to_string(),
         "".to_string(),
