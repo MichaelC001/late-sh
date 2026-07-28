@@ -4,10 +4,9 @@ use russh::{
     keys::{self, PrivateKeyWithHashAlg, known_hosts},
 };
 use serde::Deserialize;
-use std::ffi::OsString;
 use std::{
-    env, fs, io,
-    io::{IsTerminal, Read, Write},
+    env, io,
+    io::{IsTerminal, Read},
     path::Path,
     sync::{
         Arc,
@@ -39,6 +38,9 @@ use std::{os::fd::AsRawFd, process::Stdio};
 
 #[cfg(unix)]
 use std::{
+    ffi::OsString,
+    fs,
+    io::Write,
     os::unix::fs::DirBuilderExt,
     path::PathBuf,
     process::Command as StdCommand,
