@@ -35,6 +35,11 @@ permissions:
 #   sets CARGO_INCREMENTAL=0.
 # - Caches are saved only on main pushes (save-if below; main.yml keeps them
 #   warm). PR runs restore, never save.
+# - windows-check is the one non-Linux job: late-cli has `cfg(unix)` /
+#   `cfg(not(unix))` branches, and the Windows half used to be compiled for the
+#   first time at release, so a Windows-only break could not fail a PR. It is a
+#   `cargo check` (no linking, no release codegen) scoped to late-cli, the only
+#   crate we ship to Windows.
 # - The job is named "clippy + test" so the branch ruleset's required check
 #   "ci / clippy + test" is satisfied directly (context is "<caller job> /
 #   <this job>" = "ci / clippy + test"); fmt provides "ci / rustfmt".
@@ -137,3 +142,38 @@ jobs:
       - name: dump_postgres_logs
         if: failure()
         run: docker logs ci-postgres
+
+  windows-check:
+    name: windows check
+    needs: [fmt]
+    # late-cli is the only crate shipped to Windows, so this job is pointless
+    # for the other per-package release callers.
+    if: ${{ inputs.package == '' || inputs.package == 'late-cli' }}
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
+      - name: restore_rust_cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ${{ env.CACHE_PREFIX }}
+          shared-key: ci-windows-late-cli
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Same MSVC runtime configuration the release build uses, so the C
+      # dependencies' build scripts behave identically here. `-D warnings` is
+      # folded into the same variable on purpose: cargo's rustflags sources are
+      # mutually exclusive, so a separate RUSTFLAGS would shadow this one.
+      - name: configure_windows_msvc_runtime
+        shell: pwsh
+        run: |
+          @(
+            'CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS=-C target-feature=+crt-static -D warnings'
+            'CFLAGS_x86_64_pc_windows_msvc=/MT'
+            'CXXFLAGS_x86_64_pc_windows_msvc=/MT'
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: cargo_check_late_cli
+        shell: bash
+        run: cargo check -p late-cli --all-targets

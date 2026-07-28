@@ -315,7 +315,7 @@ impl OpenSshSession {
         ""
     }
 
-    pub(super) async fn spawn_shell(self, _config: &Config) -> Result<OpenSshProcess> {
+    pub(super) fn spawn_shell(self, _config: &Config) -> Result<OpenSshProcess> {
         anyhow::bail!("openssh ssh mode is only available on Unix; use --ssh-mode native")
     }
 }
@@ -559,7 +559,7 @@ fn apply_resize(handle: &ResizeHandle) -> Result<()> {
 }
 
 #[cfg(not(unix))]
-async fn apply_resize(handle: &ResizeHandle) -> Result<()> {
+fn apply_resize(handle: &ResizeHandle) -> Result<()> {
     match handle {
         ResizeHandle::Native(tx) => {
             let (cols, rows) = terminal_size_or_default();
@@ -660,7 +660,7 @@ fn spawn_subprocess_ssh(
 }
 
 #[cfg(not(unix))]
-async fn spawn_subprocess_ssh(
+fn spawn_subprocess_ssh(
     _config: &Config,
     _identity_file: &Path,
     _token_tx: oneshot::Sender<String>,
