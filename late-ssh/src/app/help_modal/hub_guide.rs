@@ -1,7 +1,6 @@
 use asterion_core::MAX_MAZE_ID;
 use late_core::models::{
     asterion::ASTERION_DAILY_ESCAPE_PAYOUT,
-    chips::difficulty_bonus,
     drinks::{DRINK_PRICE_MAX, DRINK_PRICE_MIN, DRUNK_DECAY_PER_HOUR},
     quest::{DAILY_QUEST_STREAK_BONUS_CHIPS_PER_LEVEL, MAX_DAILY_QUEST_STREAK_BONUS_LEVEL},
 };
@@ -36,20 +35,13 @@ fn guide_sections() -> Vec<GuideSection> {
 
 fn chip_sections() -> Vec<GuideSection> {
     vec![
+        // Earning lives on the Chips tab, which lists every payout in the app.
+        // Keeping a second, shorter list here only invited the two to drift.
         GuideSection {
             title: "Earn Chips",
             body: vec![
+                "The Chips tab lists every way to earn chips, with amounts.".to_string(),
                 "New accounts start with 1,000 chips.".to_string(),
-                "Daily puzzle wins pay once per daily board:".to_string(),
-                format!("easy       {:>4} chips", difficulty_bonus("easy")),
-                format!("medium     {:>4} chips", difficulty_bonus("medium")),
-                format!("hard       {:>4} chips", difficulty_bonus("hard")),
-                "Solitaire draw-1 pays medium; draw-3 pays hard.".to_string(),
-                "Le Word daily pays easy.".to_string(),
-                format!(
-                    "Bonsai watering pays {} chips once per UTC day.",
-                    crate::app::bonsai::svc::WATER_CHIP_BONUS
-                ),
             ],
         },
         GuideSection {
@@ -398,7 +390,7 @@ fn room_game_sections() -> Vec<GuideSection> {
         GuideSection {
             title: "Tron",
             body: vec![
-                "Two to four riders. Wins pay 50/75/100 chips by rider count.".to_string(),
+                "Two to four riders. Wins pay 100 chips whatever the rider count.".to_string(),
                 "Speeds: chill, standard, quick.".to_string(),
                 "s, Space, or Enter sits when not seated.".to_string(),
                 "n starts when at least two riders are seated.".to_string(),

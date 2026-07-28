@@ -46,6 +46,49 @@ fn bot_context_includes_hub_guide_facts() {
     assert!(context.contains("Four-seat fixed-stack Texas Hold'em"));
 }
 
+/// "How do I earn chips" is the question the bot gets most, so the Chips tab
+/// has to name every paying surface, not a sample of them.
+#[test]
+fn chips_guide_lists_every_earning_surface() {
+    let context = bot_app_context();
+    assert!(HelpTopic::ALL.iter().any(|topic| topic.title() == "Chips"));
+    assert!(context.contains("## Chips\n"));
+    let chips = lines_for(HelpTopic::Chips, false, "").join("\n");
+    for expected in [
+        "Arcade dailies",
+        "Solitaire draw-3",
+        "Le Word daily",
+        "Rubik's Cube daily",
+        "Quests",
+        "daily streak",
+        "Bonsai",
+        "Watering pays",
+        "Daily correspondence matches",
+        "Battleship",
+        "Backgammon",
+        "Asterion",
+        "Super Snake",
+        "Tron",
+        "Poker, Blackjack",
+        "Archdemon",
+        "King Who Was Promised Nothing",
+        "Amulet of Yendor",
+        "Green Dragon",
+        "/gift @user",
+    ] {
+        assert!(chips.contains(expected), "chips guide missing {expected}");
+    }
+    // Losing at a non-betting surface must never read as a chip risk, and the
+    // pay-nothing surfaces have to be called out or the bot invents payouts.
+    assert!(chips.contains("the losers lose nothing"));
+    assert!(chips.contains("pay no chips yet"));
+    assert!(chips.contains("no login bonus"));
+    // Economy keeps ranking rules; the amounts live here, in one place.
+    let economy = lines_for(HelpTopic::Economy, false, "").join("\n");
+    assert!(economy.contains("The Chips tab lists every way to earn chips"));
+    assert!(economy.contains("Monthly Top Chips counts net chip delta."));
+}
+
 #[test]
 fn bot_context_includes_terminal_faq_and_image_facts() {
     let context = bot_app_context();
