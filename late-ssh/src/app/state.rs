@@ -209,6 +209,8 @@ pub struct SessionConfig {
     pub initial_bonsai_tree: Option<late_core::models::bonsai::Tree>,
     pub initial_bonsai_care: Option<late_core::models::bonsai::DailyCare>,
     pub initial_bonsai_v2_tree: Option<late_core::models::bonsai::BonsaiV2Tree>,
+    pub initial_bonsai_decay_protection:
+        Option<late_core::models::bonsai_decay_protection::BonsaiDecayProtection>,
     pub pet_service: crate::app::pet::svc::PetService,
     pub initial_pet: Option<late_core::models::pet::PetCompanion>,
     pub quest_service: crate::app::hub::dailies::svc::QuestService,
@@ -1015,11 +1017,13 @@ impl App {
         let artboard_snapshot_service = config.artboard_snapshot_service.clone();
         let username = config.username.clone();
 
+        let initial_bonsai_decay_protection = config.initial_bonsai_decay_protection;
         let bonsai_state = if let Some(tree) = config.initial_bonsai_tree {
             crate::app::bonsai::state::BonsaiState::new(
                 config.user_id,
                 config.bonsai_service.clone(),
                 tree,
+                initial_bonsai_decay_protection,
             )
         } else {
             // Fallback: create a default dead-ish state (should not happen in practice)
@@ -1036,6 +1040,7 @@ impl App {
                     seed: config.user_id.as_u128() as i64,
                     is_alive: true,
                 },
+                initial_bonsai_decay_protection,
             )
         };
         let bonsai_care_state = config
@@ -1061,6 +1066,7 @@ impl App {
                     config.user_id,
                     config.bonsai_service.clone(),
                     tree,
+                    initial_bonsai_decay_protection,
                 )
             })
             .unwrap_or_else(|| {
