@@ -85,15 +85,42 @@ fn metadata_includes_track_details() {
 #[test]
 fn projection_entry_points_stay_synchronous() {
     let mut media = DesktopMedia::for_test();
-    media.select_source(
-        MediaSource::Radio,
-        Some("chillsynth".to_string()),
-        None,
-        false,
-        70,
+    media.select_source(MediaSource::Radio, Some("chillsynth".to_string()), None);
+    media.update_youtube(None);
+    media.update_icecast(HashMap::new());
+    media.update_radio(HashMap::new());
+    media.republish_audio_state();
+}
+
+/// Every transport command resolves to the absolute mute state sent to the
+/// server, read against the current flag: pause and stop mean muted, play
+/// means unmuted, and PlayPause, which is what media keys send, has to read
+/// the flag rather than assume a direction.
+#[cfg(target_os = "linux")]
+#[test]
+fn transport_commands_resolve_to_absolute_mute_targets() {
+    assert!(TransportCommand::Pause.mutes(false), "pause mutes");
+    assert!(TransportCommand::Pause.mutes(true), "pause keeps muted");
+    // Stop has no separate meaning for a live stream: it is a mute.
+    assert!(TransportCommand::Stop.mutes(false), "stop mutes");
+    assert!(!TransportCommand::Play.mutes(true), "play unmutes");
+    assert!(!TransportCommand::Play.mutes(false), "play keeps unmuted");
+    assert!(TransportCommand::PlayPause.mutes(false), "play_pause mutes");
+    assert!(
+        !TransportCommand::PlayPause.mutes(true),
+        "play_pause unmutes"
     );
-    media.update_youtube(None, false, 70);
-    media.update_icecast(HashMap::new(), false, 70);
-    media.update_radio(HashMap::new(), true, 0);
-    media.update_audio_state(false, 30);
+}
+
+/// The MPRIS volume double is clamped before scaling to a wire percent, so
+/// out-of-range writes from a misbehaving client cannot truncate or wrap.
+#[cfg(target_os = "linux")]
+#[test]
+fn mpris_volume_scales_and_clamps_to_percent() {
+    assert_eq!(platform::volume_percent_from_mpris(0.0), 0);
+    assert_eq!(platform::volume_percent_from_mpris(0.454), 45);
+    assert_eq!(platform::volume_percent_from_mpris(1.0), 100);
+    assert_eq!(platform::volume_percent_from_mpris(1.7), 100);
+    assert_eq!(platform::volume_percent_from_mpris(-0.3), 0);
+    assert_eq!(platform::volume_percent_from_mpris(f64::NAN), 0);
 }
