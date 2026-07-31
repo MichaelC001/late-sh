@@ -22,6 +22,8 @@ resource "kubernetes_persistent_volume_claim_v1" "codekeep_save" {
     }
   }
 
+  wait_until_bound = false
+
   lifecycle {
     prevent_destroy = true
   }
