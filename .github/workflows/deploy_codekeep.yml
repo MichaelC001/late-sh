@@ -17,6 +17,11 @@ on:
         options:
           - production
           - staging
+      bootstrap:
+        description: "First-time setup: targeted terraform apply creating only the late-codekeep resources (deployment, service, secret, PVC), touching nothing else"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ${{ ((github.event_name == 'workflow_dispatch' && endsWith(inputs.release_tag, '-codekeep')) || (github.event_name != 'workflow_dispatch' && endsWith(github.ref, '-codekeep'))) && format('deploy-codekeep-{0}', github.event_name == 'workflow_dispatch' && inputs.environment || (github.event.release.prerelease && 'staging' || 'production')) || format('{0}-{1}', github.workflow, github.run_id) }}
@@ -54,9 +59,98 @@ jobs:
       environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.event.release.prerelease && 'staging' || 'production') }}
       source_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
 
+  # Bootstrap path (manual dispatch with bootstrap=true): a terraform apply
+  # scoped with -target to the late-codekeep resources. The other image tags are
+  # read from the cluster only to satisfy terraform.yml's required inputs; the
+  # targeted apply never plans the resources that consume them.
+  get_images:
+    name: get_current_image_tags
+    if: ${{ github.event_name == 'workflow_dispatch' && endsWith(inputs.release_tag, '-codekeep') && inputs.bootstrap }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    outputs:
+      ssh_image_tag: ${{ steps.ssh_image.outputs.image_tag }}
+      web_image_tag: ${{ steps.web_image.outputs.image_tag }}
+      nethack_image_tag: ${{ steps.nethack_image.outputs.image_tag }}
+      dopewars_image_tag: ${{ steps.dopewars_image.outputs.image_tag }}
+      dcss_image_tag: ${{ steps.dcss_image.outputs.image_tag }}
+      usurper_image_tag: ${{ steps.usurper_image.outputs.image_tag }}
+      brogue_image_tag: ${{ steps.brogue_image.outputs.image_tag }}
+    steps:
+      - name: setup_kubectl
+        uses: azure/setup-kubectl@v5
+
+      - name: set_kubernetes_context
+        uses: azure/k8s-set-context@v5
+        with:
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: get_ssh_image_tag
+        id: ssh_image
+        run: |
+          tag=$(kubectl get deployment service-ssh -n default -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: get_web_image_tag
+        id: web_image
+        run: |
+          tag=$(kubectl get deployment service-web -n default -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: get_nethack_image_tag
+        id: nethack_image
+        run: |
+          tag=$(kubectl get deployment late-nethack -n default -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: get_dopewars_image_tag
+        id: dopewars_image
+        run: |
+          tag=$(kubectl get deployment late-dopewars -n default -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: get_dcss_image_tag
+        id: dcss_image
+        run: |
+          tag=$(kubectl get deployment late-dcss -n default -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: get_usurper_image_tag
+        id: usurper_image
+        run: |
+          tag=$(kubectl get deployment late-usurper -n default -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: get_brogue_image_tag
+        id: brogue_image
+        run: |
+          tag=$(kubectl get deployment late-brogue -n default -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
+
+  terraform_bootstrap:
+    name: terraform_bootstrap_codekeep
+    if: ${{ github.event_name == 'workflow_dispatch' && endsWith(inputs.release_tag, '-codekeep') && inputs.bootstrap }}
+    needs: [build_codekeep, get_images]
+    uses: ./.github/workflows/terraform.yml
+    permissions:
+      contents: read
+    secrets: inherit
+    with:
+      ssh_image_tag: ${{ needs.get_images.outputs.ssh_image_tag }}
+      web_image_tag: ${{ needs.get_images.outputs.web_image_tag }}
+      nethack_image_tag: ${{ needs.get_images.outputs.nethack_image_tag }}
+      dopewars_image_tag: ${{ needs.get_images.outputs.dopewars_image_tag }}
+      codekeep_image_tag: ${{ needs.build_codekeep.outputs.image_tag }}
+      dcss_image_tag: ${{ needs.get_images.outputs.dcss_image_tag }}
+      usurper_image_tag: ${{ needs.get_images.outputs.usurper_image_tag }}
+      brogue_image_tag: ${{ needs.get_images.outputs.brogue_image_tag }}
+      environment: ${{ inputs.environment }}
+      source_ref: ${{ inputs.release_tag }}
+      targets: kubernetes_deployment_v1.late_codekeep kubernetes_service_v1.late_codekeep_sv
+
   deploy:
     name: deploy_codekeep_image
-    if: ${{ (github.event_name == 'workflow_dispatch' && endsWith(inputs.release_tag, '-codekeep')) || (github.event_name != 'workflow_dispatch' && endsWith(github.ref, '-codekeep')) }}
+    if: ${{ ((github.event_name == 'workflow_dispatch' && endsWith(inputs.release_tag, '-codekeep')) || (github.event_name != 'workflow_dispatch' && endsWith(github.ref, '-codekeep'))) && inputs.bootstrap != true }}
     needs: build_codekeep
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.event.release.prerelease && 'staging' || 'production') }}
