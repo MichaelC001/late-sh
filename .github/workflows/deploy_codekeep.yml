@@ -17,12 +17,6 @@ on:
         options:
           - production
           - staging
-      bootstrap:
-        description: "First-time setup: targeted terraform apply creating only the late-codekeep resources (deployment, service, secret, PVC), touching nothing else"
-        required: false
-        default: false
-        type: boolean
-
 concurrency:
   group: ${{ ((github.event_name == 'workflow_dispatch' && endsWith(inputs.release_tag, '-codekeep')) || (github.event_name != 'workflow_dispatch' && endsWith(github.ref, '-codekeep'))) && format('deploy-codekeep-{0}', github.event_name == 'workflow_dispatch' && inputs.environment || (github.event.release.prerelease && 'staging' || 'production')) || format('{0}-{1}', github.workflow, github.run_id) }}
   cancel-in-progress: true
@@ -59,15 +53,44 @@ jobs:
       environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.event.release.prerelease && 'staging' || 'production') }}
       source_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
 
-  # Bootstrap path (manual dispatch with bootstrap=true): a terraform apply
-  # scoped with -target to the late-codekeep resources. The other image tags are
-  # read from the cluster only to satisfy terraform.yml's required inputs; the
-  # targeted apply never plans the resources that consume them.
+  # Every release takes one of two paths, decided by live cluster state: the
+  # deployment exists -> image-only kubectl update; it does not exist (first
+  # deploy, disaster recovery) -> a terraform apply scoped with -target to the
+  # late-codekeep resources, which creates them and touches nothing else.
+  check_deployment:
+    name: check_deployment_exists
+    if: ${{ (github.event_name == 'workflow_dispatch' && endsWith(inputs.release_tag, '-codekeep')) || (github.event_name != 'workflow_dispatch' && endsWith(github.ref, '-codekeep')) }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.event.release.prerelease && 'staging' || 'production') }}
+    outputs:
+      exists: ${{ steps.check.outputs.exists }}
+    steps:
+      - name: setup_kubectl
+        uses: azure/setup-kubectl@v5
+
+      - name: set_kubernetes_context
+        uses: azure/k8s-set-context@v5
+        with:
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: check
+        id: check
+        run: |
+          if kubectl get deployment late-codekeep -n default >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Bootstrap path: the other image tags are read from the cluster only to
+  # satisfy terraform.yml's required inputs; the targeted apply never plans the
+  # resources that consume them.
   get_images:
     name: get_current_image_tags
-    if: ${{ github.event_name == 'workflow_dispatch' && endsWith(inputs.release_tag, '-codekeep') && inputs.bootstrap }}
+    if: ${{ needs.check_deployment.outputs.exists == 'false' }}
+    needs: check_deployment
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.event.release.prerelease && 'staging' || 'production') }}
     outputs:
       ssh_image_tag: ${{ steps.ssh_image.outputs.image_tag }}
       web_image_tag: ${{ steps.web_image.outputs.image_tag }}
@@ -129,8 +152,8 @@ jobs:
 
   terraform_bootstrap:
     name: terraform_bootstrap_codekeep
-    if: ${{ github.event_name == 'workflow_dispatch' && endsWith(inputs.release_tag, '-codekeep') && inputs.bootstrap }}
-    needs: [build_codekeep, get_images]
+    if: ${{ needs.check_deployment.outputs.exists == 'false' }}
+    needs: [build_codekeep, get_images, check_deployment]
     uses: ./.github/workflows/terraform.yml
     permissions:
       contents: read
@@ -144,14 +167,14 @@ jobs:
       dcss_image_tag: ${{ needs.get_images.outputs.dcss_image_tag }}
       usurper_image_tag: ${{ needs.get_images.outputs.usurper_image_tag }}
       brogue_image_tag: ${{ needs.get_images.outputs.brogue_image_tag }}
-      environment: ${{ inputs.environment }}
-      source_ref: ${{ inputs.release_tag }}
+      environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.event.release.prerelease && 'staging' || 'production') }}
+      source_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
       targets: kubernetes_deployment_v1.late_codekeep kubernetes_service_v1.late_codekeep_sv
 
   deploy:
     name: deploy_codekeep_image
-    if: ${{ ((github.event_name == 'workflow_dispatch' && endsWith(inputs.release_tag, '-codekeep')) || (github.event_name != 'workflow_dispatch' && endsWith(github.ref, '-codekeep'))) && inputs.bootstrap != true }}
-    needs: build_codekeep
+    if: ${{ needs.check_deployment.outputs.exists == 'true' }}
+    needs: [build_codekeep, check_deployment]
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.event.release.prerelease && 'staging' || 'production') }}
     steps:
