@@ -2609,8 +2609,11 @@ impl ChatSelectionMode {
     }
 }
 
+/// A room paired with the messages loaded for it, as the room rail sees it.
+type RoomEntry = (ChatRoom, Vec<ChatMessage>);
+
 pub(crate) struct ChatRoomListView<'a> {
-    pub chat_rooms: &'a [(ChatRoom, Vec<ChatMessage>)],
+    pub chat_rooms: &'a [RoomEntry],
     pub usernames: &'a UsernameLookup<'a>,
     pub unread_counts: &'a HashMap<Uuid, i64>,
     pub room_last_message_at: &'a HashMap<Uuid, Option<DateTime<Utc>>>,
@@ -3785,10 +3788,7 @@ fn build_cozy_room_rail_rows(view: &ChatRoomListView<'_>, width: u16) -> RoomLis
     // the rest keep the bottom of the rail. Favorited DMs stay in Favorites,
     // and an ignored peer's DM shows in neither (same rule as
     // `visual_order_for_rooms`, which is the navigation half of this mirror).
-    let (mut unread_dms, mut dms): (
-        Vec<&(ChatRoom, Vec<ChatMessage>)>,
-        Vec<&(ChatRoom, Vec<ChatMessage>)>,
-    ) = view
+    let (mut unread_dms, mut dms): (Vec<&RoomEntry>, Vec<&RoomEntry>) = view
         .chat_rooms
         .iter()
         .filter(|(r, _)| {
@@ -3798,7 +3798,7 @@ fn build_cozy_room_rail_rows(view: &ChatRoomListView<'_>, width: u16) -> RoomLis
                 && !dm_peer_is_ignored(r, view.current_user_id, view.ignored_user_ids)
         })
         .partition(|(r, _)| dm_is_promoted_unread(r.id, view.unread_counts, view.sticky_unread_dm));
-    let sort_dms = |dms: &mut [&(ChatRoom, Vec<ChatMessage>)]| {
+    let sort_dms = |dms: &mut [&RoomEntry]| {
         dms.sort_by(|(a_room, _), (b_room, _)| {
             compare_dm_rooms_for_nav(
                 a_room,
@@ -3821,7 +3821,7 @@ fn build_cozy_room_rail_rows(view: &ChatRoomListView<'_>, width: u16) -> RoomLis
         }
     }
 
-    let channels: Vec<&(ChatRoom, Vec<ChatMessage>)> = view
+    let channels: Vec<&RoomEntry> = view
         .chat_rooms
         .iter()
         .filter(|(r, _)| {

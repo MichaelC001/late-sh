@@ -2460,7 +2460,9 @@ async fn bot_cooldown_banner_warns_only_for_the_hot_bot_and_room() {
     assert!(state.bot_cooldown_banner(room, "@bot hello").is_none());
 
     // The ghost loop answers once; the ladder is now hot in this room.
-    state.mention_ladders.check_and_step(LadderBot::Bot, user.id, room);
+    state
+        .mention_ladders
+        .check_and_step(LadderBot::Bot, user.id, room);
 
     let banner = state
         .bot_cooldown_banner(room, "hey @bot still there?")
@@ -2472,7 +2474,11 @@ async fn bot_cooldown_banner_warns_only_for_the_hot_bot_and_room() {
     );
 
     // A different bot, a plain message, and another room all stay quiet.
-    assert!(state.bot_cooldown_banner(room, "@bartender a pint").is_none());
+    assert!(
+        state
+            .bot_cooldown_banner(room, "@bartender a pint")
+            .is_none()
+    );
     assert!(state.bot_cooldown_banner(room, "no bots here").is_none());
     assert!(
         state
