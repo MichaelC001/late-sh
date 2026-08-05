@@ -11,30 +11,38 @@ fn macro_dirs_are_distinct_per_playname() {
 }
 
 #[test]
-fn crawl_args_reforce_macro_dir_after_the_player_rc() {
-    // The macro_dir opt-last guard must come AFTER the -rc pair: crawl applies
-    // -extra-opt-last lines after the whole rc, and later lines win, so this
-    // ordering is what stops a pushed rc's `macro_dir =` from redirecting
-    // another player's macro dir. See crawl_args' doc comment.
+fn crawl_args_never_reforce_macro_dir_or_save_dir_as_extra_opts() {
+    // Regression guard for the 2026-08-05 prod outage: `macro_dir`/`save_dir`
+    // are DisabledGameOption on this build (SAVE_DIR_PATH is baked in because
+    // the Dockerfile's `prefix=/opt/dcss` matches crawl's Makefile `/opt%`
+    // rule, which force-sets SAVEDIR), so ANY `-extra-opt-last macro_dir=...`
+    // or `save_dir=...` makes crawl reject the whole options line at launch.
+    // Per-player macro isolation is `-macro <dir>` alone (SysEnv.macro_dir,
+    // consumed outside the option system); see crawl_args' doc comment.
     let args = crawl_args(
         "alice",
         "/data/.crawl/macros/alice",
         Some("/data/rc/alice.rc"),
     );
+    assert!(
+        args.iter().all(|a| !a.starts_with("macro_dir=")),
+        "must never pass macro_dir as an extra-opt; args={args:?}"
+    );
+    assert!(
+        args.iter().all(|a| !a.starts_with("save_dir=")),
+        "must never pass save_dir as an extra-opt; args={args:?}"
+    );
     let rc = args.iter().position(|a| a == "-rc").expect("-rc present");
     assert_eq!(args[rc + 1], "/data/rc/alice.rc");
-    let guard = args
+    let macro_flag = args
         .iter()
-        .position(|a| a == "macro_dir=/data/.crawl/macros/alice")
-        .expect("macro_dir guard present");
-    assert!(guard > rc, "guard must follow the rc so it wins");
-    assert_eq!(args[guard - 1], "-extra-opt-last");
+        .position(|a| a == "-macro")
+        .expect("-macro present");
+    assert_eq!(args[macro_flag + 1], "/data/.crawl/macros/alice");
 
-    // No rc pushed: the guard still stands (the shared init.txt path), and no
-    // -rc pair sneaks in.
+    // No rc pushed: no -rc pair sneaks in.
     let args = crawl_args("bob", "/data/.crawl/macros/bob", None);
     assert!(!args.contains(&"-rc".to_string()));
-    assert!(args.contains(&"macro_dir=/data/.crawl/macros/bob".to_string()));
 }
 
 #[test]

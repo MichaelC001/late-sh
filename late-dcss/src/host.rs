@@ -355,22 +355,29 @@ fn send_sighup(pid: u32, playname: &str) {
 /// The crawl argument list. `-name` keys the per-player save inside the shared
 /// playground (crawl skips its name prompt when one is given; the second
 /// command-line pass re-applies it AFTER the rc, so an rc `name =` line cannot
-/// open someone else's save). `-macro` sets the per-player macro dir, and the
-/// `-extra-opt-last` lines are server-side display defaults: the viewport
-/// maxima let the map grow with the terminal instead of crawl's cramped 33x21
-/// default (81x71 are the hard caps), and use_terminal_default_colours makes
-/// crawl inherit the terminal's default background (pair 0 via ncurses
-/// use_default_colors) so the late.sh theme shows through instead of every
-/// cell being painted ANSI black.
+/// open someone else's save). `-macro` sets the per-player macro dir via
+/// `SysEnv.macro_dir`, consumed directly during path init rather than through
+/// the option system, so it is not something an rc line can override (see
+/// `macro_dir` below). The `-extra-opt-last` lines are server-side display
+/// defaults: the viewport maxima let the map grow with the terminal instead of
+/// crawl's cramped 33x21 default (81x71 are the hard caps), and
+/// use_terminal_default_colours makes crawl inherit the terminal's default
+/// background (pair 0 via ncurses use_default_colors) so the late.sh theme
+/// shows through instead of every cell being painted ANSI black.
 ///
-/// The final `macro_dir=` opt-last is a security guard, not a default: our
-/// build is non-DGL, so a player rc CAN set `macro_dir` and crawl's `-macro`
-/// flag does NOT win over it (`-macro` only seeds SysEnv before the rc is
-/// read). Unguarded, a pushed rc could point macro_dir at another player's
-/// macro dir and plant keybind macros there. `-extra-opt-last` lines are
-/// processed after the whole rc (including rc Lua), so this re-force is the
-/// host's last word. Verified against the pinned crawl 0.34.1 source
-/// (initfile.cc: CLO_MACRO vs the macro_dir GameOption).
+/// **Do NOT add `-extra-opt-last macro_dir=...` (or `save_dir=`).** Both are
+/// `DisabledGameOption` on this exact build: our Dockerfile's `make install
+/// prefix=/opt/dcss` matches crawl's Makefile `/opt%` rule, which force-sets
+/// `SAVEDIR := ~/.crawl` and bakes in `-DSAVE_DIR_PATH`; `initfile.cc` then
+/// registers `{"save_dir", "macro_dir"}` as disabled whenever `SAVE_DIR_PATH`
+/// is defined, and `DisabledGameOption::loadFromParseState` returns an
+/// "Option 'X' is disabled in this build" error for ANY source, rc or
+/// command-line extra-opt alike (game-options.cc). A prior attempt to
+/// re-force `macro_dir` this way broke every DCSS launch in prod
+/// (2026-08-05) and was reverted; a pushed rc `macro_dir =`/`save_dir =` line
+/// is equally rejected by the option parser, so there is nothing to guard
+/// against here. Re-verify against the pinned Makefile before ever touching
+/// this again.
 fn crawl_args(playname: &str, macro_dir: &str, rc_path: Option<&str>) -> Vec<String> {
     let mut args = vec![
         "-name".to_string(),
@@ -388,8 +395,6 @@ fn crawl_args(playname: &str, macro_dir: &str, rc_path: Option<&str>) -> Vec<Str
         args.push("-rc".to_string());
         args.push(path.to_string());
     }
-    args.push("-extra-opt-last".to_string());
-    args.push(format!("macro_dir={macro_dir}"));
     args
 }
 
