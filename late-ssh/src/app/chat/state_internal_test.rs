@@ -568,11 +568,16 @@ fn new_chat_textarea_uses_theme_text_color() {
 }
 
 #[test]
-fn composer_cursor_visible_uses_explicit_theme_colors() {
+fn composer_cursor_visible_inverts_the_cell() {
     let mut textarea = new_chat_textarea();
     composer::set_themed_textarea_cursor_visible(&mut textarea, true);
-    assert_eq!(textarea.cursor_style().fg, Some(theme::BG_CANVAS()));
-    assert_eq!(textarea.cursor_style().bg, Some(theme::TEXT()));
+    assert!(
+        textarea
+            .cursor_style()
+            .add_modifier
+            .contains(ratatui::style::Modifier::REVERSED)
+    );
+    assert_eq!(textarea.cursor_style().bg, None);
 }
 
 #[test]
@@ -596,8 +601,13 @@ fn common_textarea_theme_refreshes_existing_chat_textarea_colors() {
     assert_ne!(textarea.style().fg, late_text);
     assert_eq!(textarea.style().fg, Some(theme::TEXT()));
     assert_eq!(textarea.cursor_line_style().fg, Some(theme::TEXT()));
-    assert_eq!(textarea.cursor_style().fg, Some(theme::BG_CANVAS()));
-    assert_eq!(textarea.cursor_style().bg, Some(theme::TEXT()));
+    assert_eq!(textarea.cursor_style().fg, Some(theme::TEXT()));
+    assert!(
+        textarea
+            .cursor_style()
+            .add_modifier
+            .contains(ratatui::style::Modifier::REVERSED)
+    );
 
     theme::set_current_by_id("late");
 }
@@ -1411,6 +1421,19 @@ fn parse_public_room_without_hash() {
         parse_room_command("/public lobby", "/public"),
         Some("lobby")
     );
+}
+
+#[test]
+fn join_opens_a_public_room_like_public_does() {
+    assert_eq!(parse_public_room_command("/join #lobby"), Some("lobby"));
+    assert_eq!(parse_public_room_command("/join lobby"), Some("lobby"));
+    assert_eq!(parse_public_room_command("/public #lobby"), Some("lobby"));
+
+    // A bare alias is not a room command, so it falls through to the unknown
+    // command banner the same way a bare `/public` does.
+    assert_eq!(parse_public_room_command("/join "), None);
+    assert_eq!(parse_public_room_command("/join #"), None);
+    assert_eq!(parse_public_room_command("/joins lobby"), None);
 }
 
 #[test]
