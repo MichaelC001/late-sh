@@ -685,6 +685,7 @@ fn visual_order_matches_cozy_rail_grouping() {
             unread_counts: &HashMap::new(),
             room_last_message_at: &HashMap::new(),
             feeds_available: true,
+            cyberspace_linked: false,
             favorite_room_ids: &[],
             collapsed_sections: &HashSet::new(),
             ignored_user_ids: &HashSet::new(),
@@ -749,6 +750,7 @@ fn collapsed_sections_drop_their_rooms_from_visual_order() {
             unread_counts: &HashMap::new(),
             room_last_message_at: &HashMap::new(),
             feeds_available: false,
+            cyberspace_linked: false,
             favorite_room_ids: &[],
             collapsed_sections: collapsed,
             ignored_user_ids: &HashSet::new(),
@@ -826,6 +828,7 @@ fn visual_order_dms_use_snapshot_activity_not_loaded_tails() {
         unread_counts: &HashMap::new(),
         room_last_message_at: &room_last_message_at,
         feeds_available: false,
+        cyberspace_linked: false,
         favorite_room_ids: &[],
         collapsed_sections: &HashSet::new(),
         ignored_user_ids: &HashSet::new(),
@@ -864,6 +867,7 @@ fn visual_order_hides_dm_with_ignored_peer() {
         unread_counts: &HashMap::new(),
         room_last_message_at: &HashMap::new(),
         feeds_available: false,
+        cyberspace_linked: false,
         favorite_room_ids: &[],
         collapsed_sections: &HashSet::new(),
         ignored_user_ids: &ignored,
@@ -883,6 +887,7 @@ fn visual_order_hides_dm_with_ignored_peer() {
         unread_counts: &HashMap::new(),
         room_last_message_at: &HashMap::new(),
         feeds_available: false,
+        cyberspace_linked: false,
         favorite_room_ids: &[dm_bob.id],
         collapsed_sections: &HashSet::new(),
         ignored_user_ids: &ignored,
@@ -925,6 +930,7 @@ fn visual_order_promotes_unread_dms_above_channels() {
         unread_counts: &unread_counts,
         room_last_message_at: &HashMap::new(),
         feeds_available: false,
+        cyberspace_linked: false,
         favorite_room_ids: &[dm_carol.id],
         collapsed_sections: &HashSet::new(),
         ignored_user_ids: &HashSet::new(),
@@ -970,6 +976,7 @@ fn visual_order_holds_the_dm_being_read_in_the_unread_group() {
             unread_counts: &HashMap::from([(dm_bob.id, 0)]),
             room_last_message_at: &HashMap::new(),
             feeds_available: false,
+            cyberspace_linked: false,
             favorite_room_ids: &[],
             collapsed_sections: &HashSet::new(),
             ignored_user_ids: &HashSet::new(),
@@ -1019,6 +1026,7 @@ fn visual_order_keeps_promoted_unread_dms_when_the_dms_section_is_collapsed() {
         unread_counts: &HashMap::from([(dm_bob.id, 2)]),
         room_last_message_at: &HashMap::new(),
         feeds_available: false,
+        cyberspace_linked: false,
         favorite_room_ids: &[],
         collapsed_sections: &HashSet::from([RoomSection::Dms]),
         ignored_user_ids: &HashSet::new(),
@@ -1104,6 +1112,7 @@ fn visual_order_never_promotes_an_ignored_peers_unread_dm() {
         unread_counts: &HashMap::from([(dm_bob.id, 5)]),
         room_last_message_at: &HashMap::new(),
         feeds_available: false,
+        cyberspace_linked: false,
         favorite_room_ids: &[],
         collapsed_sections: &HashSet::new(),
         ignored_user_ids: &HashSet::from([bob]),
@@ -2109,7 +2118,11 @@ fn counter_test_state(test_db: &late_core::test_utils::TestDb, user_id: Uuid) ->
             articles,
             feeds: crate::app::chat::feeds::svc::FeedService::new(db.clone()),
             showcases: crate::app::chat::showcase::svc::ShowcaseService::new(db.clone()),
-            work: crate::app::chat::work::svc::WorkService::new(db),
+            work: crate::app::chat::work::svc::WorkService::new(db.clone()),
+            cyberspace: crate::app::chat::cyberspace::svc::CyberspaceService::new(
+                db,
+                "http://127.0.0.1:1".to_string(),
+            ),
         },
         user_id,
         crate::authz::Permissions::new(false, false),
@@ -2314,6 +2327,37 @@ fn parse_pair_command_rejects_bare_and_malformed_forms() {
         Some(None),
         "trailing token"
     );
+}
+
+#[test]
+fn parse_cyberspace_command_reads_the_subcommands_and_leaves_neighbours_alone() {
+    assert_eq!(parse_cyberspace_command("/cs"), Some(CyberspaceCommand::Open));
+    assert_eq!(
+        parse_cyberspace_command("/cyberspace"),
+        Some(CyberspaceCommand::Open)
+    );
+    assert_eq!(
+        parse_cyberspace_command("  /cs post  "),
+        Some(CyberspaceCommand::Post)
+    );
+    assert_eq!(
+        parse_cyberspace_command("/cs link"),
+        Some(CyberspaceCommand::Link)
+    );
+    assert_eq!(
+        parse_cyberspace_command("/cs unlink"),
+        Some(CyberspaceCommand::Unlink)
+    );
+    // A typo is still a cyberspace command, so it gets the usage banner
+    // rather than being posted to the room as a message.
+    assert_eq!(
+        parse_cyberspace_command("/cs psot"),
+        Some(CyberspaceCommand::Invalid)
+    );
+    // A longer command that merely starts with the prefix is not ours.
+    assert_eq!(parse_cyberspace_command("/csomething"), None);
+    assert_eq!(parse_cyberspace_command("/cyberspaces"), None);
+    assert_eq!(parse_cyberspace_command("look at /cs"), None);
 }
 
 #[test]

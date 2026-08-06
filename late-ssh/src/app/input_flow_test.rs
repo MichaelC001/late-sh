@@ -6,6 +6,7 @@ use crate::test_helpers::{
     make_app_with_permissions, new_test_db, render_plain, wait_for_render_contains, wait_until,
     with_session_key,
 };
+use late_core::models::cyberspace_account::CyberspaceAccount;
 use late_core::models::user::{RightSidebarMode, RoomListMode};
 use late_core::models::user_ssh_key::{KeyLayout, UserSshKey};
 use late_core::models::{
@@ -967,6 +968,74 @@ async fn chat_reaction_leader_second_f_shows_reaction_owners_modal() {
     assert!(
         !plain.contains(" Reactions "),
         "owner modal should stay closed after Esc: {plain:?}"
+    );
+}
+
+#[tokio::test]
+async fn unlinked_cs_command_offers_the_link_modal_without_leaving_the_room() {
+    let test_db = new_test_db().await;
+    let viewer = create_test_user(&test_db.db, "cs-unlinked-viewer").await;
+    let client = test_db.db.get().await.expect("db client");
+    let lounge = ChatRoom::ensure_lounge(&client)
+        .await
+        .expect("ensure lounge room");
+    ChatRoomMember::join(&client, lounge.id, viewer.id)
+        .await
+        .expect("join viewer to lounge");
+
+    let mut app = make_app(test_db.db.clone(), viewer.id, "cs-unlinked-flow-it");
+    wait_for_render_contains(&mut app, "lounge").await;
+
+    // No link, no rail entry: the rail stays about places this user has.
+    assert_render_not_contains_for(&mut app, "cyberspace", Duration::from_millis(300)).await;
+
+    // /cs is still the way in. It opens the link funnel over the room the
+    // user is already in, rather than a pane with no rail entry behind it.
+    app.handle_input(b"i/cs\r");
+    wait_for_render_contains(&mut app, " Link cyberspace account ").await;
+    wait_for_render_contains(&mut app, "https://cyberspace.online").await;
+    assert!(
+        app.chat.cyberspace.modal_active(),
+        "the link modal should own the input"
+    );
+    assert!(
+        !app.chat.cyberspace_selected,
+        "an unlinked user should never land in the pane"
+    );
+}
+
+#[tokio::test]
+async fn linked_account_gets_the_rail_entry_and_the_pane() {
+    let test_db = new_test_db().await;
+    let viewer = create_test_user(&test_db.db, "cs-linked-viewer").await;
+    let client = test_db.db.get().await.expect("db client");
+    let lounge = ChatRoom::ensure_lounge(&client)
+        .await
+        .expect("ensure lounge room");
+    ChatRoomMember::join(&client, lounge.id, viewer.id)
+        .await
+        .expect("join viewer to lounge");
+    CyberspaceAccount::upsert_for_user(&client, viewer.id, "cs-uid", "oddity", "refresh-token")
+        .await
+        .expect("link cyberspace account");
+
+    let mut app = make_app(test_db.db.clone(), viewer.id, "cs-linked-flow-it");
+    wait_for_render_contains(&mut app, "lounge").await;
+
+    // Linking earns the Core rail entry, so the pane is reachable by eye and
+    // by click, not only through the command.
+    wait_for_render_contains(&mut app, "cyberspace").await;
+
+    app.handle_input(b"i/cs\r");
+    wait_for_render_contains(&mut app, "Home · cyberspace").await;
+    // The pane header names the account and the notification key, so the
+    // rail badge is not the only thing explaining the count.
+    wait_for_render_contains(&mut app, "@oddity on cyberspace.online").await;
+    wait_for_render_contains(&mut app, "n notifications").await;
+    assert!(app.chat.cyberspace_selected, "/cs should open the pane");
+    assert!(
+        !app.chat.cyberspace.modal_active(),
+        "a linked user gets the pane, not the link modal"
     );
 }
 
