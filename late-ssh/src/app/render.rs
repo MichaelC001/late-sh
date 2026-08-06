@@ -191,9 +191,6 @@ struct DrawContext<'a> {
     dartboard_state: Option<&'a crate::app::artboard::state::State>,
     scratchpad: Option<&'a crate::app::scratchpad::state::ScratchpadState>,
     directory_state: &'a crate::app::directory::state::DirectoryState,
-    directory_tab: crate::app::directory::state::DirectoryTab,
-    pinstar_state: Option<&'a mut crate::app::pinstar::state::PinstarState>,
-    pinstar_browser: Option<&'a crate::app::pinstar::browser::DiagramBrowser>,
     clubhouse_state: &'a crate::app::clubhouse::state::State,
     clubhouse_own_username: &'a str,
     /// Resolved 24h username-effect styles for clubhouse name labels.
@@ -938,9 +935,8 @@ impl App {
         }
 
         let terminal = &mut self.terminal;
-        let mut pinstar_state_taken = self.pinstar_state.take();
-        // Taken out (like pinstar_state) so the draw dispatch can hold &mut and
-        // call set_viewport with the exact content_area before blitting.
+        // Taken out so the draw dispatch can hold &mut and call set_viewport
+        // with the exact content_area before blitting.
         let mut rebels_state_taken = self.rebels_state.take();
         let mut nethack_state_taken = self.nethack_state.take();
         let mut dcss_state_taken = self.dcss_state.take();
@@ -949,11 +945,6 @@ impl App {
         let mut dopewars_state_taken = self.dopewars_state.take();
         let mut codekeep_state_taken = self.codekeep_state.take();
 
-        let pinstar_browser = if screen == Screen::Pinstar {
-            Some(&self.pinstar_browser)
-        } else {
-            None
-        };
         let draw_result = terminal
             .draw(|frame| {
                 Self::draw(
@@ -1006,9 +997,6 @@ impl App {
                         dartboard_state: self.dartboard_state.as_ref(),
                         scratchpad: self.scratchpad.as_ref(),
                         directory_state: &self.directory_state,
-                        directory_tab: self.directory_state.tab,
-                        pinstar_state: pinstar_state_taken.as_mut(),
-                        pinstar_browser,
                         clubhouse_state: &self.clubhouse,
                         clubhouse_own_username: self.profile_state.profile().username.as_str(),
                         clubhouse_name_styles: &self.name_styles,
@@ -1109,7 +1097,6 @@ impl App {
             })
             .context("failed to draw frame");
 
-        self.pinstar_state = pinstar_state_taken;
         self.rebels_state = rebels_state_taken;
         self.nethack_state = nethack_state_taken;
         self.dcss_state = dcss_state_taken;
@@ -1446,25 +1433,22 @@ impl App {
                     crate::app::door::codekeep::render::draw_page(frame, content_area, state);
                 }
             }
-            Screen::Pinstar => {
+            Screen::Profiles => {
                 crate::app::directory::ui::draw_directory_page(
                     frame,
                     content_area,
                     crate::app::directory::ui::DirectoryPageView {
                         directory: ctx.directory_state,
-                        tab: ctx.directory_tab,
-                        profiles: ctx.chat_view.work_view,
                         work_state: ctx
                             .chat_view
                             .work_state
                             .expect("directory work state is always present"),
-                        projects: ctx.chat_view.showcase_view,
                         showcase_state: ctx
                             .chat_view
                             .showcase_state
                             .expect("directory showcase state is always present"),
-                        pinstar_state: ctx.pinstar_state,
-                        pinstar_browser: ctx.pinstar_browser,
+                        current_user_id: ctx.chat_view.work_view.current_user_id,
+                        profile_base_url: ctx.chat_view.work_view.profile_base_url,
                     },
                 );
             }
@@ -1811,7 +1795,7 @@ fn app_frame_title(screen: Screen, ctx: &DrawContext<'_>) -> Line<'static> {
         (Screen::Arcade, "2"),
         (Screen::Games, "3"),
         (Screen::Artboard, "4"),
-        (Screen::Pinstar, "5"),
+        (Screen::Profiles, "5"),
         (Screen::Leaderboard, "6"),
     ];
     for (idx, (tab_screen, key)) in tabs.iter().enumerate() {
@@ -1863,7 +1847,7 @@ fn app_frame_title(screen: Screen, ctx: &DrawContext<'_>) -> Line<'static> {
         Screen::GreenDragon => "Green Dragon",
         Screen::Arcade => "The Arcade",
         Screen::Artboard => "Artboard",
-        Screen::Pinstar => "Directory",
+        Screen::Profiles => "Profiles",
         Screen::Leaderboard => "Leaderboards",
         Screen::Clubhouse => "Clubhouse",
         Screen::DailyMatch => "Daily Match",
@@ -2073,32 +2057,12 @@ fn app_frame_title(screen: Screen, ctx: &DrawContext<'_>) -> Line<'static> {
         ));
     }
 
-    if screen == Screen::Pinstar {
-        let hints: &[(&str, &str)] = match ctx.directory_tab {
-            crate::app::directory::state::DirectoryTab::Profiles => &[
-                ("i", "edit mine"),
-                ("e", "edit selected"),
-                ("Enter", "copy link"),
-            ],
-            crate::app::directory::state::DirectoryTab::Projects => {
-                &[("i", "new"), ("e", "edit"), ("Enter", "copy link")]
-            }
-            crate::app::directory::state::DirectoryTab::Pinstar if ctx.pinstar_state.is_some() => {
-                &[
-                    ("R-click/a", "menu"),
-                    ("L-drag", "pan"),
-                    ("R-drag", "select"),
-                    ("i", "edit"),
-                    ("Ctrl+P", "help"),
-                ]
-            }
-            crate::app::directory::state::DirectoryTab::Pinstar => &[
-                ("Enter", "open"),
-                ("n", "new"),
-                ("a", "join"),
-                ("Ctrl+P", "help"),
-            ],
-        };
+    if screen == Screen::Profiles {
+        let hints: &[(&str, &str)] = &[
+            ("i", "new project"),
+            ("w", "work card"),
+            ("Enter", "copy link"),
+        ];
         for (key, desc) in hints {
             spans.push(Span::styled("· ", Style::default().fg(theme::BORDER_DIM())));
             spans.push(Span::styled(
