@@ -12,7 +12,9 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SCRIPT_DIR="${ROOT_DIR}/scripts"
+cd -- "${ROOT_DIR}"
 
 if (( $# > 1 )); then
   echo "usage: $0 [USERNAME]" >&2
