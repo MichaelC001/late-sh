@@ -24,13 +24,7 @@ fn cursor_over_a_last_move_square_wears_only_the_cursor_background() {
 
     let tier = CellTier { cw: 3, ch: 1 };
     let cursor = cell_index((3, 0));
-    let lines = board_lines(
-        &state,
-        Some(cursor),
-        &HashSet::new(),
-        &HashSet::new(),
-        tier,
-    );
+    let lines = board_lines(&state, Some(cursor), &HashSet::new(), &HashSet::new(), tier);
     let cursor_bg = theme::AMBER_DIM();
     theme::set_current_by_id("contrast");
 

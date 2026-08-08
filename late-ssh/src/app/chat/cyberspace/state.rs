@@ -726,6 +726,10 @@ fn is_newer_than(post: &CsPost, cursor: Option<DateTime<Utc>>) -> bool {
     }
 }
 
+/// What makes two notifications the same event: kind, who did it, which entry
+/// it points at, and which reply it came from.
+type NotificationKey = (String, Option<String>, Option<String>, Option<String>);
+
 /// One row per thing that happened, rather than one per notification their
 /// API hands out: a single reply shows up as several `reply` notifications
 /// with distinct ids, so the view fills with rows that read identically and
@@ -739,8 +743,7 @@ fn is_newer_than(post: &CsPost, cursor: Option<DateTime<Utc>>) -> bool {
 /// precise as they get. No `×N` count on the row, because a count would have
 /// to be trusted to mean something and duplicates are not repeats.
 pub(crate) fn dedupe_notifications(notifications: Vec<CsNotification>) -> Vec<CsNotification> {
-    let mut seen: HashSet<(String, Option<String>, Option<String>, Option<String>)> =
-        HashSet::new();
+    let mut seen: HashSet<NotificationKey> = HashSet::new();
     notifications
         .into_iter()
         .filter(|notification| {

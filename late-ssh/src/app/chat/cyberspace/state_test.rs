@@ -190,8 +190,9 @@ async fn reentering_inside_the_reload_interval_keeps_unseen_entries_unread() {
     });
     // First visit: the feed arrives with its newest entry at 13:00, which is
     // as far as this user has demonstrably read.
-    let seen: CsPost = serde_json::from_str(r#"{"postId":"p1","createdAt":"2026-08-07T13:00:00Z"}"#)
-        .expect("post");
+    let seen: CsPost =
+        serde_json::from_str(r#"{"postId":"p1","createdAt":"2026-08-07T13:00:00Z"}"#)
+            .expect("post");
     state.opened();
     let _ = state.apply_event(CsEvent::FeedLoaded {
         user_id,

@@ -2668,7 +2668,11 @@ fn row_line(
     };
 
     let prefix = format!(" {marker} ");
-    let label_text = format!("{label:<16}");
+    let label_text = if label.chars().count() >= 16 {
+        format!("{label} ")
+    } else {
+        format!("{label:<16}")
+    };
     let mut used = prefix.chars().count() + label_text.chars().count() + value.text.chars().count();
     if used > width {
         used = width;

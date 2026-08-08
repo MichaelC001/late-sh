@@ -626,9 +626,7 @@ fn block_style(focused: bool, selected: bool, suit: Option<Suit>) -> Style {
             .bg(theme::BG_HIGHLIGHT())
             .add_modifier(Modifier::BOLD)
     } else if selected {
-        theme::selection_style()
-            .fg(fg)
-            .add_modifier(Modifier::BOLD)
+        theme::selection_style().fg(fg).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(fg)
     }
