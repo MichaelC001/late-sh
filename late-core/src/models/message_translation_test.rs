@@ -68,9 +68,16 @@ fn needs_translation_compares_dominant_script_against_target() {
         TranslateLang::Pt
     ));
 
-    // Mixed bodies go by the dominant script.
+    // Mixed bodies go by the dominant script. Only a target with a script of
+    // its own can be cleared this way, so the pair is read against Chinese;
+    // an English reader gets both, scriptless targets clear nothing locally.
+    assert!(!needs_translation("看看这个 lol", TranslateLang::ZhHans));
+    assert!(needs_translation(
+        "check this out 哈哈",
+        TranslateLang::ZhHans
+    ));
     assert!(needs_translation("看看这个 lol", TranslateLang::En));
-    assert!(!needs_translation("check this out 哈哈", TranslateLang::En));
+    assert!(needs_translation("check this out 哈哈", TranslateLang::En));
 
     // Unscripted or near-empty bodies never qualify.
     assert!(!needs_translation("👍👍👍", TranslateLang::En));
