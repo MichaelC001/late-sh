@@ -250,6 +250,8 @@ pub(crate) enum PetCommand {
 pub(crate) enum CyberspaceCommand {
     Open,
     Post,
+    /// Their chat roster, where rooms get pinned into the rail.
+    Chat,
     Link,
     Unlink,
     Invalid,
@@ -268,6 +270,7 @@ fn parse_cyberspace_command(body: &str) -> Option<CyberspaceCommand> {
     Some(match rest.trim() {
         "" => CyberspaceCommand::Open,
         "post" => CyberspaceCommand::Post,
+        "chat" | "rooms" => CyberspaceCommand::Chat,
         "link" => CyberspaceCommand::Link,
         "unlink" => CyberspaceCommand::Unlink,
         _ => CyberspaceCommand::Invalid,
@@ -280,6 +283,13 @@ pub(crate) enum RoomSlot {
     Feeds,
     News,
     Cyberspace,
+    /// A pinned cyberspace chat room, by its position in the pinned list.
+    /// Every synthetic entry before this one was a singleton picked out by a
+    /// bool; these are user-added and ordered, and the index is what fits in
+    /// the `Copy` selection state a slug could not. The pinned list changes
+    /// only where rooms are added or removed, which is the one place that has
+    /// to re-point a selection.
+    CyberspaceRoom(usize),
     Notifications,
     Discover,
     Showcase,
@@ -294,17 +304,32 @@ pub(crate) enum RoomSlot {
 pub enum RoomSection {
     Favorites,
     Core,
+    /// Only rendered for a linked account: the cyberspace pane plus the chat
+    /// rooms this user pinned.
+    Cyberspace,
     Channels,
     Dms,
 }
 
 impl RoomSection {
+    /// Every section. Key maps and tests iterate this rather than repeating a
+    /// hand-written list: a copy of the roster somewhere else silently misses
+    /// a new section, which is how `z`-folding lost the cyberspace header.
+    pub(crate) const ALL: [RoomSection; 5] = [
+        RoomSection::Favorites,
+        RoomSection::Core,
+        RoomSection::Cyberspace,
+        RoomSection::Channels,
+        RoomSection::Dms,
+    ];
+
     /// The header label as rendered in the rail. Used to map a clicked header
     /// row back to its section.
     pub(crate) fn label(self) -> &'static str {
         match self {
             RoomSection::Favorites => "favorites",
             RoomSection::Core => "core",
+            RoomSection::Cyberspace => "cyberspace",
             RoomSection::Channels => "channels",
             RoomSection::Dms => "dms",
         }
@@ -314,6 +339,7 @@ impl RoomSection {
         match self {
             RoomSection::Favorites => b'f',
             RoomSection::Core => b'o',
+            RoomSection::Cyberspace => b'y',
             RoomSection::Channels => b'c',
             RoomSection::Dms => b'd',
         }
@@ -324,6 +350,7 @@ impl RoomSection {
         match label {
             "favorites" => Some(RoomSection::Favorites),
             "core" => Some(RoomSection::Core),
+            "cyberspace" => Some(RoomSection::Cyberspace),
             "channels" => Some(RoomSection::Channels),
             "dms" => Some(RoomSection::Dms),
             _ => None,
@@ -337,6 +364,7 @@ pub(crate) struct SelectedRoomSlotState {
     pub feeds_selected: bool,
     pub news_selected: bool,
     pub cyberspace_selected: bool,
+    pub cyberspace_room_selected: Option<usize>,
     pub notifications_selected: bool,
     pub discover_selected: bool,
     pub showcase_selected: bool,
@@ -349,6 +377,7 @@ pub(crate) fn is_selected_slot(slot: RoomSlot, selected: SelectedRoomSlotState) 
             !selected.feeds_selected
                 && !selected.news_selected
                 && !selected.cyberspace_selected
+                && selected.cyberspace_room_selected.is_none()
                 && !selected.notifications_selected
                 && !selected.discover_selected
                 && !selected.showcase_selected
@@ -358,6 +387,7 @@ pub(crate) fn is_selected_slot(slot: RoomSlot, selected: SelectedRoomSlotState) 
         RoomSlot::Feeds => selected.feeds_selected,
         RoomSlot::News => selected.news_selected,
         RoomSlot::Cyberspace => selected.cyberspace_selected,
+        RoomSlot::CyberspaceRoom(index) => selected.cyberspace_room_selected == Some(index),
         RoomSlot::Notifications => selected.notifications_selected,
         RoomSlot::Discover => selected.discover_selected,
         RoomSlot::Showcase => selected.showcase_selected,
@@ -369,6 +399,7 @@ fn synthetic_entry_selected(selected: SelectedRoomSlotState) -> bool {
     selected.feeds_selected
         || selected.news_selected
         || selected.cyberspace_selected
+        || selected.cyberspace_room_selected.is_some()
         || selected.notifications_selected
         || selected.discover_selected
         || selected.showcase_selected
@@ -384,6 +415,9 @@ fn current_slot_from_state(state: SelectedRoomSlotState) -> Option<RoomSlot> {
     }
     if state.cyberspace_selected {
         return Some(RoomSlot::Cyberspace);
+    }
+    if let Some(index) = state.cyberspace_room_selected {
+        return Some(RoomSlot::CyberspaceRoom(index));
     }
     if state.notifications_selected {
         return Some(RoomSlot::Notifications);
@@ -588,6 +622,9 @@ pub struct ChatState {
     pub feeds: feeds::state::State,
     pub(crate) news: news::state::State,
     pub(crate) cyberspace_selected: bool,
+    /// Which pinned cyberspace chat room is selected, by position in the
+    /// pinned list. `None` whenever any other rail entry is.
+    pub(crate) cyberspace_room_selected: Option<usize>,
     pub cyberspace: cyberspace::state::State,
 
     /// Notifications / mentions (shown as a virtual room in the room list)
@@ -811,6 +848,7 @@ impl ChatState {
             feeds: feeds::state::State::new(feed_service, article_service.clone(), user_id),
             news: news::state::State::new(article_service, user_id, permissions.is_admin()),
             cyberspace_selected: false,
+            cyberspace_room_selected: None,
             cyberspace: cyberspace::state::State::new(cyberspace_service, user_id),
             notifications_selected: false,
             notifications: notifications::state::State::new(notification_service, user_id),
@@ -1974,6 +2012,7 @@ impl ChatState {
             feeds_selected: self.feeds_selected,
             news_selected: self.news_selected,
             cyberspace_selected: self.cyberspace_selected,
+            cyberspace_room_selected: self.cyberspace_room_selected,
             notifications_selected: self.notifications_selected,
             discover_selected: self.discover_selected,
             showcase_selected: self.showcase_selected,
@@ -2105,6 +2144,7 @@ impl ChatState {
             room_last_message_at: &self.room_last_message_at,
             feeds_available: self.feeds.has_feeds(),
             cyberspace_linked: self.cyberspace.is_linked(),
+            cyberspace_rooms: self.cyberspace.pinned_rooms(),
             favorite_room_ids: &self.favorite_room_ids,
             collapsed_sections: &self.collapsed_sections,
             ignored_user_ids: &self.ignored_user_ids,
@@ -2149,6 +2189,11 @@ impl ChatState {
                 self.select_cyberspace();
                 changed
             }
+            RoomSlot::CyberspaceRoom(index) => {
+                let changed = self.cyberspace_room_selected != Some(index);
+                self.select_cyberspace_room(index);
+                changed
+            }
             RoomSlot::Notifications => {
                 let changed = !self.notifications_selected;
                 self.select_notifications();
@@ -2180,18 +2225,16 @@ impl ChatState {
                 let changed = self.feeds_selected
                     || self.news_selected
                     || self.cyberspace_selected
+                    || self.cyberspace_room_selected.is_some()
                     || self.notifications_selected
                     || self.discover_selected
                     || self.showcase_selected
                     || self.work_selected
                     || self.selected_room_id != Some(next_id);
-                self.feeds_selected = false;
-                self.news_selected = false;
-                self.cyberspace_selected = false;
-                self.notifications_selected = false;
-                self.discover_selected = false;
-                self.showcase_selected = false;
-                self.work_selected = false;
+                // Clearing here also drops any open cyberspace chat room,
+                // which is what stops its stream and heartbeat: a room the
+                // user has navigated away from must not keep fetching.
+                self.clear_synthetic_selection();
                 self.selected_room_id = Some(next_id);
                 if !changed {
                     self.mark_room_read(next_id);
@@ -2234,6 +2277,8 @@ impl ChatState {
             RoomSlot::Feeds
         } else if self.cyberspace_selected {
             RoomSlot::Cyberspace
+        } else if let Some(index) = self.cyberspace_room_selected {
+            RoomSlot::CyberspaceRoom(index)
         } else if self.notifications_selected {
             RoomSlot::Notifications
         } else if self.discover_selected {
@@ -2461,7 +2506,7 @@ impl ChatState {
                 // entry. An unlinked user gets the link modal over the room
                 // they are already in, so nobody ends up inside a pane the
                 // rail does not list.
-                CyberspaceCommand::Open | CyberspaceCommand::Post
+                CyberspaceCommand::Open | CyberspaceCommand::Post | CyberspaceCommand::Chat
                     if !self.cyberspace.is_linked() =>
                 {
                     self.cyberspace.open_link_modal();
@@ -2476,6 +2521,11 @@ impl ChatState {
                     self.select_cyberspace();
                     self.pending_chat_screen_switch = true;
                     return self.cyberspace.open_compose_modal();
+                }
+                CyberspaceCommand::Chat => {
+                    self.select_cyberspace();
+                    self.pending_chat_screen_switch = true;
+                    return self.cyberspace.open_rooms_modal();
                 }
                 CyberspaceCommand::Link => {
                     self.cyberspace.open_link_modal();
@@ -3700,6 +3750,27 @@ impl ChatState {
         let showcase_tick = self.showcase.tick();
         let work_tick = self.work.tick();
         let cyberspace_tick = self.cyberspace.tick();
+        // The pinned list can change under the rail cursor (another session
+        // of the same account pinning, unpinning, or unlinking), so the
+        // selected index is re-derived from the open room's slug instead of
+        // trusted. A room the rail can no longer name gets left, dropping
+        // its stream and heartbeat, and the user lands back on the pane.
+        if self.cyberspace_room_selected.is_some() {
+            let derived = self.cyberspace.open_room_slug().and_then(|slug| {
+                self.cyberspace
+                    .pinned_rooms()
+                    .iter()
+                    .position(|room| room == slug)
+            });
+            match derived {
+                Some(index) => self.cyberspace_room_selected = Some(index),
+                None => {
+                    self.cyberspace.leave_room();
+                    self.cyberspace_room_selected = None;
+                    self.cyberspace_selected = true;
+                }
+            }
+        }
         // Unlinking in one session broadcasts to the others. The rail entry
         // and the navigation order both go with the link, so a session left
         // sitting in the pane would be on a slot neither of them has.
@@ -3728,17 +3799,30 @@ impl ChatState {
         }
     }
 
-    pub fn select_feeds(&mut self) {
+    /// Every Home synthetic entry is exclusive with the others, so selecting
+    /// one clears the rest in one place. A new entry that forgets a line here
+    /// would leave two panes claiming the center at once.
+    fn clear_synthetic_selection(&mut self) {
+        // Whatever the user is moving to, they are no longer in a cyberspace
+        // chat room; dropping it stops its stream, its heartbeat, and
+        // announces them out of the room on their side.
+        self.cyberspace.leave_room();
         self.room_jump_active = false;
-        self.feeds_selected = true;
+        self.feeds_selected = false;
         self.news_selected = false;
         self.cyberspace_selected = false;
+        self.cyberspace_room_selected = None;
         self.notifications_selected = false;
         self.discover_selected = false;
         self.showcase_selected = false;
         self.work_selected = false;
         self.selected_message_id = None;
         self.highlighted_message_id = None;
+    }
+
+    pub fn select_feeds(&mut self) {
+        self.clear_synthetic_selection();
+        self.feeds_selected = true;
         self.feeds.list();
         self.feeds.mark_read();
     }
@@ -3748,32 +3832,50 @@ impl ChatState {
         // already on (clicking the row, cycling the rail back around) must not
         // spend another authenticated call on a third-party API.
         let entering = !self.cyberspace_selected;
-        self.room_jump_active = false;
+        self.clear_synthetic_selection();
         self.cyberspace_selected = true;
-        self.feeds_selected = false;
-        self.news_selected = false;
-        self.notifications_selected = false;
-        self.discover_selected = false;
-        self.showcase_selected = false;
-        self.work_selected = false;
-        self.selected_message_id = None;
-        self.highlighted_message_id = None;
         if entering {
             self.cyberspace.opened();
         }
     }
 
+    /// Leaving the Home surface entirely (a screen switch), not just moving
+    /// within the rail. The open room's session drops with the selection:
+    /// its stream and presence heartbeat must not outlive the user's
+    /// presence on the surface. The rail lands back on the cyberspace slot,
+    /// same as Esc, but without `select_cyberspace`'s feed load, since the
+    /// user is on their way out, not in.
+    pub fn close_cyberspace_room(&mut self) {
+        if self.cyberspace_room_selected.is_none() && self.cyberspace.open_room_slug().is_none() {
+            return;
+        }
+        self.cyberspace.leave_room();
+        self.cyberspace_room_selected = None;
+        self.cyberspace_selected = true;
+    }
+
+    /// Select a pinned chat room by its position in the pinned list. Entering
+    /// the room is what opens its stream; a room nobody has selected holds
+    /// nothing open.
+    pub fn select_cyberspace_room(&mut self, index: usize) {
+        let Some(slug) = self.cyberspace.pinned_rooms().get(index).cloned() else {
+            return;
+        };
+        // Re-selecting the room you are already in (clicking its row, cycling
+        // the rail around) must not tear the stream down and reconnect.
+        if self.cyberspace_room_selected == Some(index)
+            && self.cyberspace.open_room_slug() == Some(slug.as_str())
+        {
+            return;
+        }
+        self.clear_synthetic_selection();
+        self.cyberspace_room_selected = Some(index);
+        self.cyberspace.enter_room(slug);
+    }
+
     pub fn select_news(&mut self) {
-        self.room_jump_active = false;
-        self.feeds_selected = false;
+        self.clear_synthetic_selection();
         self.news_selected = true;
-        self.cyberspace_selected = false;
-        self.notifications_selected = false;
-        self.discover_selected = false;
-        self.showcase_selected = false;
-        self.work_selected = false;
-        self.selected_message_id = None;
-        self.highlighted_message_id = None;
         self.news.list_articles();
         self.news.mark_read();
     }
@@ -3783,61 +3885,29 @@ impl ChatState {
     }
 
     pub fn select_notifications(&mut self) {
-        self.room_jump_active = false;
+        self.clear_synthetic_selection();
         self.notifications_selected = true;
-        self.feeds_selected = false;
-        self.news_selected = false;
-        self.cyberspace_selected = false;
-        self.discover_selected = false;
-        self.showcase_selected = false;
-        self.work_selected = false;
-        self.selected_message_id = None;
-        self.highlighted_message_id = None;
         self.notifications.list();
         self.notifications.mark_read();
     }
 
     pub fn select_discover(&mut self) {
-        self.room_jump_active = false;
+        self.clear_synthetic_selection();
         self.discover_selected = true;
-        self.feeds_selected = false;
-        self.notifications_selected = false;
-        self.news_selected = false;
-        self.cyberspace_selected = false;
-        self.showcase_selected = false;
-        self.work_selected = false;
-        self.selected_message_id = None;
-        self.highlighted_message_id = None;
         self.discover.start_loading();
         self.service.list_discover_rooms_task(self.user_id);
     }
 
     pub fn select_showcase(&mut self) {
-        self.room_jump_active = false;
+        self.clear_synthetic_selection();
         self.showcase_selected = true;
-        self.feeds_selected = false;
-        self.discover_selected = false;
-        self.notifications_selected = false;
-        self.news_selected = false;
-        self.cyberspace_selected = false;
-        self.work_selected = false;
-        self.selected_message_id = None;
-        self.highlighted_message_id = None;
         self.showcase.list();
         self.showcase.mark_read();
     }
 
     pub fn select_work(&mut self) {
-        self.room_jump_active = false;
+        self.clear_synthetic_selection();
         self.work_selected = true;
-        self.feeds_selected = false;
-        self.showcase_selected = false;
-        self.discover_selected = false;
-        self.notifications_selected = false;
-        self.news_selected = false;
-        self.cyberspace_selected = false;
-        self.selected_message_id = None;
-        self.highlighted_message_id = None;
         self.work.list();
         self.work.mark_read();
     }
@@ -5433,6 +5503,9 @@ pub(crate) struct RoomVisualOrderInput<'a, U: UsernameResolver + ?Sized> {
     pub room_last_message_at: &'a HashMap<Uuid, Option<DateTime<Utc>>>,
     pub feeds_available: bool,
     pub cyberspace_linked: bool,
+    /// Pinned cyberspace chat rooms, in rail order. Slots carry the index
+    /// into this list.
+    pub cyberspace_rooms: &'a [String],
     pub favorite_room_ids: &'a [Uuid],
     pub collapsed_sections: &'a HashSet<RoomSection>,
     pub ignored_user_ids: &'a HashSet<Uuid>,
@@ -5450,6 +5523,7 @@ pub(crate) fn visual_order_for_rooms<U: UsernameResolver + ?Sized>(
         room_last_message_at,
         feeds_available,
         cyberspace_linked,
+        cyberspace_rooms,
         favorite_room_ids,
         collapsed_sections,
         ignored_user_ids,
@@ -5495,12 +5569,6 @@ pub(crate) fn visual_order_for_rooms<U: UsernameResolver + ?Sized>(
         if feeds_available {
             order.push(RoomSlot::Feeds);
         }
-        // Linked accounts only. Everyone else reaches the pitch + login
-        // funnel through `/cs`, so the rail stays about places this user
-        // actually has.
-        if cyberspace_linked {
-            order.push(RoomSlot::Cyberspace);
-        }
     }
 
     // Voice sits directly above Discover ("+ browse rooms") at the bottom of Core.
@@ -5515,6 +5583,17 @@ pub(crate) fn visual_order_for_rooms<U: UsernameResolver + ?Sized>(
     if !core_collapsed {
         // Discover ("browse rooms") lives at the bottom of Core.
         order.push(RoomSlot::Discover);
+    }
+
+    // Cyberspace: the feeds pane plus the chat rooms this user pinned, under
+    // their own header. Linked accounts only. Everyone else reaches the pitch
+    // + login funnel through `/cs`, so the rail stays about places this user
+    // actually has. Mirrored by the rail builder in `ui.rs`.
+    if cyberspace_linked && !collapsed_sections.contains(&RoomSection::Cyberspace) {
+        order.push(RoomSlot::Cyberspace);
+        for index in 0..cyberspace_rooms.len() {
+            order.push(RoomSlot::CyberspaceRoom(index));
+        }
     }
 
     // Unread DMs ride above Channels: at the bottom of the rail nobody was
@@ -6396,6 +6475,7 @@ fn adjacent_composer_room(
             RoomSlot::Feeds
             | RoomSlot::News
             | RoomSlot::Cyberspace
+            | RoomSlot::CyberspaceRoom(_)
             | RoomSlot::Notifications
             | RoomSlot::Discover
             | RoomSlot::Showcase
