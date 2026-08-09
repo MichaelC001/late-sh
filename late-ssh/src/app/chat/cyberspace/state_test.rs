@@ -571,6 +571,39 @@ async fn room_dots_follow_the_roster_against_the_read_cursor() {
 }
 
 #[tokio::test]
+async fn walking_into_a_room_clears_its_dot_even_when_history_never_lands() {
+    let mut state = test_state().await;
+    let user_id = state.user_id;
+    let _ = state.apply_event(CsEvent::LinkStatus {
+        user_id,
+        username: Some("mat".to_string()),
+        feed_read_at: None,
+        circ_rooms: vec!["general".to_string()],
+        circ_room_reads: std::collections::HashMap::from([("general".to_string(), 1_000)]),
+    });
+    let _ = state.apply_event(CsEvent::CircRooms {
+        user_id,
+        rooms: vec![
+            serde_json::from_str(r#"{"id":"r1","slug":"general","lastMessageAt":2000}"#)
+                .expect("room"),
+        ],
+    });
+    assert_eq!(state.room_unread_flags(), vec![true]);
+
+    // Walk in and straight back out, with no history event behind it: their
+    // call can fail, the room can be empty, or the page can carry nothing
+    // this client can stamp from. Being in the room is still having seen it,
+    // and a dot the user cannot clear by reading is worse than no dot.
+    state.enter_room("general".to_string());
+    state.leave_room();
+    assert_eq!(
+        state.room_unread_flags(),
+        vec![false],
+        "a room the user visited must not keep its dot"
+    );
+}
+
+#[tokio::test]
 async fn unlinking_closes_the_open_room_and_clears_the_rail() {
     let mut state = test_state().await;
     let user_id = state.user_id;

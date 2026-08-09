@@ -121,12 +121,6 @@ pub fn handle_byte(app: &mut App, byte: u8) -> bool {
             }
             true
         }
-        b'c' | b'C' => {
-            if let Some(banner) = state.open_rooms_modal() {
-                app.banner = Some(banner);
-            }
-            true
-        }
         b'r' | b'R' => {
             match state.view {
                 View::Feed => {

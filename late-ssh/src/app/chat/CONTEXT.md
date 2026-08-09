@@ -603,8 +603,8 @@ modals and the icon picker). Username profile-opens are debounced via
 | News | `j/k` navigate, `i` paste URL, Enter copy/submit URL, `d` delete own/admin article, `/` toggle filter to mine, `Esc` cancel |
 | Directory Projects | `j/k` navigate, `i` create, `e` edit own/admin, `d` delete own/admin, Enter copy/submit, Tab cycle fields while composing, `/` toggle filter to mine, `Esc` cancel |
 | Directory Profiles | `j/k` navigate, `i` create/edit own, `e` edit own/admin, `d` delete own/admin, Enter/`c` copy public profile link, Tab cycle fields while composing, `/` toggle filter to mine, `Esc` cancel |
-| Cyberspace feeds | `j/k` navigate, Enter open thread (or link modal when unlinked), `p` post, `c` add chat rooms, `n` notifications, `r` refresh/reply, `b` back |
-| Cyberspace room picker (`c`, `/cs chat`) | `j/k` move, Enter add the room to the rail section or take it off, Esc close |
+| Cyberspace feeds | `j/k` navigate, Enter open thread (or link modal when unlinked), `p` post, `n` notifications, `r` refresh/reply, `b` back |
+| Cyberspace room picker (`/cs chat`, command only) | `j/k` move, Enter add the room to the rail section or take it off, Esc close |
 | Cyberspace room (a rail entry) | `j/k` scroll, `g` newest, `i`/Enter write (in the normal chat composer slot, titled with the room), Enter send, Esc cancel the draft then leave the room, `b` leave |
 | Mentions | `j/k` navigate, Enter open the Ctrl+/ single-message preview (Enter again jumps to the room) |
 | Discover | `j/k` navigate, Enter join selected public room, `/` open slug filter (type to narrow, Enter join, `Esc` clear) |

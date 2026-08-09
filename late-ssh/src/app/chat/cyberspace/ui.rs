@@ -59,7 +59,7 @@ pub fn footer_hint(state: &State) -> &'static str {
     }
     match state.view {
         View::Feed => {
-            " j/k navigate · g top · Enter open · p post · c add chat rooms · n notifications · r refresh"
+            " j/k navigate · g top · Enter open · p post · n notifications · r refresh · /cs chat rooms"
         }
         View::Thread => " j/k scroll · g top · r reply · b back",
         View::Notifications => " j/k navigate · g top · Enter open the entry · b back",

@@ -501,9 +501,8 @@ impl State {
         self.open_room.as_ref().map(|room| room.slug.as_str())
     }
 
-    /// `c` (or `/cs chat`): the room picker. Their roster is fetched here and
-    /// nowhere else, on demand and never on a timer, because a human asked
-    /// for it.
+    /// `/cs chat`: the room picker. Their roster is fetched here and nowhere
+    /// else, on demand and never on a timer, because a human asked for it.
     pub(crate) fn open_rooms_modal(&mut self) -> Option<Banner> {
         if !self.is_linked() {
             return Some(Banner::error(
@@ -571,6 +570,10 @@ impl State {
             stream_down: false,
             session,
         });
+        // Walking in is what clears the dot, before a single message has
+        // loaded. Waiting for history would leave the mark up on exactly the
+        // rooms whose history did not arrive.
+        self.stamp_open_room_read();
     }
 
     /// Leaving the room surface for anything else. Dropping the session is
@@ -581,18 +584,30 @@ impl State {
         self.open_room = None;
     }
 
-    /// Move the open room's read cursor to the newest message on screen.
-    /// Runs when history lands and when the user leaves, the two moments the
-    /// session knows what was seen. Only a cursor that actually advances is
-    /// persisted, so re-visiting a quiet room writes nothing.
+    /// Move the open room's read cursor forward. Runs on entering, when
+    /// history lands, and on leaving: entering a room always clears its dot,
+    /// which is the whole contract of the mark. Only a cursor that actually
+    /// advances is persisted, so re-visiting a quiet room writes nothing.
     fn stamp_open_room_read(&mut self) {
         let Some(room) = &self.open_room else {
             return;
         };
-        let Some(newest) = room.messages.iter().map(|message| message.timestamp).max() else {
+        let slug = room.slug.clone();
+        let newest_message = room.messages.iter().map(|message| message.timestamp).max();
+        // The roster's own stamp is the floor. Reading the messages is not
+        // always possible (their history call can fail, the room can be
+        // empty, the page can carry nothing stampable), but being in the room
+        // is having seen it either way, and a dot the user cannot clear by
+        // walking in is worse than no dot at all. It also keeps the
+        // comparison like for like: the dot comes from `last_message_at`, so
+        // acknowledging that same value can never drift against it.
+        let Some(newest) = newest_message
+            .into_iter()
+            .chain(self.room_last_message.get(&slug).copied())
+            .max()
+        else {
             return;
         };
-        let slug = room.slug.clone();
         let known = self.room_reads.get(&slug).copied().unwrap_or(i64::MIN);
         if newest <= known {
             return;
@@ -939,6 +954,11 @@ impl State {
                     .iter()
                     .filter_map(|room| Some((room.key().to_string(), room.last_message_at?)))
                     .collect();
+                // A roster landing while the user sits in a room is theirs to
+                // acknowledge: they are looking at it. Without this, a roster
+                // that first arrives mid-visit would dot the room the moment
+                // they step out of it.
+                self.stamp_open_room_read();
                 if let Some(Modal::Rooms(modal)) = &mut self.modal {
                     modal.roster = rooms;
                     modal.selected = clamp_index(modal.selected, modal.roster.len());
