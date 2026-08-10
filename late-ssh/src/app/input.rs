@@ -2208,6 +2208,21 @@ fn dispatch_escape(app: &mut App) {
     // Esc from a Lateania world (or its reset prompt) returns to the Games hub
     // that launched it, not to a standalone landing page.
     if ctx.screen == Screen::Lateania {
+        // ...but while a world is live, Esc is the door's key, not this
+        // dispatcher's. The door cancels a chat line being composed, and
+        // otherwise requires a confirming second press before it will give up
+        // a player's place in a persistent world. This runs before screen
+        // dispatch, so leaving here unconditionally skipped both rules - the
+        // same interception that was removed from `lateania::screen` still
+        // lived one layer up here. Forward it and let the door decide; only a
+        // leave it actually performed should reach the hub.
+        if app.lateania_state.is_some() {
+            crate::app::door::lateania::screen::GAME.handle_key(app, 0x1B);
+            if app.lateania_state.is_none() {
+                app.set_screen(Screen::Games);
+            }
+            return;
+        }
         app.door_delete_confirm = false;
         app.leave_lateania();
         app.set_screen(Screen::Games);
