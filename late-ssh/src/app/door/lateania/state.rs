@@ -118,6 +118,10 @@ fn is_leave_confirm_pending(until: Option<Instant>, now: Instant) -> bool {
     until.is_some_and(|deadline| now < deadline)
 }
 
+/// A memoised route: the `(standing in, heading for)` pair it was computed for,
+/// and the walk it produced (`None` when no known-ground route exists).
+type CachedRoute = ((RoomId, RoomId), Option<Route>);
+
 pub struct State {
     user_id: Uuid,
     session_id: Uuid,
@@ -166,7 +170,7 @@ pub struct State {
     /// caching on that pair keeps the walk off the render path: the panel is
     /// redrawn on every keystroke and every snapshot, but the search runs once
     /// per room actually entered.
-    route_cache: RefCell<Option<((RoomId, RoomId), Option<Route>)>>,
+    route_cache: RefCell<Option<CachedRoute>>,
 }
 
 impl State {
