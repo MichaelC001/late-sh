@@ -20,6 +20,8 @@ pub struct IrcConfig {
     pub port: u16,
     pub tls_cert_path: Option<PathBuf>,
     pub tls_key_path: Option<PathBuf>,
+    pub proxy_protocol: bool,
+    pub proxy_trusted_cidrs: Vec<IpNet>,
     pub max_conns_global: usize,
     pub max_conns_per_user: usize,
     pub max_auth_failures_per_ip: usize,
@@ -33,6 +35,8 @@ impl Default for IrcConfig {
             port: 6667,
             tls_cert_path: None,
             tls_key_path: None,
+            proxy_protocol: false,
+            proxy_trusted_cidrs: Vec::new(),
             max_conns_global: 200,
             max_conns_per_user: 3,
             max_auth_failures_per_ip: 20,
@@ -153,6 +157,19 @@ where
     }
 }
 
+fn parse_cidrs(key: &str, value: &str) -> anyhow::Result<Vec<IpNet>> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| {
+            entry
+                .parse::<IpNet>()
+                .map_err(|error| anyhow::anyhow!("{key} invalid entry '{entry}': {error}"))
+        })
+        .collect()
+}
+
 impl Config {
     /// Log the full configuration at startup with human-readable descriptions.
     pub fn log_startup(&self) {
@@ -218,6 +235,8 @@ impl Config {
             enabled = self.irc.enabled,
             port = self.irc.port,
             tls = self.irc.tls_cert_path.is_some(),
+            proxy_protocol = self.irc.proxy_protocol,
+            proxy_trusted_cidrs = ?self.irc.proxy_trusted_cidrs,
             max_global = self.irc.max_conns_global,
             max_per_user = self.irc.max_conns_per_user,
             "irc: embedded ircd listener status"
@@ -358,6 +377,17 @@ impl Config {
             optional("LATE_CODEKEEP_SECRET").unwrap_or_default()
         };
 
+        let ssh_proxy_protocol = required_bool("LATE_SSH_PROXY_PROTOCOL")?;
+        let ssh_proxy_trusted_cidrs = parse_cidrs(
+            "LATE_SSH_PROXY_TRUSTED_CIDRS",
+            &required("LATE_SSH_PROXY_TRUSTED_CIDRS")?,
+        )?;
+        if ssh_proxy_protocol && ssh_proxy_trusted_cidrs.is_empty() {
+            anyhow::bail!(
+                "LATE_SSH_PROXY_TRUSTED_CIDRS must be set when LATE_SSH_PROXY_PROTOCOL is enabled"
+            );
+        }
+
         Ok(Self {
             ssh_port: required_parse("LATE_SSH_PORT")?,
             api_port: required_parse("LATE_API_PORT")?,
@@ -373,17 +403,8 @@ impl Config {
             frame_drop_log_every: required_parse("LATE_FRAME_DROP_LOG_EVERY")?,
             ssh_max_attempts_per_ip: required_parse("LATE_SSH_MAX_ATTEMPTS_PER_IP")?,
             ssh_rate_limit_window_secs: required_parse("LATE_SSH_RATE_LIMIT_WINDOW_SECS")?,
-            ssh_proxy_protocol: required_bool("LATE_SSH_PROXY_PROTOCOL")?,
-            ssh_proxy_trusted_cidrs: required("LATE_SSH_PROXY_TRUSTED_CIDRS")?
-                .split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(|s| {
-                    s.parse::<IpNet>().map_err(|e| {
-                        anyhow::anyhow!("LATE_SSH_PROXY_TRUSTED_CIDRS invalid entry '{s}': {e}")
-                    })
-                })
-                .collect::<anyhow::Result<Vec<_>>>()?,
+            ssh_proxy_protocol,
+            ssh_proxy_trusted_cidrs,
             ws_pair_max_attempts_per_ip: required_parse("LATE_WS_PAIR_MAX_ATTEMPTS_PER_IP")?,
             ws_pair_rate_limit_window_secs: required_parse("LATE_WS_PAIR_RATE_LIMIT_WINDOW_SECS")?,
             ai: AiConfig {
@@ -412,6 +433,19 @@ impl Config {
                         }
                     }
                 }
+                let proxy_protocol =
+                    optional_bool("LATE_IRC_PROXY_PROTOCOL", defaults.proxy_protocol)?;
+                let proxy_trusted_cidrs = parse_cidrs(
+                    "LATE_IRC_PROXY_TRUSTED_CIDRS",
+                    optional("LATE_IRC_PROXY_TRUSTED_CIDRS")
+                        .as_deref()
+                        .unwrap_or_default(),
+                )?;
+                if enabled && proxy_protocol && proxy_trusted_cidrs.is_empty() {
+                    anyhow::bail!(
+                        "LATE_IRC_PROXY_TRUSTED_CIDRS must be set when LATE_IRC_PROXY_PROTOCOL is enabled"
+                    );
+                }
                 let default_port = if enabled && tls_cert_path.is_some() {
                     6697
                 } else {
@@ -422,6 +456,8 @@ impl Config {
                     port: optional_parse("LATE_IRC_PORT", default_port)?,
                     tls_cert_path,
                     tls_key_path,
+                    proxy_protocol,
+                    proxy_trusted_cidrs,
                     max_conns_global: optional_parse(
                         "LATE_IRC_MAX_CONNS_GLOBAL",
                         defaults.max_conns_global,

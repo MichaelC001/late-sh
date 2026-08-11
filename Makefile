@@ -62,6 +62,8 @@ LATE_IRC_ENABLED ?= 1
 LATE_IRC_PORT ?= 6667
 # Host port for the optional local TLS IRC listener, enabled via .env.local.
 LATE_IRC_TLS_HOST_PORT ?= 6697
+LATE_IRC_PROXY_PROTOCOL ?= 0                               # Parse trusted PROXY v1 headers before IRC TLS
+LATE_IRC_PROXY_TRUSTED_CIDRS ?=                            # Comma-separated trusted IRC proxy CIDRs
 
 # --- Door games (Rebels in the Sky) ---
 LATE_REBELS_ENABLED ?= 1                                    # Enable the Rebels in the Sky door game (1=on, 0=off)
@@ -162,6 +164,8 @@ LATE_FILES_S3_SECRET_ACCESS_KEY ?=  								                        # S3/R2 secr
 	@echo "LATE_IRC_ENABLED=$(LATE_IRC_ENABLED)" >> .env
 	@echo "LATE_IRC_PORT=$(LATE_IRC_PORT)" >> .env
 	@echo "LATE_IRC_TLS_HOST_PORT=$(LATE_IRC_TLS_HOST_PORT)" >> .env
+	@echo "LATE_IRC_PROXY_PROTOCOL=$(LATE_IRC_PROXY_PROTOCOL)" >> .env
+	@echo "LATE_IRC_PROXY_TRUSTED_CIDRS=$(LATE_IRC_PROXY_TRUSTED_CIDRS)" >> .env
 	@echo "" >> .env
 	@echo "# Optional IRC TLS/tuning overrides:" >> .env
 	@echo "# LATE_IRC_TLS_CERT=/path/to/fullchain.pem" >> .env
@@ -304,6 +308,17 @@ check: .env
 
 start: .env keys
 	docker compose -f docker-compose.yml up --build
+
+.PHONY: start-amd64
+start-amd64: .env keys
+	@set -e; for image in \
+		postgres:18 \
+		libretime/icecast:2.4.4 \
+		savonet/liquidsoap:v2.4.0 \
+		livekit/livekit-server:latest; do \
+		docker pull --platform linux/amd64 "$$image"; \
+	done
+	DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose -f docker-compose.yml up --build
 
 startm: .env keys
 	docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up --build

@@ -131,6 +131,10 @@ kubectl cp -n default ./music/. "$POD":/music/ -c liquidsoap
 | Monitoring | OpenTelemetry Collector, VictoriaMetrics, VictoriaLogs, VictoriaTraces, Grafana | various | Full observability stack |
 
 SSH traffic on port 22 is routed via NGINX TCP passthrough to late-ssh pod port 2222.
+IRC traffic follows the same TCP passthrough pattern when enabled. Both NGINX
+for IPv4 and the host-network HAProxy for IPv6 send PROXY v1 metadata before the
+application's in-process TLS handshake; late-ssh accepts it only from the CIDRs
+configured by `SSH_PROXY_TRUSTED_CIDRS`.
 LiveKit signaling is routed through NGINX ingress on `rtc.<domain>`, while
 LiveKit media ports are bound directly on the node by the `livekit` pod.
 On a fresh cluster, the `livekit` pod may wait for cert-manager to create the
@@ -179,12 +183,30 @@ listener with in-process TLS, and exposes the raw TCP port through ingress.
 | Variable | Description |
 |----------|-------------|
 | `IRC_ENABLED` | Enable embedded IRC listener, defaults to `0` |
+| `IRC_PROXY_ACCEPT` | Enable optional PROXY header parsing in `late-ssh`, defaults to `1` |
+| `IRC_PROXY_EMIT` | Make ingress-nginx and IPv6 HAProxy emit PROXY headers, defaults to `0` |
 | `IRC_HOST` | Public IRC hostname, defaults to `irc.<DOMAIN>` |
 | `IRC_PORT` | IRC TLS port, defaults to `6697` |
 | `IRC_MAX_CONNS_GLOBAL` | Max total concurrent IRC connections, defaults to `200` |
 | `IRC_MAX_CONNS_PER_USER` | Max concurrent IRC connections per user, defaults to `3` |
 | `IRC_MAX_AUTH_FAILURES_PER_IP` | Max failed auth attempts per IP, defaults to `20` |
 | `IRC_AUTH_FAILURE_WINDOW_SECS` | Auth failure rate-limit window, defaults to `300` |
+
+Terraform gives IRC the same trusted proxy CIDRs as SSH. PROXY acceptance and
+emission are separate so a compatible parser can be rolled out before either
+edge starts sending headers:
+
+1. Leave `IRC_PROXY_ACCEPT=1` and `IRC_PROXY_EMIT=0`, then deploy the
+   parser-capable `service-ssh` image and verify it is healthy.
+2. Set the GitHub environment variable `IRC_PROXY_EMIT=1`, then run a subsequent
+   infrastructure deployment to enable emission in ingress-nginx and IPv6
+   HAProxy.
+
+Rollback uses the reverse order: set `IRC_PROXY_EMIT=0` and apply infrastructure
+before deploying an image that does not understand IRC PROXY headers. Optional
+parsing protects the new-parser/old-ingress direction only; it cannot protect an
+old parser after an ingress proxy starts emitting headers. Terraform rejects an
+enabled-IRC configuration that emits headers while parser acceptance is off.
 
 ### IPv6 edge proxy
 
