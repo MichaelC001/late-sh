@@ -1659,10 +1659,13 @@ async fn forced_tour_gates_input_until_each_named_key() {
     assert!(!app.show_help);
     assert_eq!(app.clubhouse.tutorial, Tutorial::Welcome);
 
-    // The named digits walk the route in order, nothing else moves it.
+    // The named keys walk the route in order, nothing else moves it. The
+    // two Enter interludes (the music, the lobby) stay on their page.
     for (bytes, screen) in [
         (&b"1"[..], Screen::Dashboard),
+        (b"\r", Screen::Dashboard),
         (b"2", Screen::Arcade),
+        (b"\r", Screen::Arcade),
         (b"3", Screen::Games),
         (b"4", Screen::Artboard),
         (b"5", Screen::Profiles),
