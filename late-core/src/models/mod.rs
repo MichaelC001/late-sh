@@ -111,6 +111,7 @@ pub mod showcase;
 pub mod showcase_feed_read;
 pub mod snake;
 pub mod solitaire;
+pub mod stream_ban;
 pub mod sudoku;
 pub mod tetris;
 pub mod traffic;

@@ -3,8 +3,9 @@
 ## Metadata
 - Domain: "watch me" streaming rooms — the `/golive` screen-share broadcast, the in-process stream registry, stream rooms, publisher/watch capability URLs, and the rail's `stream` section
 - Primary audience: LLM agents working in `late-ssh/src/app/stream`, the `/golive`/`/watch` commands, the `/api/stream/*` routes, or `late-web/src/pages/live`
-- Last updated: 2026-08-12 (review hardening: publisher kill switch, pending
-  consent gates, heartbeat caps, owner-keyed rooms)
+- Last updated: 2026-08-12 (stream moderation scope: `/mod kick stream`,
+  `/mod ban stream` backed by `stream_bans`, and server bans now stop the
+  broadcast too)
 - Status: Active (v1)
 - Parent context: `../../../../CONTEXT.md`
 - Related context: `../voice/CONTEXT.md` (LiveKit grants, the ONE-room audio model), `../../../../late-web/CONTEXT.md` (watch + go-live pages), `STREAM.md` at the repo root (the design seed)
@@ -165,6 +166,12 @@ Cross-domain touchpoints:
   lounge feed's "bodies never contain `@`" contract).
 - `chat_room_test.rs` (late-core) — the stream room follows the account
   through a rename; a reclaimed username does not inherit the old room.
+- `svc_test.rs` — the stream-ban gate on `go_live`: a banned user is refused
+  with no half-registered stream left behind, an expired row does not block
+  (expiry is read-time only), and lifting the ban restores `/golive`.
+- `chat/svc_test.rs::mod_stream_ban_ends_the_live_stream_and_persists_the_block`
+  — `/mod ban stream` tears a live stream out of the registry and writes the
+  row; `/mod unban stream` clears it.
 - `api_test.rs::stream_endpoints_serve_the_watch_and_publish_flow` — the
   whole HTTP flow end to end against a real registry + DB, including the
   404s for dead capability ids.
@@ -176,16 +183,35 @@ Cross-domain touchpoints:
 
 ## 6. Moderation
 
-- `/mod voice kick @user` is the stream kill switch: it blocks future voice
-  tickets (which `go_live` and `stream_publish_ticket` both check, so the
-  target cannot restart), ends the target's registered stream, and
-  force-disconnects the go-live console from LiveKit (`ModerationInfra`
-  carries the `StreamService`; see `moderation/service.rs::voice_action`).
-  `/mod voice allow @user` lifts the block.
+Every path below runs through `StreamService::stop`, which is what actually
+kills a broadcast: registry teardown drops the watch and publisher URLs, and
+`VoiceService::remove_stream_publisher` force-disconnects the console
+(identity `stream-{user_id}`, invisible to a plain participant removal by
+user id). `ModerationInfra` carries the `StreamService` for all of it.
+
+- `/mod kick stream @user` ends the current broadcast and stops there.
+  Nothing persists, so `/golive` works again immediately: this is the tool
+  for the wrong window shared by accident, not for a repeat offender. CLI
+  voice is untouched, so the streamer can keep talking in the room.
+- `/mod ban stream @user [duration] [reason]` does the same and writes a
+  `stream_bans` row (`late-core/src/models/stream_ban.rs`, one active row per
+  user, expiry checked at read time, no sweeper). `go_live` refuses on it, so
+  unlike the runtime-only voice block the ban survives a restart.
+  `/mod unban stream @user` lifts it; `/mod view bans stream` lists them, and
+  `/mod view @user` reports `stream_banned`.
+- `/mod kick voice @user` remains the wider hammer: it blocks future voice
+  tickets (`go_live` and `stream_publish_ticket` both check it), ends the
+  stream, and cuts CLI voice too. Runtime-only, lifted by
+  `/mod unban voice @user`. Reach for it when the problem is the person in
+  the room, not the broadcast.
+- `/mod kick server` and `/mod ban server` also stop the stream. Terminating
+  SSH sessions is not enough on its own: the console lives in a browser, so
+  without this a banned user keeps broadcasting to anonymous link-holders.
 - `/mod` room tools (ban, kick-from-room, slow mode) work on the stream
-  chat room like any other room.
-- A minted LiveKit token stays valid until it expires; the force-disconnect
-  plus the no-new-tickets block is what makes a kick bite immediately.
+  chat room like any other room, but they do not touch the media: the
+  publisher's grant comes from the per-stream token, not room membership.
+- A minted LiveKit token stays valid for an hour; the force-disconnect plus
+  the refusal on the next `/golive` is what makes any of these bite now.
 
 ## 7. Known gaps / follow-ups
 

@@ -152,6 +152,7 @@ make check
 - If a feature area is intentionally WIP, temporary lint/test gaps are acceptable only when explicitly documented and tracked for cleanup.
 - **Tool bootstrap:** The repo now includes `.mise.toml` with `rust`, `mold`, and `cargo-nextest`. Prefer `mise install` before local development so the expected toolchain and test runner are available.
 - **Cargo environment setup:** For local host development, use Cargo's normal defaults, including the standard repo-local `target/` directory. Docker/dev containers still use `/app/target` via container configuration. `CARGO_HOME=$HOME/.cargo` remains a valid override when an environment needs it, but it is not a repo-wide requirement.
+- **Test thread stack:** `.cargo/config.toml` sets `RUST_MIN_STACK=8388608`. libtest runs each test on a spawned thread, which takes std's 2 MiB default instead of the main thread's 8 MiB, and an unoptimized test build driving two full `App` sessions (the scratchpad pairing tests) overflows that and aborts with SIGABRT. Nextest's own config cannot carry this: `.config/nextest.toml` has no `[env]` key and silently ignores one. If a test dies with "has overflowed its stack", check this value before suspecting recursion.
 - **`LATE_FORCE_ADMIN=1`** — dev-only escape hatch: OR'd with `users.is_admin` at session init (`late-ssh/src/ssh.rs`), so every SSH session lands as admin. Must stay `0` in prod — enforced by `required_bool` and hardcoded to `"0"` in `infra/service-ssh.tf`.
 
 ---

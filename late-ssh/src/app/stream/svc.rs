@@ -10,6 +10,7 @@ use late_core::{
     models::{
         chat_room::ChatRoom,
         chat_room_member::ChatRoomMember,
+        stream_ban::StreamBan,
         voice_channel::{TARGET_CHAT_ROOM, VoiceChannel},
     },
 };
@@ -132,8 +133,8 @@ impl StreamService {
                             StreamEvent::GoLiveReady { room_id, .. } => {
                                 tracing::info!(room_id = %room_id, "stream registered");
                             }
-                            StreamEvent::GoLiveFailed { .. } => {
-                                tracing::info!(user_id = %user_id, "go live refused: voice-blocked user");
+                            StreamEvent::GoLiveFailed { message, .. } => {
+                                tracing::info!(user_id = %user_id, reason = %message, "go live refused");
                             }
                         }
                         let _ = service.evt_tx.send(event);
@@ -170,6 +171,15 @@ impl StreamService {
             });
         }
         let client = self.db.get().await.context("getting db client")?;
+        if StreamBan::is_active_for_user(&client, user_id)
+            .await
+            .context("checking stream ban")?
+        {
+            return Ok(StreamEvent::GoLiveFailed {
+                user_id,
+                message: "A moderator has blocked you from streaming.".to_string(),
+            });
+        }
         let room = ChatRoom::get_or_create_stream_room(&client, username, user_id)
             .await
             .context("ensuring stream room")?;
@@ -335,3 +345,7 @@ impl StreamService {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "svc_test.rs"]
+mod svc_test;
