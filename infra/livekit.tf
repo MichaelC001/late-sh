@@ -32,9 +32,25 @@ locals {
       auto_create       = true
       empty_timeout     = 300
       departure_timeout = 20
+      # Gates what any participant may publish into a room. Voice-only would
+      # be opus alone; the video mimes are what let a `/golive` screen share
+      # publish at all (a browser offering vp8 into an opus-only room times
+      # out on publish and watch pages subscribe to nothing).
       enabled_codecs = [
         {
           mime = "audio/opus"
+        },
+        {
+          mime = "video/VP8"
+        },
+        {
+          mime = "video/H264"
+        },
+        {
+          mime = "video/VP9"
+        },
+        {
+          mime = "video/AV1"
         }
       ]
     }
