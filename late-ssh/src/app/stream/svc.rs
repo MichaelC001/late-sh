@@ -21,7 +21,7 @@ use uuid::Uuid;
 use crate::app::{
     activity::publisher::ActivityPublisher,
     stream::registry::{
-        EndedStream, LiveStreamView, PublisherAccess, PublisherReport, StreamRegistry,
+        EndReason, EndedStream, LiveStreamView, PublisherAccess, PublisherReport, StreamRegistry,
         StreamSnapshot,
     },
     voice::svc::{StreamMediaTicket, VoiceService},
@@ -208,25 +208,42 @@ impl StreamService {
         })
     }
 
-    /// `/golive stop` (also fired by a moderation voice kick): tear the
-    /// stream down now and force-disconnect the go-live console from
-    /// LiveKit. Returns whether one existed.
-    pub fn stop(&self, user_id: Uuid) -> bool {
-        match self.registry.end_for_user(user_id) {
+    /// `/golive stop` (also fired by moderation): tear the stream down now
+    /// and force-disconnect the go-live console from LiveKit. Returns
+    /// whether one existed.
+    pub fn stop(&self, user_id: Uuid, reason: EndReason) -> bool {
+        match self.registry.end_for_user(user_id, reason) {
             Some(ended) => {
-                self.disconnect_publisher_task(ended);
+                self.end_stream_task(ended);
                 true
             }
             None => false,
         }
     }
 
-    /// Registry removal kills the capability URLs; this kills the media.
-    /// Fire and forget, so it logs its own failures: the page also stops
-    /// itself when its next state report 404s, so a failed removal degrades
-    /// to a short delay instead of an endless broadcast. Debug level because
-    /// a pending stream's console may never have connected at all.
-    fn disconnect_publisher_task(&self, ended: EndedStream) {
+    /// The one funnel every teardown passes through, so the whole story of a
+    /// stream's death is auditable from one log line: why it ended, whether
+    /// it ever went live, and how stale the console's last report was (the
+    /// field that separates "the page reported a stop" from "the page went
+    /// silent"). Then the media dies: registry removal kills the capability
+    /// URLs only, not an already-connected go-live page.
+    ///
+    /// The disconnect is fire and forget, so it logs its own failure: the
+    /// page also stops itself when its next state report 404s, so a failed
+    /// removal degrades to a short delay instead of an endless broadcast.
+    /// Debug level because a pending stream's console may never have
+    /// connected at all.
+    fn end_stream_task(&self, ended: EndedStream) {
+        tracing::info!(
+            user_id = %ended.user_id,
+            username = %ended.username,
+            reason = ended.reason.as_str(),
+            phase = ?ended.phase,
+            went_live = ended.announced,
+            watching = ended.watching,
+            since_publisher_report_ms = ended.since_publisher_report.as_millis() as u64,
+            "stream ended"
+        );
         let voice = self.voice.clone();
         tokio::spawn(async move {
             if let Err(error) = voice
@@ -341,7 +358,7 @@ impl StreamService {
     /// disconnected, same as an explicit stop.
     pub fn sweep(&self) {
         for ended in self.registry.sweep() {
-            self.disconnect_publisher_task(ended);
+            self.end_stream_task(ended);
         }
     }
 }

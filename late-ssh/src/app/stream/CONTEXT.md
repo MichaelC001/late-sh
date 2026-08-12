@@ -3,9 +3,8 @@
 ## Metadata
 - Domain: "watch me" streaming rooms — the `/golive` screen-share broadcast, the in-process stream registry, stream rooms, publisher/watch capability URLs, and the rail's `stream` section
 - Primary audience: LLM agents working in `late-ssh/src/app/stream`, the `/golive`/`/watch` commands, the `/api/stream/*` routes, or `late-web/src/pages/live`
-- Last updated: 2026-08-12 (stream moderation scope: `/mod kick stream`,
-  `/mod ban stream` backed by `stream_bans`, and server bans now stop the
-  broadcast too)
+- Last updated: 2026-08-12 (teardown logging: every path out of the registry
+  carries an `EndReason` and logs one `stream ended` line)
 - Status: Active (v1)
 - Parent context: `../../../../CONTEXT.md`
 - Related context: `../voice/CONTEXT.md` (LiveKit grants, the ONE-room audio model), `../../../../late-web/CONTEXT.md` (watch + go-live pages), `STREAM.md` at the repo root (the design seed)
@@ -128,6 +127,14 @@ Cross-domain touchpoints:
    identity `stream-{user_id}`), and the console itself treats a 404 on its
    state report as stream-over (unpublish + disconnect), so neither side
    can keep broadcasting into the voice channel after the stream is gone.
+   Every one of those paths funnels through `StreamService::end_stream_task`,
+   which logs one `stream ended` line before the disconnect: `reason` (the
+   `EndReason` enum: `command`, `moderation`, `pending_expired`,
+   `grace_expired`), `phase`, `went_live`, `watching`, and
+   `since_publisher_report_ms`. That last field is the diagnostic one: a
+   console that reported a stop shows a fresh report age, a console that went
+   silent shows a stale one. Without it a streamer's "it just ended" is
+   unanswerable after the fact.
 
 ## 4. Consent invariants (non-negotiable, from STREAM.md)
 
@@ -160,7 +167,8 @@ Cross-domain touchpoints:
   heartbeat counting (including the `WATCHERS_MAX` cap), mic state,
   teardown, username lookup, the claim-once publisher lock, and all four
   TTL transitions via the clock-injected `sweep_at` (pending expiry,
-  live → grace, grace teardown, watcher pruning).
+  live → grace, grace teardown, watcher pruning). The teardown tests pin
+  the `EndReason` and the report age each path hands the log line.
 - `activity/event_test.rs` — feed titles are mention-safe: `@` is stripped
   before a `/golive` or cyberspace title lands in a #lounge body (the
   lounge feed's "bodies never contain `@`" contract).
@@ -217,7 +225,8 @@ user id). `ModerationInfra` carries the `StreamService` for all of it.
 
 - Metrics: no `record_stream_*` telemetry yet (streams started, watcher
   peaks — the experiment metrics in STREAM.md are currently only readable
-  from logs/registry).
+  from logs/registry). The `stream ended` line carries the fields a
+  teardown-reason counter would want.
 - A renamed streamer keeps their room under the old `{username}-live` slug
   (cosmetic only: the slug is not shown anywhere user-facing).
 - Splash tips carry no `/golive` line yet.
