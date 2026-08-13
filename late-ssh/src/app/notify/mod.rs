@@ -18,6 +18,11 @@ pub(crate) enum Kind {
     Dms,
     Mentions,
     GameEvents,
+    /// Your own broadcast: who turned up to watch. Its own kind rather than
+    /// a `GameEvents` tenant because the settings row is the whole point of
+    /// a kind, and "Game events" is not a label anyone reads as "someone
+    /// opened my stream".
+    Streams,
 }
 
 impl Kind {
@@ -27,6 +32,7 @@ impl Kind {
             Self::Dms => "dms",
             Self::Mentions => "mentions",
             Self::GameEvents => "game_events",
+            Self::Streams => "streams",
         }
     }
 
@@ -52,6 +58,30 @@ impl Notification {
             kind: Kind::Friends,
             title: "Friend online".to_string(),
             body: format!("@{username} joined late.sh"),
+        }
+    }
+
+    /// Same `Friends` bucket as [`friend_online`](Self::friend_online):
+    /// `/friend` is the opt-in for both.
+    pub(crate) fn friend_live(username: &str, title: Option<&str>) -> Self {
+        Self {
+            kind: Kind::Friends,
+            title: "Friend live".to_string(),
+            body: match title {
+                Some(title) => format!("@{username} is live: {title}"),
+                None => format!("@{username} went live"),
+            },
+        }
+    }
+
+    /// The only notification that fires at you about your own broadcast,
+    /// which is why it gets its own kind instead of riding `GameEvents`:
+    /// people want an audience ping without every poker turn.
+    pub(crate) fn stream_viewer(username: &str) -> Self {
+        Self {
+            kind: Kind::Streams,
+            title: "New viewer".to_string(),
+            body: format!("@{username} is watching your stream"),
         }
     }
 

@@ -490,3 +490,44 @@ fn obs_sweep_carries_the_ingress_id() {
     assert_eq!(ended.len(), 1);
     assert_eq!(ended[0].ingress_id, Some("in-1".to_string()));
 }
+
+#[test]
+fn note_viewer_announces_each_named_viewer_once_per_stream() {
+    let registry = StreamRegistry::new();
+    let (user, room, channel) = ids();
+    let handles = begin_ok(&registry, user, "mat", "show", room, channel);
+    registry.report_publisher(&handles.publish_token, true, false, None);
+    let (alice, bob, _) = ids();
+
+    // First arrival names the streamer for the feed line; coming back to the
+    // same stream stays quiet, so a room reopen cannot spam #lounge.
+    assert_eq!(registry.note_viewer(user, alice), Some("mat".to_string()));
+    assert_eq!(registry.note_viewer(user, alice), None);
+    assert_eq!(registry.note_viewer(user, bob), Some("mat".to_string()));
+
+    // The streamer walking into their own room is not an audience, and a
+    // stream that ended has nobody to announce to.
+    assert_eq!(registry.note_viewer(user, user), None);
+    assert_eq!(registry.note_viewer(Uuid::now_v7(), alice), None);
+
+    // The set is per stream: tomorrow's broadcast announces the regular again.
+    registry.end_for_user(user, EndReason::Command);
+    let handles = begin_ok(&registry, user, "mat", "show", room, channel);
+    registry.report_publisher(&handles.publish_token, true, false, None);
+    assert_eq!(registry.note_viewer(user, alice), Some("mat".to_string()));
+}
+
+#[test]
+fn note_viewer_stays_quiet_while_the_stream_is_pending() {
+    let registry = StreamRegistry::new();
+    let (user, room, channel) = ids();
+    let handles = begin_ok(&registry, user, "mat", "show", room, channel);
+    let (alice, _, _) = ids();
+
+    // No line ever points at a black screen, and the pending visit must not
+    // burn the announcement either.
+    assert_eq!(registry.note_viewer(user, alice), None);
+
+    registry.report_publisher(&handles.publish_token, true, false, None);
+    assert_eq!(registry.note_viewer(user, alice), Some("mat".to_string()));
+}

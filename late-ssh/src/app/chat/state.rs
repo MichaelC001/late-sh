@@ -723,6 +723,10 @@ pub struct ChatState {
     requested_golive: Option<GoLiveCommand>,
     /// Set by /watch @user; consumed by `App`.
     requested_watch: Option<String>,
+    /// A stream room this session just opened; consumed by `App`, which
+    /// tells the stream service a named viewer showed up. Recorded here
+    /// rather than acted on inline because `App` owns the stream service.
+    opened_stream_room: Option<Uuid>,
     /// Set by /aquarium [feed]; consumed by `App` (which owns the tray).
     requested_aquarium_command: Option<AquariumCommand>,
     /// Set by /pet, /pet feed, /pet water; consumed by `App` (which owns the pet).
@@ -946,6 +950,7 @@ impl ChatState {
             requested_voice_command: None,
             requested_golive: None,
             requested_watch: None,
+            opened_stream_room: None,
             requested_aquarium_command: None,
             requested_pet_command: None,
             requested_audio_url: None,
@@ -1505,6 +1510,10 @@ impl ChatState {
 
     pub(crate) fn take_requested_watch(&mut self) -> Option<String> {
         self.requested_watch.take()
+    }
+
+    pub(crate) fn take_opened_stream_room(&mut self) -> Option<Uuid> {
+        self.opened_stream_room.take()
     }
 
     /// Replace the live-stream copy. Returns true when it changed (the
@@ -2358,6 +2367,15 @@ impl ChatState {
                 self.selected_room_id = Some(next_id);
                 if !changed {
                     self.mark_room_read(next_id);
+                }
+                if changed && is_stream_room {
+                    // Walking into someone's stream room is one of the two
+                    // identified ways into a stream (`/watch @user` is the
+                    // other). `App` turns this into the "is watching" line
+                    // and the streamer's notification; the once-per-viewer
+                    // dedupe lives in the stream registry, so re-opening the
+                    // room is free.
+                    self.opened_stream_room = Some(next_id);
                 }
                 changed
             }
@@ -4300,6 +4318,28 @@ impl ChatState {
         self.note_username(user_id, username.to_string());
         self.notifier.push(Notification::friend_online(username));
         Some(Banner::success(&format!("Friend online: @{username}")))
+    }
+
+    /// A friend's stream reported its first media (the `WentLive` edge, not
+    /// `/golive` time), so the banner never points at a black screen.
+    /// `title` is the raw `/golive` title, already clamped at the composer
+    /// boundary; unlike a #lounge body it may keep its `@`, since nothing
+    /// here runs the mention pipeline.
+    pub fn note_friend_went_live(
+        &mut self,
+        user_id: Uuid,
+        username: &str,
+        title: Option<&str>,
+    ) -> Option<Banner> {
+        if user_id == self.user_id || !self.friend_user_ids.contains(&user_id) {
+            return None;
+        }
+        self.note_username(user_id, username.to_string());
+        self.notifier
+            .push(Notification::friend_live(username, title));
+        Some(Banner::success(&format!(
+            "@{username} is live. /watch @{username} to open it."
+        )))
     }
 
     pub fn message_reactions(&self) -> &HashMap<Uuid, Vec<ChatMessageReactionSummary>> {

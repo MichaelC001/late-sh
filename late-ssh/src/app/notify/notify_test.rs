@@ -94,3 +94,24 @@ fn drain_honors_cooldown() {
     notifier.push(Notification::dm("a", "second".to_string()));
     assert!(outbox.drain(&profile).is_none());
 }
+
+// The whole reason `Streams` exists as its own kind: an audience ping must
+// not arrive because game events happen to be on, and vice versa.
+#[test]
+fn stream_viewers_gate_on_their_own_kind() {
+    let (notifier, mut outbox) = channel();
+    let game_events_only = Profile {
+        notify_kinds: vec!["game_events".to_string()],
+        ..Profile::default()
+    };
+    notifier.push(Notification::stream_viewer("bob"));
+    assert!(outbox.drain(&game_events_only).is_none());
+
+    let streams_on = Profile {
+        notify_kinds: vec!["streams".to_string()],
+        ..Profile::default()
+    };
+    notifier.push(Notification::stream_viewer("bob"));
+    let got = String::from_utf8(outbox.drain(&streams_on).expect("one payload")).expect("utf8");
+    assert!(got.contains("@bob is watching your stream"));
+}

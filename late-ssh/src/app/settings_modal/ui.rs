@@ -413,6 +413,7 @@ fn draw_settings_tab(frame: &mut Frame, area: Rect, state: &SettingsModalState) 
         Constraint::Length(1), // DMs
         Constraint::Length(1), // Mentions
         Constraint::Length(1), // Game events
+        Constraint::Length(1), // Streams
         Constraint::Length(1), // Bell
         Constraint::Length(1), // Cooldown
         Constraint::Length(1), // Format
@@ -610,12 +611,22 @@ fn draw_settings_tab(frame: &mut Frame, area: Rect, state: &SettingsModalState) 
     frame.render_widget(
         Paragraph::new(row_line(
             state,
+            Row::Streams,
+            width,
+            "Stream viewers",
+            toggle_span(has_kind(state, "streams")),
+        )),
+        sections[21],
+    );
+    frame.render_widget(
+        Paragraph::new(row_line(
+            state,
             Row::Bell,
             width,
             "Bell",
             toggle_span(state.draft().notify_bell),
         )),
-        sections[21],
+        sections[22],
     );
     frame.render_widget(
         Paragraph::new(row_line(
@@ -632,7 +643,7 @@ fn draw_settings_tab(frame: &mut Frame, area: Rect, state: &SettingsModalState) 
                 )
             },
         )),
-        sections[22],
+        sections[23],
     );
     frame.render_widget(
         Paragraph::new(row_line(
@@ -645,10 +656,10 @@ fn draw_settings_tab(frame: &mut Frame, area: Rect, state: &SettingsModalState) 
                 theme::TEXT_BRIGHT(),
             ),
         )),
-        sections[23],
+        sections[24],
     );
 
-    frame.render_widget(Paragraph::new(shortcuts_hint_line(width)), sections[25]);
+    frame.render_widget(Paragraph::new(shortcuts_hint_line(width)), sections[26]);
 }
 
 fn shortcuts_hint_line(width: usize) -> Line<'static> {

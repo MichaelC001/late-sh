@@ -341,6 +341,7 @@ fn activate_selected_row(app: &mut App) {
         | Row::DirectMessages
         | Row::Mentions
         | Row::GameEvents
+        | Row::Streams
         | Row::Bell
         | Row::Cooldown
         | Row::NotifyFormat => app.settings_modal_state.cycle_setting(true),

@@ -2749,6 +2749,7 @@ impl App {
                 }
                 Some(service) => match service.watch_url_for_username(&username) {
                     Some(url) => {
+                        service.note_viewer_of_username(&username, self.user_id, &self.username);
                         let streamer = username.clone();
                         self.open_stream_url(
                             url,
@@ -2764,6 +2765,14 @@ impl App {
                     }
                 },
             }
+        }
+
+        // Walking into a stream room counts as arriving at the stream. No
+        // banner for the viewer: they can see where they are.
+        if let Some(room_id) = self.chat.take_opened_stream_room()
+            && let Some(service) = &self.stream_service
+        {
+            service.note_viewer_in_room(room_id, self.user_id, &self.username);
         }
 
         let mut events = Vec::new();
@@ -2877,9 +2886,23 @@ impl App {
                     changed = true;
                     self.banner = Some(Banner::error(&message));
                 }
+                StreamEvent::ViewerJoined {
+                    streamer_id,
+                    viewer_username,
+                } if streamer_id == self.user_id => {
+                    changed = true;
+                    self.notifier
+                        .push(crate::app::notify::Notification::stream_viewer(
+                            &viewer_username,
+                        ));
+                    self.banner = Some(Banner::success(&format!(
+                        "@{viewer_username} is watching your stream."
+                    )));
+                }
                 StreamEvent::GoLiveReady { .. }
                 | StreamEvent::GoLiveObsReady { .. }
-                | StreamEvent::GoLiveFailed { .. } => {}
+                | StreamEvent::GoLiveFailed { .. }
+                | StreamEvent::ViewerJoined { .. } => {}
             }
         }
 

@@ -6,7 +6,7 @@
 //! browser/CLI -> LiveKit -> browser/CLI.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -97,6 +97,11 @@ struct StreamEntry {
     /// reports its own state.
     mic_on_air: bool,
     watchers: HashMap<String, Instant>,
+    /// Named late.sh users already announced for this stream. A different
+    /// thing from `watchers`: those are anonymous browser ids behind the "N
+    /// watching" count, with no user to name. Per stream, so the same
+    /// regular is announced again at tomorrow's broadcast.
+    viewers: HashSet<Uuid>,
 }
 
 /// A fresh `Pending` entry with newly minted capability ids.
@@ -125,6 +130,7 @@ fn new_entry(
         announced: false,
         publisher_claim: None,
         watchers: HashMap::new(),
+        viewers: HashSet::new(),
         mic_on_air: false,
     }
 }
@@ -683,6 +689,27 @@ impl StreamRegistry {
             self.publish();
         }
         known
+    }
+
+    /// Record a named late.sh user arriving at a stream. Returns the
+    /// streamer's username the first time this viewer shows up at this
+    /// stream, `None` on a repeat visit, on the streamer opening their own
+    /// room, and while the stream is still pending (no announcement ever
+    /// points at a black screen). No `publish`: viewers are not part of the
+    /// snapshot, so a room reopen costs nothing on the wire.
+    pub fn note_viewer(&self, streamer_id: Uuid, viewer_id: Uuid) -> Option<String> {
+        if streamer_id == viewer_id {
+            return None;
+        }
+        let mut inner = self.inner.lock_recover();
+        let entry = inner.get_mut(&streamer_id)?;
+        if entry.phase == StreamPhase::Pending {
+            return None;
+        }
+        entry
+            .viewers
+            .insert(viewer_id)
+            .then(|| entry.username.clone())
     }
 
     /// The live (or grace) stream of a user, by username, for `/watch @user`.

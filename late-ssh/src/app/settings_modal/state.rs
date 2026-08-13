@@ -55,13 +55,14 @@ pub(crate) enum Row {
     DirectMessages,
     Mentions,
     GameEvents,
+    Streams,
     Bell,
     Cooldown,
     NotifyFormat,
 }
 
 impl Row {
-    pub(crate) const ALL: [Row; 17] = [
+    pub(crate) const ALL: [Row; 18] = [
         Row::Username,
         Row::Country,
         Row::Timezone,
@@ -76,6 +77,7 @@ impl Row {
         Row::DirectMessages,
         Row::Mentions,
         Row::GameEvents,
+        Row::Streams,
         Row::Bell,
         Row::Cooldown,
         Row::NotifyFormat,
@@ -1896,6 +1898,10 @@ impl SettingsModalState {
             }
             Row::GameEvents => {
                 toggle_kind(&mut self.draft.notify_kinds, "game_events");
+                true
+            }
+            Row::Streams => {
+                toggle_kind(&mut self.draft.notify_kinds, "streams");
                 true
             }
             Row::Bell => {

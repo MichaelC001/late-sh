@@ -54,6 +54,14 @@ pub enum StreamEvent {
         user_id: Uuid,
         message: String,
     },
+    /// A named late.sh user arrived at `streamer_id`'s stream. Broadcast to
+    /// every session; only the streamer's own acts on it (banner + desktop
+    /// notification). Fired once per viewer per stream, so it cannot become
+    /// a notification drip.
+    ViewerJoined {
+        streamer_id: Uuid,
+        viewer_username: String,
+    },
 }
 
 /// Outcome of the shared `/golive` groundwork (ban gates, room + voice
@@ -188,6 +196,9 @@ impl StreamService {
                     StreamEvent::GoLiveFailed { message, .. } => {
                         tracing::info!(user_id = %user_id, reason = %message, "go live refused");
                     }
+                    // Never produced by a `/golive`; `note_viewer` owns it
+                    // and logs its own line.
+                    StreamEvent::ViewerJoined { .. } => {}
                 }
                 let _ = self.evt_tx.send(event);
             }
@@ -563,6 +574,49 @@ impl StreamService {
 
     pub fn watch_heartbeat(&self, stream_id: &str, watcher_id: &str) -> bool {
         self.registry.watch_heartbeat(stream_id, watcher_id)
+    }
+
+    /// `/watch @user`: the viewer is about to open the watch page.
+    pub fn note_viewer_of_username(
+        &self,
+        streamer_username: &str,
+        viewer_id: Uuid,
+        viewer_username: &str,
+    ) {
+        let Some(view) = self.registry.stream_for_username(streamer_username) else {
+            return;
+        };
+        self.note_viewer(view.user_id, viewer_id, viewer_username);
+    }
+
+    /// The other identified way in: the viewer opened the streamer's stream
+    /// room from the rail (where the #lounge went-live line sends people).
+    pub fn note_viewer_in_room(&self, room_id: Uuid, viewer_id: Uuid, viewer_username: &str) {
+        let Some(view) = self.registry.snapshot().for_room(room_id).cloned() else {
+            return;
+        };
+        self.note_viewer(view.user_id, viewer_id, viewer_username);
+    }
+
+    /// The one funnel both arrival paths share: the registry decides whether
+    /// this is a first arrival, then the #lounge line and the streamer's
+    /// notification fire together.
+    fn note_viewer(&self, streamer_id: Uuid, viewer_id: Uuid, viewer_username: &str) {
+        let Some(streamer_username) = self.registry.note_viewer(streamer_id, viewer_id) else {
+            return;
+        };
+        tracing::info!(
+            streamer_id = %streamer_id,
+            viewer_id = %viewer_id,
+            viewer = %viewer_username,
+            "stream viewer joined"
+        );
+        self.activity
+            .watching_stream_task(viewer_id, streamer_username);
+        let _ = self.evt_tx.send(StreamEvent::ViewerJoined {
+            streamer_id,
+            viewer_username: viewer_username.to_string(),
+        });
     }
 
     /// `/watch @user`: the live stream's watch URL, if that user is live.

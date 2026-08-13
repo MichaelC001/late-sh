@@ -3,11 +3,13 @@
 ## Metadata
 - Domain: "watch me" streaming rooms — the `/golive` screen-share broadcast, the in-process stream registry, stream rooms, publisher/watch capability URLs, and the rail's `stream` section
 - Primary audience: LLM agents working in `late-ssh/src/app/stream`, the `/golive`/`/watch` commands, the `/api/stream/*` routes, or `late-web/src/pages/live`
-- Last updated: 2026-08-13 (OBS streaming: `/golive obs` publishes through a
-  LiveKit WHIP ingress instead of the browser console; registry entries
-  carry a `StreamPublisher` kind, liveness for OBS streams comes from the
-  server-side ingress status poll, and teardown also deletes the ingress.
-  New infra: `infra/redis.tf`, `infra/livekit-ingress.tf`, `whip.<domain>`)
+- Last updated: 2026-08-13 (Audience signals: a friend going live now fires a
+  banner + `Friends` desktop notification, and the first time a named late.sh
+  user opens a stream — via `/watch @user` or by walking into the stream room
+  — it posts an `is watching` #lounge line and alerts the streamer with a
+  banner + a `Streams` notification (new `notify::Kind` + "Stream viewers"
+  settings row). Anonymous watch-page viewers are unchanged: count only,
+  never named. See §3b)
 - Status: Active (v1)
 - Parent context: `../../../../CONTEXT.md`
 - Related context: `../voice/CONTEXT.md` (LiveKit grants, the ONE-room audio model), `../../../../late-web/CONTEXT.md` (watch + go-live pages), `STREAM.md` at the repo root (the design seed)
@@ -103,6 +105,15 @@ Cross-domain touchpoints:
 - `app/activity/` — `ActivityKind::WentLive`; the lounge line fires only on
   the `Pending -> Live` transition (first media report), repeat-throttled by
   the standard 30-minute window (`went-live` shape key). No "ended" line.
+  `ActivityKind::WatchingStream { streamer }` is the audience half: "bob is
+  watching mat's stream", attributed to the viewer, `watching:{streamer}`
+  shape key. See §3b.
+- `app/notify/` — two stream notifications. `Notification::friend_live`
+  rides `Friends` (so `/friend` is the opt-in, same as `friend_online`);
+  `Notification::stream_viewer` gets its own `Kind::Streams` + "Stream
+  viewers" settings row, because it is the only notification that fires at
+  you about your own broadcast and nobody reads "Game events" as "someone
+  opened my stream".
 - `app/chat/state.rs` / `app/chat/ui.rs` — `ChatState::live_streams` (copied
   from the registry watch ~1/s in `App::tick_stream`, epoch-bumped on
   change), the rail's `RoomSection::Stream` (under Core, above
@@ -149,6 +160,28 @@ Cross-domain touchpoints:
    program audio may carry a mic; a possibly-audible speaker is never
    invisible). A failed poll call skips the report (never forges a stop);
    a truly dead ingress falls to grace via the publisher TTL.
+3b. Audience signals, both alerting a person, both once-per-edge:
+   - **A friend went live.** `App::tick` already subscribes to the global
+     activity broadcast to edge-detect friend logins; the `WentLive` arm
+     rides the same drain into `ChatState::note_friend_went_live` (banner +
+     `Friends` notification, skipped for non-friends and for yourself).
+     Nothing stream-side is involved: the feed event *is* the edge, so this
+     inherits the "never before media flows" guarantee for free.
+   - **A named viewer arrived.** Watch pages are anonymous by design (§4),
+     so the "N watching" count can never be named. The two identified ways
+     in are `/watch @user` and opening the streamer's stream room from the
+     rail; both funnel into `StreamService::note_viewer`, which asks
+     `StreamRegistry::note_viewer` (a per-stream `viewers: HashSet<Uuid>`,
+     separate from the anonymous `watchers` heartbeat map) whether this is a
+     first arrival. On a first arrival: the `WatchingStream` #lounge line,
+     plus a `StreamEvent::ViewerJoined` broadcast that only the streamer's
+     own session acts on (banner + `Streams` notification). Quiet while
+     the stream is `Pending` (same no-black-screen rule), on a re-open, and
+     for the streamer's own room; the set dies with the stream, so a regular
+     is announced again at the next broadcast. `ChatState` records the room
+     open as `opened_stream_room` and `App::tick_stream` consumes it,
+     matching the `/golive` and `/watch` command plumbing: the composer and
+     the rail record intent, `App` owns the service.
 4. Ending: `/golive stop`, or close the tab / stop sharing → grace
    (~30s, survives a refresh) → the registry sweeps the stream, watch and
    publisher URLs die, the rail row disappears. A registered stream whose
@@ -210,11 +243,17 @@ Cross-domain touchpoints:
   the `EndReason` and the report age each path hands the log line. OBS
   side: ingress stored/reused on re-runs, publisher-kind conflicts both
   ways, `report_obs` phase transitions + on-air, and
-  `EndedStream.ingress_id` on stop and sweep.
+  `EndedStream.ingress_id` on stop and sweep. Audience side: `note_viewer`
+  announces each named viewer once per stream (repeat visits, the streamer's
+  own room, and an unknown streamer stay quiet; a fresh stream re-announces
+  the same regular) and stays quiet while pending without burning the
+  announcement.
 - `ui_test.rs` — the OBS overlay renders every hand-copied value unclipped
   and survives a tiny terminal.
 - `chat/state_internal_test.rs` — `/golive` parse routing (console vs `obs`
   vs `stop`) and the title clamp.
+- `activity/filter_test.rs` — the `is watching` line ships to #lounge and
+  reads `bob is watching mat's stream`.
 - `activity/event_test.rs` — feed titles are mention-safe: `@` is stripped
   before a `/golive` or cyberspace title lands in a #lounge body (the
   lounge feed's "bodies never contain `@`" contract).
