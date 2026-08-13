@@ -3,12 +3,12 @@
 ## Metadata
 - Domain: "watch me" streaming rooms — the `/golive` screen-share broadcast, the in-process stream registry, stream rooms, publisher/watch capability URLs, and the rail's `stream` section
 - Primary audience: LLM agents working in `late-ssh/src/app/stream`, the `/golive`/`/watch` commands, the `/api/stream/*` routes, or `late-web/src/pages/live`
-- Last updated: 2026-08-13 (Audience signals: a friend going live now fires a
-  banner + `Friends` desktop notification, and the first time a named late.sh
-  user opens a stream — via `/watch @user` or by walking into the stream room
-  — it posts an `is watching` #lounge line and alerts the streamer with a
-  banner + a `Streams` notification (new `notify::Kind` + "Stream viewers"
-  settings row). Anonymous watch-page viewers are unchanged: count only,
+- Last updated: 2026-08-13 (Audience signals: a friend going live fires a
+  banner + desktop notification, and the first time a named late.sh user
+  opens a stream — via `/watch @user` or by walking into the stream room —
+  it posts an `is watching` #lounge line and alerts the streamer the same
+  way. Both notifications sit on the new opt-in `notify::Kind::Streams` +
+  its settings row. Anonymous watch-page viewers are unchanged: count only,
   never named. See §3b)
 - Status: Active (v1)
 - Parent context: `../../../../CONTEXT.md`
@@ -108,12 +108,13 @@ Cross-domain touchpoints:
   `ActivityKind::WatchingStream { streamer }` is the audience half: "bob is
   watching mat's stream", attributed to the viewer, `watching:{streamer}`
   shape key. See §3b.
-- `app/notify/` — two stream notifications. `Notification::friend_live`
-  rides `Friends` (so `/friend` is the opt-in, same as `friend_online`);
-  `Notification::stream_viewer` gets its own `Kind::Streams` + "Stream
-  viewers" settings row, because it is the only notification that fires at
-  you about your own broadcast and nobody reads "Game events" as "someone
-  opened my stream".
+- `app/notify/` — `Notification::friend_live` and
+  `Notification::stream_viewer`, both on `Kind::Streams` behind one
+  "Streams (friends live, your viewers)" settings row. `friend_live` is the
+  one friend-shaped notification NOT on the always-on `Friends` kind: a
+  nightly streamer would otherwise cost you their login pings. Opt-in
+  therefore, and off for existing accounts until they toggle it; the in-app
+  banners fire either way.
 - `app/chat/state.rs` / `app/chat/ui.rs` — `ChatState::live_streams` (copied
   from the registry watch ~1/s in `App::tick_stream`, epoch-bumped on
   change), the rail's `RoomSection::Stream` (under Core, above
@@ -164,7 +165,7 @@ Cross-domain touchpoints:
    - **A friend went live.** `App::tick` already subscribes to the global
      activity broadcast to edge-detect friend logins; the `WentLive` arm
      rides the same drain into `ChatState::note_friend_went_live` (banner +
-     `Friends` notification, skipped for non-friends and for yourself).
+     `Streams` notification, skipped for non-friends and for yourself).
      Nothing stream-side is involved: the feed event *is* the edge, so this
      inherits the "never before media flows" guarantee for free.
    - **A named viewer arrived.** Watch pages are anonymous by design (§4),

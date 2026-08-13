@@ -613,7 +613,7 @@ fn draw_settings_tab(frame: &mut Frame, area: Rect, state: &SettingsModalState) 
             state,
             Row::Streams,
             width,
-            "Stream viewers",
+            "Streams (friends live, your viewers)",
             toggle_span(has_kind(state, "streams")),
         )),
         sections[21],

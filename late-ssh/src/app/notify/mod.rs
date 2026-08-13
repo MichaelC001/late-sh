@@ -18,10 +18,11 @@ pub(crate) enum Kind {
     Dms,
     Mentions,
     GameEvents,
-    /// Your own broadcast: who turned up to watch. Its own kind rather than
-    /// a `GameEvents` tenant because the settings row is the whole point of
-    /// a kind, and "Game events" is not a label anyone reads as "someone
-    /// opened my stream".
+    /// Everything "watch me": who turned up to your broadcast, and a friend
+    /// starting theirs. Its own kind because streaming alerts are the ones
+    /// people want to mute independently — a friend who streams every night
+    /// should not cost you their login pings, and an audience ping should
+    /// not depend on game events being on.
     Streams,
 }
 
@@ -61,11 +62,14 @@ impl Notification {
         }
     }
 
-    /// Same `Friends` bucket as [`friend_online`](Self::friend_online):
-    /// `/friend` is the opt-in for both.
+    /// `Streams`, not the `Friends` bucket [`friend_online`](Self::friend_online)
+    /// uses: a friend who broadcasts nightly is a different volume of alert
+    /// from a friend logging in, and muting one must not mute the other.
+    /// Opt-in as a result, unlike every other `Friends` notification; the
+    /// in-app banner still fires either way.
     pub(crate) fn friend_live(username: &str, title: Option<&str>) -> Self {
         Self {
-            kind: Kind::Friends,
+            kind: Kind::Streams,
             title: "Friend live".to_string(),
             body: match title {
                 Some(title) => format!("@{username} is live: {title}"),
@@ -74,9 +78,7 @@ impl Notification {
         }
     }
 
-    /// The only notification that fires at you about your own broadcast,
-    /// which is why it gets its own kind instead of riding `GameEvents`:
-    /// people want an audience ping without every poker turn.
+    /// The only notification that fires at you about your own broadcast.
     pub(crate) fn stream_viewer(username: &str) -> Self {
         Self {
             kind: Kind::Streams,
