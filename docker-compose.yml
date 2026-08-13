@@ -202,10 +202,11 @@ services:
     command: ["liquidsoap", "/etc/liquidsoap/radio.liq"]
 
   # Message bus between livekit and livekit-ingress; nothing persists.
+  # Valkey is the BSD-licensed Redis fork, protocol-compatible drop-in.
   redis:
-    image: redis:7-alpine
+    image: valkey/valkey:8-alpine
     container_name: ${INSTANCE}-redis
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
 
   livekit:
     image: livekit/livekit-server:latest

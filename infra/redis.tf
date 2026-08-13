@@ -1,5 +1,6 @@
 # =============================================================================
-# Redis: the psrpc message bus shared by livekit-server and livekit-ingress.
+# Valkey (the BSD-licensed Redis fork, protocol-compatible drop-in): the
+# psrpc message bus shared by livekit-server and livekit-ingress.
 # Once livekit-server has redis configured it routes room lookups and its
 # server API RPCs through it, so a redis outage degrades all LiveKit control
 # plane work: voice joins, RemoveParticipant kicks, and stream teardown, not
@@ -36,7 +37,7 @@ resource "kubernetes_deployment_v1" "redis" {
 
       spec {
         container {
-          image = "redis:7-alpine"
+          image = "valkey/valkey:8-alpine"
           name  = "redis"
 
           args = ["--save", "", "--appendonly", "no"]
