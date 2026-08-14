@@ -32,10 +32,10 @@ fn main() {
     // build scripts, but `cargo:rustc-link-arg` does not propagate to a
     // downstream crate's link (rust-lang/cargo#9554), so the `late` binary
     // never saw it. Emitting it here is what actually reaches the linker.
-    // Tests get it too, so a future mac test that touches LiveKit fails for a
-    // real reason instead of an unrecognized selector.
-    println!("cargo:rustc-link-arg-bin=late=-ObjC");
-    println!("cargo:rustc-link-arg-tests=-ObjC");
+    // The blanket form covers the bin and its unit-test harness alike;
+    // `rustc-link-arg-tests` would error the whole build because this crate
+    // has no integration-test target (tests live inline in the bin).
+    println!("cargo:rustc-link-arg=-ObjC");
 
     // macOS refuses microphone access to a binary with no
     // `NSMicrophoneUsageDescription`, and it refuses by aborting the process.
