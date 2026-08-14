@@ -3,7 +3,7 @@
 ## Metadata
 - Domain: late.sh voice channels — LiveKit-backed CLI voice, SSH TUI controls/status, and pair-WS voice control
 - Primary audience: LLM agents working in `late-ssh/src/app/voice`, `late-cli/src/voice.rs`, or pair-WS voice messages
-- Last updated: 2026-08-12 (OBS/WHIP ingest: `VoiceService` also owns the LiveKit Ingress API client — `create_whip_ingress`/`delete_ingress`/`ingress_publishing`, Twirp calls authorized by an `ingressAdmin` token; see §7 and `../stream/CONTEXT.md`)
+- Last updated: 2026-08-14 (CLI voice is mic-only on the subscribe side: `late-cli` unsubscribes non-microphone remote audio and every `stream-*` publisher, whatever source label it carries. The `SCREEN_SHARE_AUDIO` label set at CreateIngress is advisory; consumers classify program audio by the `stream-*` identity since the label may not survive transcoding-off passthrough; see §6/§7 and `../stream/CONTEXT.md`)
 - Status: Active
 - Parent context: `../../../../CONTEXT.md`
 - Related context: `../../../../late-cli/CONTEXT.md`, `../audio/CONTEXT.md`
@@ -132,7 +132,7 @@ CLI → server:
 
 Routing rules:
 - Voice controls are sent only to native CLI paired entries whose `ClientAudioState::supports_voice()` is true.
-- The CLI advertises `"voice"` in `client_state.capabilities` on Linux and Windows. macOS does not advertise native voice.
+- The CLI advertises `"voice"` in `client_state.capabilities` on Linux, macOS, and Windows.
 - Browsers and older CLIs do not receive voice join/mute/deafen controls.
 - Pair-WS close removes the participant only when the closing entry's last known `client_kind` was `Cli`. Browser/webview pair disconnects should not force voice leave.
 - On a pair-WS reconnect, the CLI immediately re-sends `voice_state` if already joined.
@@ -205,13 +205,21 @@ Events:
 - `RoomEvent::Reconnecting` / `Reconnected` / `Disconnected` are logged.
 - Disconnected sets an atomic flag. The pair-WS heartbeat checks `media_disconnected()`, then leaves and sends `voice_state`.
 - `ActiveSpeakersChanged` updates the CLI runtime `speaking` flag; pair WS reports that state quickly so SSH can render the green speaking indicator.
-- `TrackSubscribed` logs remote audio and disables it immediately if deafened.
+- `TrackSubscribed` keeps only microphone-source remote audio, and never
+  from any `stream-*` publisher whatever source label it carries
+  (`keep_remote_audio` + `voice_test.rs`): program audio (the OBS ingress
+  mix, a console's screen-share audio) is disabled locally then
+  unsubscribed like video, so it lives on the watch page only and a
+  streamer never hears their own broadcast echo. Kept tracks are disabled
+  immediately if deafened.
 - `TrackUnsubscribed` logs the remote track id.
 
 Unsupported platforms:
-- CLI voice media is compiled only for Linux and Windows.
-- macOS, Android/Termux, and other platforms advertise no voice capability and `join` bails with `voice media is not supported on this platform`.
-- macOS users currently cannot join voice because browser listen-only support has been removed for v1 private-room safety.
+- CLI voice media is compiled only for Linux, macOS, and Windows.
+- Android/Termux and other platforms advertise no voice capability and `join` bails with `voice media is not supported on this platform`. There is no browser fallback for them: browser listen-only was removed for v1 private-room safety.
+
+macOS link requirements:
+- The `late` binary must be linked with `-ObjC` and must embed `NSMicrophoneUsageDescription`; both come from `late-cli/build.rs` on `apple-darwin` targets. Without `-ObjC` the process aborts on an uncaught `NSException` (a dropped ObjC category in LiveKit's static `libwebrtc.a`) while LiveKit builds its video encoder factory during peer-connection setup, even though this runtime is audio-only. Without the plist section macOS aborts on first microphone access, bypassing raw-mode cleanup. Details and the upstream tracking issue are in `late-cli/CONTEXT.md` §9.
 
 Important audio-engine boundary:
 - Do not reintroduce a second manual CPAL/FIFO remote-track playout path. Earlier manual output could duplicate/stutter remote voice.
@@ -233,10 +241,11 @@ deliberately and narrowly:
 - `stream_publish_ticket` — the streamer's own broadcast console page, room
   owner only, reached through a per-stream capability URL minted from the
   TUI. Publishing is restricted at the SFU grant level to
-  `screen_share`/`screen_share_audio`/`microphone` (the streamer-mic
-  exception, so macOS streamers are not condemned to silent streams).
-  Identity is `stream-{user_id}` so a CLI streamer in voice is not kicked by
-  their own console connecting.
+  `screen_share`/`screen_share_audio` only: no browser mic exists anywhere,
+  voice is CLI-only with zero exceptions (the former streamer-mic exception
+  was removed once macOS CLI voice landed; a streamer talks through CLI
+  voice like everyone else). Identity is `stream-{user_id}` so a CLI
+  streamer in voice is not kicked by their own console connecting.
 - `stream_watch_ticket` — anonymous watch pages: `canPublish=false` enforced
   at the grant level (a tampered page still cannot open a mic) and
   `hidden=true` so viewers never appear in LiveKit rosters; the watcher
@@ -254,7 +263,12 @@ server-to-server only, same pattern as `RemoveParticipant`). The ingress
 participant identity is `stream-{user_id}`, the same identity as the go-live
 console, so every existing teardown path finds it; transcoding is disabled
 at CreateIngress time (OBS already sends h264+opus), so the ingress service
-forwards packets instead of re-encoding. Ownership of when to create/delete
+forwards packets instead of re-encoding. The ingress audio is labeled
+`SCREEN_SHARE_AUDIO` (program audio, not a voice), but the label is
+advisory only: it may not survive the `enable_transcoding: false`
+passthrough, so the CLI voice runtime and the watch page both classify
+program audio by the `stream-*` identity instead of trusting the source
+label. Ownership of when to create/delete
 ingresses lives entirely in `../stream` — this service only speaks the API.
 
 ---

@@ -175,10 +175,15 @@ fn watch_and_golive_pages_render_with_the_id_embedded() {
     .render()
     .expect("watch page renders");
     assert!(watch.contains("abc123"));
+    // Audio defaults ON (autoplay permitting), voices separately togglable
+    // and also on; the button labels are what the viewer sees.
     assert!(
-        watch.contains("muted"),
-        "the watch page must be born silent"
+        watch.contains("mute room audio"),
+        "room audio starts on, so the button offers mute"
     );
+    assert!(watch.contains("voices: on"), "voices toggle starts on");
+    assert!(watch.contains("id=\"volume\""), "stream volume slider");
+    assert!(watch.contains("id=\"fullscreen-btn\""), "fullscreen control");
 
     let golive = super::GoLivePage {
         publish_token: "tok456",
@@ -186,8 +191,14 @@ fn watch_and_golive_pages_render_with_the_id_embedded() {
     .render()
     .expect("golive page renders");
     assert!(golive.contains("tok456"));
+    // Voice is CLI-only with no exceptions: the console page has no
+    // browser mic at all, and publishes nothing until the share click.
     assert!(
-        golive.contains("mic: off"),
-        "the go-live page mic starts off"
+        !golive.contains("mic-btn") && !golive.contains("setMicrophoneEnabled"),
+        "the go-live page must have no browser mic"
+    );
+    assert!(
+        golive.contains("room audio: muted"),
+        "console room audio starts muted"
     );
 }
