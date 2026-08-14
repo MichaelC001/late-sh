@@ -183,7 +183,10 @@ fn watch_and_golive_pages_render_with_the_id_embedded() {
     );
     assert!(watch.contains("voices: on"), "voices toggle starts on");
     assert!(watch.contains("id=\"volume\""), "stream volume slider");
-    assert!(watch.contains("id=\"fullscreen-btn\""), "fullscreen control");
+    assert!(
+        watch.contains("id=\"fullscreen-btn\""),
+        "fullscreen control"
+    );
 
     let golive = super::GoLivePage {
         publish_token: "tok456",
