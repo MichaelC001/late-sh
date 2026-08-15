@@ -241,13 +241,7 @@ fn recently_detached_lateania_leads_the_door_stops() {
         GameWorkspace::Door(Screen::Lateania)
     );
     assert_eq!(
-        next_workspace(
-            &[],
-            &[],
-            &[],
-            &doors,
-            GameWorkspace::Door(Screen::Lateania)
-        ),
+        next_workspace(&[], &[], &[], &doors, GameWorkspace::Door(Screen::Lateania)),
         GameWorkspace::Door(Screen::Dcss)
     );
     assert_eq!(
