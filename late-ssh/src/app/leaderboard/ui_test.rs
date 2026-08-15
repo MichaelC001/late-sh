@@ -207,9 +207,9 @@ fn rail_groups_boards_under_headers_at_roster_boundaries() {
     let state = LeaderboardPageState::new();
     let (lines, selected_line) = rail_lines(&state);
 
-    // The Games boards lead under "Games", the bespoke boards follow under
-    // "Boards", then one header per roster group, each preceded by a blank
-    // separator.
+    // The door boards lead under "Games", the bespoke boards follow under
+    // "Boards", the Lateania boards under "Lateania", then one header per
+    // roster group, each preceded by a blank separator.
     assert!(text(&lines[0]).contains("Games"), "{}", text(&lines[0]));
     assert!(
         text(&lines[1]).starts_with(" > "),
@@ -217,9 +217,9 @@ fn rail_groups_boards_under_headers_at_roster_boundaries() {
         text(&lines[1])
     );
     assert_eq!(selected_line, 1);
-    // The Games group: two Lateania boards plus each door's board triple,
-    // then a blank and the "Boards" header.
-    let games_rows = 2 + 3 * DoorGame::ALL.len();
+    // The Games group: each door's board triple, then a blank and the
+    // "Boards" header.
+    let games_rows = 3 * DoorGame::ALL.len();
     let boards_header = 1 + games_rows + 1;
     assert_eq!(text(&lines[boards_header - 1]), "");
     assert!(
@@ -228,8 +228,17 @@ fn rail_groups_boards_under_headers_at_roster_boundaries() {
         text(&lines[boards_header])
     );
 
-    // The two bespoke boards, blank, then the Daily Wins group.
-    let daily_header = boards_header + 2 + 1 + 1;
+    // The two bespoke boards, blank, then the Lateania group.
+    let lateania_header = boards_header + 2 + 1 + 1;
+    assert_eq!(text(&lines[lateania_header - 1]), "");
+    assert!(
+        text(&lines[lateania_header]).contains("Lateania"),
+        "{}",
+        text(&lines[lateania_header])
+    );
+
+    // The two Lateania boards, blank, then the Daily Wins group.
+    let daily_header = lateania_header + 2 + 1 + 1;
     assert_eq!(text(&lines[daily_header - 1]), "");
     assert!(
         text(&lines[daily_header]).contains("Daily Wins"),
@@ -246,10 +255,10 @@ fn rail_groups_boards_under_headers_at_roster_boundaries() {
         text(&lines[high_scores_header])
     );
 
-    // Four headers and three separators around the full board list, nothing else.
+    // Five headers and four separators around the full board list, nothing else.
     assert_eq!(
         lines.len(),
-        state.boards().len() + 4 + 3,
+        state.boards().len() + 5 + 4,
         "every board renders exactly once"
     );
 }

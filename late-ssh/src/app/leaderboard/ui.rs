@@ -68,15 +68,19 @@ fn draw_rail(frame: &mut Frame, area: Rect, state: &LeaderboardPageState) {
     frame.render_widget(Paragraph::new(lines).scroll((scroll as u16, 0)), area);
 }
 
-/// The board rail. The Games boards lead under a "Games" header, the bespoke
-/// boards follow under "Boards", and the roster boards get one header per
-/// group. Returns the built lines and the index of the selected row, so the
-/// caller can keep it scrolled into view.
+/// The board rail. The door boards lead under a "Games" header, the bespoke
+/// boards follow under "Boards", the Lateania snapshot boards under
+/// "Lateania", and the roster boards get one header per group. Returns the
+/// built lines and the index of the selected row, so the caller can keep it
+/// scrolled into view.
 fn rail_lines(state: &LeaderboardPageState) -> (Vec<Line<'static>>, usize) {
     let boards = state.boards();
     let first_bespoke = boards
         .iter()
         .position(|board| matches!(board, Board::TopChips | Board::ArcadeWins));
+    let first_lateania = boards.iter().position(|board| {
+        matches!(board, Board::LateaniaAdventurers | Board::LateaniaFrontier)
+    });
     let first_daily = boards
         .iter()
         .position(|board| matches!(board, Board::Daily(_)));
@@ -89,6 +93,8 @@ fn rail_lines(state: &LeaderboardPageState) -> (Vec<Line<'static>>, usize) {
     for (index, board) in boards.iter().copied().enumerate() {
         let header = if Some(index) == first_bespoke {
             Some("Boards")
+        } else if Some(index) == first_lateania {
+            Some("Lateania")
         } else if Some(index) == first_daily {
             Some("Daily Wins")
         } else if Some(index) == first_score {

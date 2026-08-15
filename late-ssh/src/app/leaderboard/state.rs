@@ -7,10 +7,10 @@ use crate::app::common::primitives::thousands;
 
 const EMPTY: &[RankedEntry] = &[];
 
-/// One selectable board on the Leaderboards page. The Games boards lead, then
-/// the two bespoke boards; the per-game boards come straight off the
-/// late-core rosters, so a game added there appears here without a page
-/// change.
+/// One selectable board on the Leaderboards page. The door boards lead, then
+/// the two bespoke boards, then the Lateania snapshot boards; the per-game
+/// boards come straight off the late-core rosters, so a game added there
+/// appears here without a page change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Board {
     LateaniaAdventurers,
@@ -44,11 +44,11 @@ pub(crate) enum Standings<'a> {
 }
 
 impl Board {
-    /// Page order: Games boards (Lateania, then each door's board triple),
-    /// then the bespoke boards, then daily puzzles, then score games, each
-    /// roster in its declaration order.
+    /// Page order: each door's board triple under Games, then the bespoke
+    /// boards, then the Lateania snapshot boards, then daily puzzles, then
+    /// score games, each roster in its declaration order.
     pub(crate) fn all() -> Vec<Self> {
-        let mut boards = vec![Self::LateaniaAdventurers, Self::LateaniaFrontier];
+        let mut boards = Vec::new();
         for &game in DoorGame::ALL {
             boards.push(Self::DoorWins(game));
             boards.push(Self::DoorDepth(game));
@@ -56,6 +56,8 @@ impl Board {
         }
         boards.push(Self::TopChips);
         boards.push(Self::ArcadeWins);
+        boards.push(Self::LateaniaAdventurers);
+        boards.push(Self::LateaniaFrontier);
         boards.extend(DailyPuzzle::ALL.iter().copied().map(Self::Daily));
         boards.extend(ScoreGame::ALL.iter().copied().map(Self::Score));
         boards
