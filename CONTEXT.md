@@ -3,7 +3,7 @@
 ## Metadata
 - Domain: late.sh - Command-Line Clubhouse for Computer People
 - Primary audience: LLM agents working on this codebase, human contributors
-- Last updated: 2026-08-14 (Config is compiled, not environed: `late-ssh/src/config.rs` and `late-web/src/config.rs` each hold a `dev`/`dev2`/`prod` profile, and the only process-env reads are `LATE_ENV` plus secrets (DB, AI, YouTube, LiveKit, door shared secrets, S3). That covers the streaming stack too: both LiveKit URLs (client-facing `ws://localhost:7880`/`wss://rtc.late.sh` and the server-to-server Twirp base `http://livekit:7880`/`http://livekit-sv`) are profile literals. Terraform keeps infrastructure locals only; changing app behavior means editing a profile and deploying)
+- Last updated: 2026-08-15 (Configuration model documented in §4.5: compiled `dev`/`dev2`/`prod` profiles selected by `LATE_ENV`, dev opt-ins for AI/uploads/YouTube keyed on secret presence, committed `.env.dev`/`.env.dev2` templates copied to `.env` by make, prod env reduced to `LATE_ENV=prod` plus cluster secrets, and the image/template deploy-skew rule)
 - Status: Active
 - Stability note: Sections marked `[STABLE]` should change rarely. Sections marked `[VOLATILE]` are expected to change often.
 
@@ -709,6 +709,15 @@ overwrite its own layout on every reconnect.
 - **Chat:** `SendSucceeded` / `SendFailed` with `request_id` for composer feedback
 - **SSH:** Connection rejected on limit exceeded; render frame drops logged
 - **Web:** `AppError::Internal` / `AppError::Render` → HTTP 500 with template fallback
+
+### 4.5 Configuration model
+
+- **Config is compiled, not environed.** `late-ssh/src/config.rs` and `late-web/src/config.rs` each hold explicit `dev`/`dev2`/`prod` profiles as code literals, selected by the single env var `LATE_ENV`. The only other process-env reads are secrets: DB credentials, LiveKit key/secret, door shared secrets, and the personal opt-ins below. Changing a non-secret value (ports, limits, hosts, URLs, buckets) means editing the profile and deploying; there is no runtime override.
+- **Startup is strict.** `Config::load()` runs `Config::validate()` over cross-field invariants (PROXY protocol requires trusted CIDRs, TLS cert/key must pair, AI enabled requires a key, enabled doors require secrets), so a bad profile fails at boot instead of half-working. Unknown or missing `LATE_ENV` is a hard startup error. Tests live in `late-ssh/src/config_test.rs`.
+- **Dev opt-ins** (helpers in `config.rs`, keyed on env presence, off when absent): `dev_ai()` enables AI features when `LATE_AI_API_KEY` is set; `dev_files()` points uploads at the prod R2 bucket when both `LATE_FILES_S3_ACCESS_KEY_ID` and `LATE_FILES_S3_SECRET_ACCESS_KEY` are set (half-set pair is a startup error); `LATE_YOUTUBE_API_KEY` enables queue link validation. Prod requires the AI, YouTube, and R2 values unconditionally.
+- **Local env files.** Committed `.env.dev` (instance 1) and `.env.dev2` (parallel instance 2 clone) hold compose port mappings, door-host settings, and fixed dev secrets; `make start` / `make start-instance2` copies the chosen one verbatim to the gitignored `.env` that compose reads. Personal keys go in `.env.local` (gitignored), loaded after `.env`, so it wins on duplicate keys. A fresh clone boots with `make start` alone. Edit the template, never `.env`.
+- **Prod env.** `infra/service-ssh.tf` / `infra/service-web.tf` inject `LATE_ENV=prod` plus secrets only, sourced from cluster secrets (CloudNativePG `postgres-app`, terraform-generated door identity secrets, and GitHub environment secrets for AI/YouTube/R2). Terraform variables cover infrastructure shape, images, and secrets; app behavior never flows through GitHub variables.
+- **Deploy skew rule.** A profile change that adds or removes a required secret must ship its image together with the terraform apply that changes the injected env; an old image against a new pod template crash-loops on `... must be set` (see the 2026-07-31 incident in the Runbook). The standard release rebuilds late-ssh but reuses the running web image, so a change touching `late-web/src/config.rs` needs a `-web` release too.
 
 ---
 
