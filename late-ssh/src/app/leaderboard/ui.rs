@@ -78,9 +78,9 @@ fn rail_lines(state: &LeaderboardPageState) -> (Vec<Line<'static>>, usize) {
     let first_bespoke = boards
         .iter()
         .position(|board| matches!(board, Board::TopChips | Board::ArcadeWins));
-    let first_lateania = boards.iter().position(|board| {
-        matches!(board, Board::LateaniaAdventurers | Board::LateaniaFrontier)
-    });
+    let first_lateania = boards
+        .iter()
+        .position(|board| matches!(board, Board::LateaniaAdventurers | Board::LateaniaFrontier));
     let first_daily = boards
         .iter()
         .position(|board| matches!(board, Board::Daily(_)));
