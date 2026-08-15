@@ -2,10 +2,9 @@
 # Docker
 ####################################################
 
-# Environment files: no config lives in this Makefile. .env is copied from a
-# committed template (.env.dev, or .env.dev2 for a parallel instance 2 clone)
-# on every run, plus a generated LATE_REBELS_SECRET, since that one seeds an
-# identity on an external server and must not be a fixed committed value.
+# Environment files: no config lives in this Makefile. .env is a verbatim
+# copy of a committed template (.env.dev, or .env.dev2 for a parallel
+# instance 2 clone), refreshed on every run; edit the template, not .env.
 # Personal secrets and opt-ins go in .env.local (gitignored), which compose
 # loads after .env, so it wins on duplicate keys. All non-secret app config
 # is compiled into the profiles in late-ssh/src/config.rs.
@@ -18,7 +17,6 @@ ENV_TEMPLATE = .env.dev
 .PHONY: .env
 .env:
 	@cp $(ENV_TEMPLATE) .env
-	@echo "LATE_REBELS_SECRET=$$(openssl rand -hex 32 2>/dev/null || od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> .env
 
 # Recipe for a parallel "instance 2" clone. Run from the second clone:
 #   make start-instance2          # bring up the stack (foreground)

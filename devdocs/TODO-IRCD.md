@@ -184,8 +184,9 @@ late-ssh/tests/helpers/mod.rs               test State has irc_registry + IrcCon
   `max_auth_failures_per_ip = 20`, `auth_failure_window_secs = 300`. Only prod
   sets `proxy_protocol` and a trusted-proxy list. ircd only spawns when
   `config.irc.enabled`.
-- The root `Makefile` still emits `LATE_IRC_PORT` into the local `.env`, but
-  that is the compose host port mapping only; it must match the dev profile.
+- The committed `.env.dev` / `.env.dev2` templates still carry
+  `LATE_IRC_PORT`, but that is the compose host port mapping only; it must
+  match the dev profile.
 - Brute-force defense is **token strength** (160-bit), not rate limiting; the IP
   auth-failure limiter is a light backstop only (FRD §5).
 - Registration: CAP/PASS/NICK/USER with 60s timeout; auth tarpit on failure

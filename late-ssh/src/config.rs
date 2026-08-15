@@ -185,6 +185,21 @@ fn prod_files(access_key_id: String, secret_access_key: String) -> FilesConfig {
     }
 }
 
+/// Dev opt-in for AI: a key present enables the AI features, absent turns
+/// them off. Prod requires the key unconditionally.
+pub(crate) fn dev_ai(api_key: Option<String>) -> AiConfig {
+    match api_key {
+        Some(key) => AiConfig {
+            enabled: true,
+            api_key: Some(key),
+        },
+        None => AiConfig {
+            enabled: false,
+            api_key: None,
+        },
+    }
+}
+
 /// Dev opt-in for uploads: both credentials present enables the prod bucket,
 /// both absent disables uploads, a half-set pair is a startup error.
 pub(crate) fn dev_files(
@@ -296,10 +311,8 @@ impl Config {
             ssh_proxy_trusted_cidrs: Vec::new(),
             ws_pair_max_attempts_per_ip: 30,
             ws_pair_rate_limit_window_secs: 60,
-            ai: AiConfig {
-                enabled: true,
-                api_key: Some(required("LATE_AI_API_KEY")?),
-            },
+            // Personal opt-in: AI features stay off without a key.
+            ai: dev_ai(optional("LATE_AI_API_KEY")),
             // Personal opt-in: link validation stays off without a key.
             youtube_api_key: optional("LATE_YOUTUBE_API_KEY"),
             voice: VoiceConfig::enabled(

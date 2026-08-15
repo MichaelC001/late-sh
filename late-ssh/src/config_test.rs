@@ -103,3 +103,17 @@ fn dev_files_with_only_secret_key_is_rejected() {
             .contains("LATE_FILES_S3_SECRET_ACCESS_KEY is set without")
     );
 }
+
+#[test]
+fn dev_ai_with_key_is_enabled() {
+    let ai = crate::config::dev_ai(Some("key".to_string()));
+    assert!(ai.enabled);
+    assert_eq!(ai.api_key.as_deref(), Some("key"));
+}
+
+#[test]
+fn dev_ai_without_key_is_disabled() {
+    let ai = crate::config::dev_ai(None);
+    assert!(!ai.enabled);
+    assert!(ai.api_key.is_none());
+}
