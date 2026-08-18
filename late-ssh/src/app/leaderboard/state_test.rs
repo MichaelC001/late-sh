@@ -26,7 +26,11 @@ fn board_list_follows_the_rosters() {
         boards[4 + door_boards + DailyPuzzle::ALL.len()],
         Board::Score(ScoreGame::ALL[0])
     );
-    assert_eq!(boards.last(), Some(&Board::BadgeGuide), "guide trails every board");
+    assert_eq!(
+        boards.last(),
+        Some(&Board::BadgeGuide),
+        "guide trails every board"
+    );
 }
 
 #[test]

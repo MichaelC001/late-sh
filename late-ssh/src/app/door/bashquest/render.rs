@@ -85,7 +85,11 @@ fn render_landing(frame: &mut Frame, area: Rect, launch: Vec<Line<'static>>) {
         tier_legend(),
         Line::from(""),
         landing::stat("levels", "90 levels across 18 tiers", 8),
-        landing::stat("topics", "LVM, networking, SAN, kernels, containers, and TUI tooling", 8),
+        landing::stat(
+            "topics",
+            "LVM, networking, SAN, kernels, containers, and TUI tooling",
+            8,
+        ),
         landing::stat("style", "type the command, get graded, keep the streak", 8),
         Line::from(""),
         flavor_headline(),

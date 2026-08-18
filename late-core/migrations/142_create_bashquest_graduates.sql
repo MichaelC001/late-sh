@@ -4,8 +4,8 @@
 -- graduation certificate on its own PVC for that session's account -- the
 -- player never gets shell access to that filesystem, so this table can only
 -- ever grow from an actual completion, never a self-reported claim (see
--- late-ssh/src/app/door/bashquest/CONTEXT.md). Read-only published to a
--- public GitHub Pages gallery by a scheduled job outside this repo.
+-- late-ssh/src/app/door/bashquest/CONTEXT.md). Nothing reads this table
+-- yet: exposing graduates anywhere is its own change.
 --
 -- user_id is ON DELETE SET NULL, not CASCADE, same reasoning as
 -- arcade_handles: the certificate is a historical fact that should outlive

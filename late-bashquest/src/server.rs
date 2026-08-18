@@ -174,7 +174,10 @@ impl Handler for ClientHandler {
         let Some(lease) =
             SessionLease::claim(playname.clone(), self.shared.active_playnames.clone())
         else {
-            tracing::info!(playname, "rejected: session already active for this playname");
+            tracing::info!(
+                playname,
+                "rejected: session already active for this playname"
+            );
             session.eof(channel)?;
             session.close(channel)?;
             return Ok(());

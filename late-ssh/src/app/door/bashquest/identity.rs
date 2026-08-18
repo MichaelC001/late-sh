@@ -20,8 +20,7 @@ pub fn derive_client_key(secret: &str) -> PrivateKey {
         .update(KEY_DOMAIN)
         .finalize();
     let kp = Ed25519Keypair::from_seed(seed.as_bytes());
-    PrivateKey::new(KeypairData::from(kp), "late.sh bashquest derived")
-        .expect("valid ed25519 key")
+    PrivateKey::new(KeypairData::from(kp), "late.sh bashquest derived").expect("valid ed25519 key")
 }
 
 // CROSS-CRATE CONTRACT: `KEY_DOMAIN` and every derivation step above MUST stay

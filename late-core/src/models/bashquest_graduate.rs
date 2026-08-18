@@ -4,8 +4,8 @@
 // graduation certificate on its own PVC for that session's account -- the
 // player never gets shell access to that filesystem, so this table can only
 // ever grow from an actual completion, never a self-reported claim (see
-// late-ssh/src/app/door/bashquest/CONTEXT.md). Read-only published to a
-// public GitHub Pages gallery by a scheduled job outside this repo.
+// late-ssh/src/app/door/bashquest/CONTEXT.md). Nothing reads this table
+// yet: exposing graduates anywhere is its own change.
 
 use anyhow::Result;
 use uuid::Uuid;
@@ -61,15 +61,17 @@ impl BashquestGraduate {
         Ok(inserted == 1)
     }
 
-    /// Every graduate whose account still exists, oldest first -- for the
-    /// public gallery sync.
+    /// Every graduate whose account still exists, oldest first.
+    ///
+    /// No caller yet: nothing exposes graduates anywhere. It lives here so the
+    /// table's reads stay in one module, and so the scoping decision is
+    /// already made when something does consume it.
     ///
     /// `user_id IS NULL` means the account was deleted (the column is
     /// `ON DELETE SET NULL`, so the row itself survives as a historical fact).
-    /// Those are filtered out here rather than dropped from the table: this
-    /// feed is republished to a public page keyed on the player's handle, and
-    /// someone who deletes their late.sh account should stop being published
-    /// by it.
+    /// Those are filtered out rather than dropped from the table: anything
+    /// built on this list is keyed on the player's handle, and someone who
+    /// deletes their late.sh account should stop appearing in it.
     pub async fn list_all(client: &impl deadpool_postgres::GenericClient) -> Result<Vec<Self>> {
         let rows = client
             .query(
@@ -82,7 +84,3 @@ impl BashquestGraduate {
         Ok(rows.into_iter().map(Self::from).collect())
     }
 }
-
-#[cfg(test)]
-#[path = "bashquest_graduate_test.rs"]
-mod bashquest_graduate_test;

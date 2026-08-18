@@ -75,8 +75,16 @@ pub(crate) fn guide_lines() -> Vec<Line<'static>> {
         Line::from(""),
     ];
     for (item_code, name, source) in [
-        ("CHIP", "Top Chips", "last month's net chip earnings (Top Chips board, shop spend ignored)"),
-        ("AW", "Arcade Wins", "last month's daily-puzzle points (Arcade Wins board)"),
+        (
+            "CHIP",
+            "Top Chips",
+            "last month's net chip earnings (Top Chips board, shop spend ignored)",
+        ),
+        (
+            "AW",
+            "Arcade Wins",
+            "last month's daily-puzzle points (Arcade Wins board)",
+        ),
         ("LA", "Lateris", "best Tetris score last month"),
         ("24#", "2048", "best 2048 score last month"),
         ("SN", "Snake", "best Snake score last month"),
@@ -93,7 +101,11 @@ pub(crate) fn guide_lines() -> Vec<Line<'static>> {
     )));
     lines.push(Line::from(""));
     for (item_code, name, source) in [
-        ("LMG", "Lateania Archdemon", "slay the Archdemon Mal'gareth (pays chips)"),
+        (
+            "LMG",
+            "Lateania Archdemon",
+            "slay the Archdemon Mal'gareth (pays chips)",
+        ),
         (
             "LKN",
             "Lateania Frontier King",
@@ -109,17 +121,41 @@ pub(crate) fn guide_lines() -> Vec<Line<'static>> {
             "Kaethyr Ascendant",
             "slay Kaethyr Ascendant in Kaelmyr (no chips, badge only)",
         ),
-        ("NHA", "NetHack Amulet", "pick up the Amulet of Yendor (pays chips)"),
-        ("NHY", "NetHack Ascension", "ascend to demigodhood (pays chips)"),
-        ("DCO", "DCSS Orb of Zot", "pick up the Orb of Zot (pays chips)"),
-        ("DCW", "DCSS Escape", "escape the dungeon with the Orb (pays chips)"),
-        ("BRE", "Brogue Escape", "escape the Dungeons of Doom (pays chips)"),
+        (
+            "NHA",
+            "NetHack Amulet",
+            "pick up the Amulet of Yendor (pays chips)",
+        ),
+        (
+            "NHY",
+            "NetHack Ascension",
+            "ascend to demigodhood (pays chips)",
+        ),
+        (
+            "DCO",
+            "DCSS Orb of Zot",
+            "pick up the Orb of Zot (pays chips)",
+        ),
+        (
+            "DCW",
+            "DCSS Escape",
+            "escape the dungeon with the Orb (pays chips)",
+        ),
+        (
+            "BRE",
+            "Brogue Escape",
+            "escape the Dungeons of Doom (pays chips)",
+        ),
         (
             "BRM",
             "Brogue Mastery",
             "the Dungeons of Doom's super-victory (pays chips)",
         ),
-        ("GDS", "Green Dragon Slayer", "slay the green dragon, first kill only (pays chips)"),
+        (
+            "GDS",
+            "Green Dragon Slayer",
+            "slay the green dragon, first kill only (pays chips)",
+        ),
     ] {
         lines.push(entry_line(item_code, name, source, code, text, dim));
     }

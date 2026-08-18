@@ -43,7 +43,6 @@ async fn record(db: &Db, user_id: Uuid, handle: &str, certificate: &[u8]) -> Res
     let client = db.get().await?;
     let certificate_text = String::from_utf8_lossy(certificate);
     let digest = blake3::hash(certificate).to_hex();
-    BashquestGraduate::record(&client, user_id, handle, &certificate_text, digest.as_str())
-        .await?;
+    BashquestGraduate::record(&client, user_id, handle, &certificate_text, digest.as_str()).await?;
     Ok(())
 }

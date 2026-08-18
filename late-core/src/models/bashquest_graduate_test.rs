@@ -59,10 +59,9 @@ async fn list_all_returns_every_graduate_with_a_live_account() {
     assert!(handles.contains(&"grad_b"));
 }
 
-/// The feed `list_all` backs is republished to a public page keyed on the
-/// player's handle, so deleting the late.sh account must stop the publishing.
-/// The row itself is kept (`user_id` is `ON DELETE SET NULL`), it just drops
-/// out of the feed.
+/// Anything built on `list_all` is keyed on the player's handle, so deleting
+/// the late.sh account must drop the graduate out of that list. The row itself
+/// is kept (`user_id` is `ON DELETE SET NULL`), it just stops being listed.
 #[tokio::test]
 async fn a_deleted_account_drops_out_of_the_public_list_but_keeps_its_row() {
     let test_db = test_db().await;
@@ -77,7 +76,9 @@ async fn a_deleted_account_drops_out_of_the_public_list_but_keeps_its_row() {
         .await
         .expect("delete user");
 
-    let listed = BashquestGraduate::list_all(&client).await.expect("list all");
+    let listed = BashquestGraduate::list_all(&client)
+        .await
+        .expect("list all");
     assert!(!listed.iter().any(|g| g.handle == "grad_gone"));
 
     let row = client

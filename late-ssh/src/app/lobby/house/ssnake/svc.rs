@@ -620,9 +620,7 @@ impl SharedState {
     /// out. The idle kick never charges: it is involuntary and two minutes
     /// away, so it cannot be used to dodge anything.
     fn leave(&mut self, user_id: Uuid, voluntary: bool) -> Option<Settlement> {
-        let Some(index) = self.seat_index(user_id) else {
-            return None;
-        };
+        let index = self.seat_index(user_id)?;
         let bailed = voluntary && matches!(self.players[index].motion, Motion::Moving(_));
         if bailed {
             self.charge(index, SSNAKE_CRASH_CHIPS, SsnakeChipKind::Crash);
