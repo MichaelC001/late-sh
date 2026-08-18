@@ -135,13 +135,10 @@ Input capture contract (client side):
 - The committed `.env.dev` / `.env.dev2` templates carry the host-side settings compose passes to `service-bashquest` (`LATE_BASHQUEST_PORT` / `_SECRET` / `_DATA_DIR`), mirroring the dopewars/DCSS block; the client's host and port are profile literals, not env.
 
 ### Prod (Kubernetes / terraform)
-- `infra/service-bashquest.tf`: the `late-bashquest` Deployment (replicas **1**, `runtime-bashquest` image, `bashquest-save` PVC mounted at the shared HOME, a `bashquest-save-seed` initContainer that chowns the mount to `late`, `RUST_LOG`/`LATE_BASHQUEST_SECRET`/`LATE_BASHQUEST_DATA_DIR` env) + `late-bashquest-sv` ClusterIP Service on 2330. **Deployed unconditionally**; kill-before-create rollout (`maxSurge=0`/`maxUnavailable=1`) so the old pod releases the RWO volume before the new one mounts it.
-- `infra/bashquest.tf`: the RWO `bashquest-save` PVC (`local-path`, 256Mi, `prevent_destroy`) + the host/port/data-dir locals.
-- `infra/secrets.tf`: `bashquest-identity-secret` (random 64-char), injected into **both** service-ssh and late-bashquest so they derive the same key.
+- `infra/doors.tf` (`bashquest` entry, stamped out by the `infra/door` module): the `late-bashquest` Deployment (replicas **1**, `runtime-bashquest` image, `bashquest-save` PVC mounted at the shared HOME, a `bashquest-save-seed` initContainer that chowns the mount to `late`, `RUST_LOG`/`LATE_BASHQUEST_SECRET`/`LATE_BASHQUEST_DATA_DIR` env) + `late-bashquest-sv` ClusterIP Service on 2330, the RWO `bashquest-save` PVC (`local-path`, 256Mi, `prevent_destroy`), and the `bashquest-identity-secret` (random 64-char) injected into **both** service-ssh and late-bashquest so they derive the same key. **Deployed unconditionally**; kill-before-create rollout (`maxSurge=0`/`maxUnavailable=1`) so the old pod releases the RWO volume before the new one mounts it.
 - `infra/service-ssh.tf` injects the client's only env, `LATE_BASHQUEST_SECRET`.
 - `replicas` must stay 1 (one RWO volume holds every player's shared save data; assumes the single-node `local-path` cluster).
-- `terraform.yml`'s `bashquest_image_tag` input is **optional** (unlike every other door's `required: true`), to avoid a coordinated breaking change across all nine existing `deploy_*.yml` callers in one PR — see the comment in `.github/workflows/terraform.yml`. Only `deploy_infra.yml` and `deploy_bashquest.yml` supply a real value; every other door's own `terraform_bootstrap` job is `-target`-scoped to just that door's resources, so an empty value there is never read.
-- CI: `.github/workflows/deploy_bashquest.yml` builds and rolls out BashQuest, and only BashQuest, for `-bashquest` releases, mirroring `deploy_dcss.yml` exactly (image-only `kubectl set image` on the existing deployment, or a targeted terraform bootstrap on first deploy). `.github/workflows/bashquest.yml` build-validates `docker/doors/bashquest.Dockerfile` (fetch + checksum + `bash -n` smoke test) and publishes the pinned `door-bashquest` image on main pushes.
+- CI: `-bashquest` releases route through `release.yml` to the generic `deploy_service.yml` (image-only `kubectl set image` on the existing deployment, or a `-target=module.door["bashquest"]` terraform bootstrap on first deploy). `doors.yml` build-validates `docker/doors/bashquest.Dockerfile` (fetch + checksum + the `docker/doors/smoke/bashquest.sh` smoke test) and publishes the pinned `door-bashquest` image on main pushes at the tag pinned in the root Dockerfile.
 
 ---
 
@@ -206,7 +203,6 @@ cargo test -p late-bashquest && cargo test -p late-ssh bashquest
 ### Possible future work
 - ~~Milestones/chips/awards for graduation~~ **Done — see §10.** Graduation reporting shipped without a screen scrape: `late-bashquest` reads its own certificate file directly (it already controls that filesystem) rather than needing a machine-readable achievement file added to bashquest.sh. Tier-completion milestones (short of full graduation) are still unimplemented; the same host-side file-check approach would extend to them if bashquest.sh ever wrote a per-tier marker file.
 - A public web/TUI badge for graduation (like nethack's Amulet/ascension badge on the profile modal) is not wired up. `profile_award.rs`'s category tables and `profile_modal/badges.rs`'s legend would need a `BASHQUEST_GRADUATE_AWARD_CATEGORY` entry; the `bashquest_graduates` table (§10) is intentionally separate from `profile_awards` since it holds full certificate text, not just a badge fact.
-- `terraform.yml`'s `bashquest_image_tag` input could be promoted to `required: true` for full consistency with every other door, at the cost of touching all nine existing `deploy_*.yml` callers in one coordinated PR (see §6).
 
 ---
 

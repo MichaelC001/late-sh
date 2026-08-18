@@ -14,22 +14,16 @@ ARG DEBIAN_VERSION=bookworm
 # Stage 0: Door game binaries - prebuilt images from docker/doors/
 # ==============================================================================
 # Each door game's upstream runtime artifact is prepared by its own Dockerfile
-# under docker/doors/ and its own workflow that builds and pushes the image
-# (.github/workflows/<door>.yml). Pinning them here by tag means a door recipe
+# under docker/doors/ and built/published by the doors workflow
+# (.github/workflows/doors.yml). Pinning them here by tag means a door recipe
 # rebuilds only when its own Dockerfile changes, never on ordinary image
-# builds. Bump a tag when that door's recipe or upstream version changes.
+# builds.
 #
-# EVERY TAG BELOW LIVES IN TWO PLACES: here, and DOOR_IMAGE_TAG in that door's
-# workflow (which is what publishes it). Nothing checks that they agree, and
-# two of the three ways to get it wrong are silent:
-#   - bumped the workflow, not this file: the new image is published and
-#     nothing ever uses it, so the change quietly never ships.
-#   - changed a door recipe without bumping either: the same tag is re-pushed
-#     with new content, so builds drift depending on what each machine has
-#     cached, with no error anywhere.
-#   - bumped this file, not the workflow: the build fails with "not found".
-#     The only loud one.
-# So bump both together, in the same commit, always.
+# THE TAGS BELOW ARE THE SINGLE SOURCE OF TRUTH: doors.yml parses each pin out
+# of this file and publishes ghcr door-<game> at exactly that tag, so a pin
+# bump and its recipe change ship in the same commit and cannot drift apart.
+# Bump the pin whenever a door's recipe or upstream version changes; the same
+# tag must never be re-pushed with new content.
 FROM ghcr.io/mpiorowski/late-sh/door-nethack:5.0.0-r2 AS nethack-build
 FROM ghcr.io/mpiorowski/late-sh/door-dopewars:1.6.2-r1 AS dopewars-build
 FROM ghcr.io/mpiorowski/late-sh/door-dcss:0.34.1-r2 AS dcss-build
