@@ -245,4 +245,11 @@ fn watch_and_golive_pages_render_with_the_id_embedded() {
         golive.contains("room audio: muted"),
         "console room audio starts muted"
     );
+    // The SFU re-sends the publisher's bitrate once per viewer, so the
+    // publish ceiling is the fan-out bill. Left unset it is the SDK's
+    // 2.5 Mbps screen-share default, which nothing in our stack caps.
+    assert!(
+        golive.contains("maxBitrate: 1500000"),
+        "the screen share publishes under an explicit bitrate cap"
+    );
 }

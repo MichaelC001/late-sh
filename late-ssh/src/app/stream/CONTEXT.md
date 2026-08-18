@@ -3,7 +3,14 @@
 ## Metadata
 - Domain: "watch me" streaming rooms — the `/golive` screen-share broadcast, the in-process stream registry, stream rooms, publisher/watch capability URLs, and the rail's `stream` section
 - Primary audience: LLM agents working in `late-ssh/src/app/stream`, the `/golive`/`/watch` commands, the `/api/stream/*` routes, or `late-web/src/pages/live`
-- Last updated: 2026-08-17 (Capability ids are base64url over the same v4
+- Last updated: 2026-08-18 (The go-live console publishes under an explicit
+  bitrate ceiling instead of the SDK's 2.5 Mbps screen-share default: the
+  SFU re-sends the publisher's bitrate once per viewer, so that ceiling is
+  the whole fan-out cost. The OBS path stays uncapped by construction
+  (`enable_transcoding: false` leaves no encoder to clamp it), and enabling
+  transcoding is the wrong trade on a CPU-bound node. See §3.2 and §7;
+  capacity analysis in `SCALE.md` Pain Point 8. Previously 2026-08-17:
+  Capability ids are base64url over the same v4
   UUID bytes instead of 32-char hex: 122 bits either way, 22 characters
   instead of 32, so a watch link fits a chat room header that used to drop
   it. `late-web`'s `valid_capability_id` now accepts `_` along with `-`.
@@ -190,7 +197,12 @@ Cross-domain touchpoints:
    (`getDisplayMedia` runs in the real browser, never in wry), and the page
    reports `publishing=true` → `Pending -> Live`, the one #lounge line
    fires. **The announcement never fires at command time**: no line ever
-   points at a black screen.
+   points at a black screen. The share publishes under an explicit ceiling
+   (`screenShareEncoding` 1.5 Mbps at 15fps, `contentHint: 'detail'`), not
+   the SDK's 2.5 Mbps screen-share default: the SFU re-sends that bitrate
+   once per viewer, so the publish ceiling *is* the fan-out cost. Simulcast
+   stays on so a weak viewer steps down a layer instead of dropping
+   packets. See §7 and `SCALE.md` Pain Point 8.
 3. Watch pages resolve `/live/{id}`, poll state (10s), heartbeat (15s;
    45s TTL drives the "N watching" count), and subscribe with an anonymous
    hidden grant. Playback defaults on (autoplay permitting, see §4.1);
@@ -446,7 +458,21 @@ against the anonymous audience.
 - Metrics: no `record_stream_*` telemetry yet (streams started, watcher
   peaks — the experiment metrics in STREAM.md are currently only readable
   from logs/registry). The `stream ended` line carries the fields a
-  teardown-reason counter would want.
+  teardown-reason counter would want. This is the first thing to build if
+  streams get a regular audience: it is the prerequisite for measuring
+  anything in the bandwidth note below.
+- Bandwidth is the one cost that scales with *viewers* rather than sessions:
+  the SFU re-sends the publisher's bitrate once per subscriber, so node
+  egress is roughly `publisher_bitrate × viewers`. The console path is
+  capped (`golive.html` pins `screenShareEncoding` to 1.5 Mbps at 15fps,
+  see §3.2); the **OBS path is uncapped by construction**, since
+  `enable_transcoding: false` leaves no encoder to clamp the bitrate or
+  build simulcast layers, so a 20 Mbps OBS profile is a 20 Mbps per-viewer
+  bill and a slow viewer just loses packets. Enabling transcoding is the
+  wrong trade (it buys a bandwidth saving we are not yet paying for with
+  CPU the node needs for sessions); the cheap fix is bitrate guidance in
+  the `/golive obs` handoff modal, which nobody has written yet. Full
+  capacity analysis in `SCALE.md` Pain Point 8.
 - A renamed streamer keeps their room under the old `{username}-live` slug
   (cosmetic only: the slug is not shown anywhere user-facing).
 - Splash tips carry no `/golive` line yet.
@@ -463,7 +489,9 @@ against the anonymous audience.
   one with a bad link. Fix is `net.core.rmem_max`/`rmem_default` on the
   host; it cannot come from the pod, since a hostNetwork pod may not set
   `net.*` sysctls, and it has no home in this repo (the RKE2 script is
-  one-shot bootstrap, not a reconciler).
+  one-shot bootstrap, not a reconciler). This is the symptom the bandwidth
+  note above predicts: the node's packet path gives out well before the
+  bandwidth bill does, and it is already visible at today's traffic.
 - TURN is enabled (`infra/livekit.tf`: UDP 3478, TLS 5349, relay range
   30000-40000) and clients do allocate relay candidates, but there is no
   TURN on 443: nginx owns that port. A viewer behind a firewall that permits
