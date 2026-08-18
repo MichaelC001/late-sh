@@ -27,6 +27,9 @@ on:
       brogue_image_tag:
         required: true
         type: string
+      bashquest_image_tag:
+        required: true
+        type: string
       environment:
         required: false
         type: string
@@ -57,6 +60,7 @@ jobs:
       TF_VAR_DCSS_IMAGE_TAG: ${{ inputs.dcss_image_tag }}
       TF_VAR_USURPER_IMAGE_TAG: ${{ inputs.usurper_image_tag }}
       TF_VAR_BROGUE_IMAGE_TAG: ${{ inputs.brogue_image_tag }}
+      TF_VAR_BASHQUEST_IMAGE_TAG: ${{ inputs.bashquest_image_tag }}
       TF_VAR_DOCKER_CONFIG_JSON: ${{ secrets.DOCKER_CONFIG_JSON }}
       TF_VAR_SSH_HOST_KEY: ${{ secrets.SSH_HOST_KEY }}
       TF_VAR_AI_API_KEY: ${{ secrets.AI_API_KEY }}
