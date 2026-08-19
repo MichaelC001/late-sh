@@ -138,6 +138,10 @@ fn aquarium_area_for_terminal(cols: u16, rows: u16) -> Rect {
 }
 
 const CURSOR_SHAPE_STEADY_BLOCK: &[u8] = b"\x1b[2 q";
+/// DECSCUSR 0: hand the cursor back to whatever shape the terminal is
+/// configured for. Leaving on an explicit shape (`2` = steady block) sticks
+/// that shape to the user's shell after the session ends.
+const CURSOR_SHAPE_DEFAULT: &[u8] = b"\x1b[0 q";
 const CURSOR_SHAPE_STEADY_UNDERLINE: &[u8] = b"\x1b[4 q";
 
 #[derive(Clone, Default)]
@@ -224,8 +228,8 @@ pub struct SessionConfig {
     pub darkroom_service: crate::app::door::darkroom::svc::DarkroomService,
     pub daily_service: crate::app::lobby::daily::svc::DailyService,
     pub house_registry: crate::app::lobby::house::registry::HouseTableRegistry,
-    /// Shared in-proc dartboard server handle. Each session only connects — consuming a
-    /// color slot and showing up in `peer_count` — when the user actually
+    /// Shared in-proc dartboard server handle. Each session only connects,
+    /// consuming a color slot and showing up in `peer_count`, when the user actually
     /// enters the dartboard game from the arcade.
     pub dartboard_server: dartboard_local::ServerHandle,
     pub dartboard_provenance: crate::app::artboard::provenance::SharedArtboardProvenance,
@@ -808,7 +812,7 @@ pub struct App {
     pub(crate) last_chat_click: Option<super::input::ChatClickRecord>,
 
     /// A profile-modal open that is being debounced until the chat-click
-    /// double-click window passes — a fast second click on the same
+    /// double-click window passes: a fast second click on the same
     /// username converts to `@mention` insertion instead. Resolved from
     /// `App::tick`.
     pub(crate) pending_chat_profile_open: Option<super::input::PendingChatProfileOpen>,
@@ -1405,7 +1409,7 @@ impl App {
             // `tick.rs` is false against a snapshot sitting right there: without
             // this the session renders empty leaderboard panels until the next
             // refresh lands, up to `REFRESH_INTERVAL` later. Deliberately does
-            // not touch `chip_balance` — that is loaded accurately at login, and
+            // not touch `chip_balance`: that is loaded accurately at login, and
             // this snapshot may predate it.
             leaderboard: config
                 .leaderboard_rx
@@ -2246,7 +2250,7 @@ impl App {
             .handle_resize(aquarium_area.width, aquarium_area.height);
         // We can't use `Terminal::resize()` here: since ratatui 0.30.2 its
         // fixed-viewport clear queries `backend.size()`, which reads the
-        // controlling tty — impossible on the write-only SSH `SharedBuffer`
+        // controlling tty, impossible on the write-only SSH `SharedBuffer`
         // (same class of failure as the `Terminal::clear()` cursor read in
         // `force_full_repaint`). Rebuild the terminal instead: `with_options`
         // with a `Viewport::Fixed` is pure state construction and never
@@ -3131,7 +3135,7 @@ impl App {
         // snapshots the cursor via `crossterm::cursor::position()`, which reads
         // the controlling tty. Our backend writes to a one-way SSH `SharedBuffer`
         // with no readable tty, so that query errors and `clear()` bails *before*
-        // resetting the back buffer — leaving the next `draw()` to emit an empty
+        // resetting the back buffer, leaving the next `draw()` to emit an empty
         // diff (a blank frame). Do the two things `clear()` gave us by hand:
         // emit the clear escape, and reset both diff buffers so the next `draw()`
         // re-emits every cell. Two `swap_buffers()` calls reset each buffer and
@@ -3196,7 +3200,7 @@ impl App {
         }
         crossterm::execute!(buf, terminal::Clear(ClearType::All))
             .expect("failed to clear terminal before leaving alt screen");
-        buf.extend_from_slice(CURSOR_SHAPE_STEADY_BLOCK);
+        buf.extend_from_slice(CURSOR_SHAPE_DEFAULT);
         crossterm::execute!(buf, cursor::Show, terminal::LeaveAlternateScreen)
             .expect("failed to leave alt screen");
         for command in terminal_image_cleanup_commands() {

@@ -29,7 +29,7 @@ Keep `mod.rs` declaration-only. Do not add `pub use` re-export layers.
 - `traffic/` is a multi-track high-score game. Each track finish is graded to a normalized `0..=1000` score (`Track::grade_time`, from the track's theoretical fastest/slowest completion time, so every track yields a comparable range regardless of its distance/speed definition); crashing before the finish scores nothing. The user's Traffic high score is the **sum** of their per-track bests. Persistence keeps one best per `(user, track_key)` in `traffic_track_scores` plus a mirrored aggregate row in `traffic_high_scores` (`= SUM(track scores)`) so leaderboard queries stay uniform with the other high-score games. `track_key` is the `Track::name`.
 - `rubiks_cube/` is a daily deterministic puzzle game with a real cube state, face turns, a three-face angled render, and a compact net. It records one daily win per user/date, publishes Activity for the once-per-day base chip payout and Hub quest progress, and counts toward Arcade Wins. The in-progress cube persists per user in `rubiks_cube_games` (54-char sticker string + move count, saved fire-and-forget on every move/reset; rows from an older date are ignored on load since the daily scramble is deterministic).
 - `sudoku/`, `nonogram/`, `minesweeper/`, `solitaire/`, `le_word/`, and `rubiks_cube/` are daily puzzle games. Le Word has a single global daily word rather than personal runs. Rubik's Cube has one shared daily scramble and no personal mode.
-- `workspace.rs` owns the Arcade leg of the backtick workspace cycle: the `ArcadeStop` closed enum (the six daily puzzle games in lobby order), `unfinished_daily_stops` (today's daily boards with at least one player move and no win — each game state exposes `first_unfinished_daily()` / `has_unfinished_daily()`), and `open_stop` (points the Arcade at the right daily board and sets `is_playing_game`). Real-time games and personal boards never join; `lobby/workspace.rs` consumes this module.
+- `workspace.rs` owns the Arcade leg of the backtick workspace cycle: the `ArcadeStop` closed enum (the six daily puzzle games in lobby order), `unfinished_daily_stops` (today's daily boards with at least one player move and no win, each game state exposes `first_unfinished_daily()` / `has_unfinished_daily()`), and `open_stop` (points the Arcade at the right daily board and sets `is_playing_game`). Real-time games and personal boards never join; `lobby/workspace.rs` consumes this module.
 
 Per-game directories generally follow:
 - `state.rs`: local per-session game state and pure rules.
@@ -55,7 +55,7 @@ Per-game directories generally follow:
 - `Enter` launches the selected available game and sets `is_playing_game = true`.
 - Nonograms are only launchable when `nonogram_state.has_puzzles()` is true; otherwise the lobby card is present but treated as unavailable/coming soon.
 - `Esc`, `q`, or `Q` leaves an active Arcade game and returns to the lobby. Snake persists progress before leaving.
-- Backtick inside an active daily puzzle game hops the workspace cycle (`lobby/workspace.rs` via `arcade/workspace.rs`); real-time games keep the byte. Hopping out clears `is_playing_game` — daily boards save move-by-move, so nothing else is flushed.
+- Backtick inside an active daily puzzle game hops the workspace cycle (`lobby/workspace.rs` via `arcade/workspace.rs`); real-time games keep the byte. Hopping out clears `is_playing_game`; daily boards save move-by-move, so nothing else is flushed.
 
 ## Game Categories
 
@@ -99,6 +99,7 @@ Arcade wiring checklist:
 
 Leaderboard/Hub checklist:
 - High-score games must write final score events through a `late-core` model method so monthly boards do not depend only on legacy high-score table `updated` timestamps. Lateris and Snake also publish hidden quest Activity score events on final score submission; Snake includes the reached level for weekly/daily quest matching.
+- A restored run that was already over must not emit its final score event again (it fired when the run ended). A second emission is a fresh `GameScored` activity today, which completes score-based daily quests for a game nobody played; `snake/state.rs` carries `score_event_recorded` across `restore` for this.
 - Add the game to the matching roster in `late-core/src/models/leaderboard.rs`: a `DailyPuzzle` variant enrolls it in the per-game win boards, Arcade Wins points, today's champions, and daily statuses at once; a `ScoreGame` variant enrolls its monthly/all-time score boards. The compiler walks you through the per-variant facts, and the Leaderboards page (`app/leaderboard/`) picks the board up from the roster with no page change.
 
 Testing guidance:

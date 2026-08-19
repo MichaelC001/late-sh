@@ -44,6 +44,11 @@ impl State {
         state.score = game.score.max(0);
         state.level = Level::new(game.level.clamp(1, u8::MAX as i32) as u8);
         state.is_game_over = game.is_game_over;
+        // A game that was already over when it was saved recorded its final
+        // score the moment it ended. Leaving this false let the next
+        // `reset_game` submit that same score again as a fresh score event,
+        // which paid out score-based daily quests for a game nobody played.
+        state.score_event_recorded = state.is_game_over;
         state.cobra.lives = if state.is_game_over { 0 } else { 1 };
         state.reset_level_without_persist(true);
         if state.is_game_over {
@@ -735,3 +740,7 @@ impl Field {
         food_left
     }
 }
+
+#[cfg(test)]
+#[path = "state_test.rs"]
+mod state_test;
