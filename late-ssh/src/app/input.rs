@@ -833,6 +833,13 @@ fn handle_parsed_input_inner(app: &mut App, event: ParsedInput) {
         return;
     }
 
+    // Ahead of the search modal, matching the draw order: history opens over
+    // the top of a jump, so it owns input until Esc closes it.
+    if app.chat.history_modal.is_open() {
+        crate::app::chat::history_modal::input::handle_input(app, event);
+        return;
+    }
+
     if is_room_search_shortcut(&event) {
         if app.room_search_modal_state.is_open() {
             app.room_search_modal_state.close();
@@ -2141,6 +2148,13 @@ fn dispatch_escape(app: &mut App) {
     }
     if app.room_info_modal_state.is_open() {
         room_info_modal::input::handle_escape(app);
+        return;
+    }
+    // A lone Esc dispatches here rather than through the history modal's own
+    // input handler; ordered between room info (drawn over it) and room
+    // search (drawn under it) to match the render stack.
+    if app.chat.history_modal.is_open() {
+        app.chat.history_modal.close();
         return;
     }
     if app.room_search_modal_state.is_open() {

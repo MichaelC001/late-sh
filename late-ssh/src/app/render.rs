@@ -1802,6 +1802,12 @@ impl App {
             );
         }
 
+        // Drawn after the search modal: a jump too old to land in the room
+        // opens history over the top of whatever was showing.
+        if ctx.chat_state.history_modal.is_open() {
+            crate::app::chat::history_modal::ui::draw(frame, inner, &ctx.chat_state.history_modal);
+        }
+
         if ctx.room_info_modal_open {
             room_info_modal::ui::draw(frame, inner, ctx.room_info_modal_state);
         }
@@ -1866,6 +1872,7 @@ fn foreground_terminal_overlay_open(ctx: &DrawContext<'_>) -> bool {
         || ctx.show_ultimate_modal
         || ctx.news_modal.is_some()
         || ctx.room_search_modal_open
+        || ctx.chat_state.history_modal.is_open()
         || ctx.booth_modal_open
         || ctx.icon_picker_open
 }
