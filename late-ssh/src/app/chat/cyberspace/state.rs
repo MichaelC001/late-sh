@@ -170,7 +170,7 @@ pub(crate) enum RoomKind {
 /// history load and the live stream (and, for a room, announces the user out
 /// of it), which is why leaving is simply dropping this.
 pub(crate) enum RoomSession {
-    Circ(CircRoomSession),
+    Circ(Box<CircRoomSession>),
     // Never read: a conversation has no presence to announce, so the handle
     // is held purely for its `Drop`, which is what stops it fetching.
     Cmail(#[allow(dead_code)] CmailSession),
@@ -883,7 +883,9 @@ impl State {
         // Leaving the previous room closes its stream, announces the user out
         // of it, and stamps its read cursor before the new one opens.
         self.leave_room();
-        let session = RoomSession::Circ(self.service.open_circ_room(self.user_id, slug.clone()));
+        let session = RoomSession::Circ(Box::new(
+            self.service.open_circ_room(self.user_id, slug.clone()),
+        ));
         let unread_from = self.room_reads.get(&slug).copied();
         self.open_room = Some(OpenRoom {
             label: slug.clone(),

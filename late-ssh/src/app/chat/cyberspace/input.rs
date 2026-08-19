@@ -100,11 +100,9 @@ pub fn handle_room_composer_input(app: &mut App, event: ParsedInput) {
         // Back to the live bottom, however far back the user scrolled.
         // Only with nothing typed: while the row holds text, End is an
         // editing key (Home's mirror), and falls through to the edit below.
-        ParsedInput::End => {
-            if app.chat.cyberspace.room_composer_text().is_empty() {
-                app.chat.cyberspace.room_to_bottom();
-                return;
-            }
+        ParsedInput::End if app.chat.cyberspace.room_composer_text().is_empty() => {
+            app.chat.cyberspace.room_to_bottom();
+            return;
         }
         _ => {}
     }
