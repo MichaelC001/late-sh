@@ -4136,13 +4136,7 @@ fn meter(cur: i32, max: i32, width: usize) -> String {
 /// wrapping and every row must stay a single line for click mapping. Both sides
 /// of a fight render through here, so your bar and the foe's are the same
 /// object at the same width.
-fn panel_meter_line(
-    label: &str,
-    cur: i32,
-    max: i32,
-    color: Color,
-    width: usize,
-) -> Line<'static> {
+fn panel_meter_line(label: &str, cur: i32, max: i32, color: Color, width: usize) -> Line<'static> {
     let nums = format!("{cur}/{max}");
     let meter_w = width
         .saturating_sub(UnicodeWidthStr::width(label) + UnicodeWidthStr::width(nums.as_str()) + 1)
