@@ -376,19 +376,32 @@ fn live_view_hides_a_visited_room_outside_the_players_current_region() {
     // delta (-6, -5) from the start room, well inside a 42x22 screen, and the
     // live (player-centred) canvas must not draw it.
     let (scols, srows) = (42, 22);
-    let live = super::map_canvas(&coords, center, scols, srows, &all, world.start_room, &std::collections::HashSet::new());
+    let live = super::map_canvas(
+        &coords,
+        center,
+        scols,
+        srows,
+        &all,
+        world.start_room,
+        &std::collections::HashSet::new(),
+    );
     assert!(
-        !live
-            .iter()
-            .flatten()
-            .any(|t| *t == super::Tile::Room(665)),
+        !live.iter().flatten().any(|t| *t == super::Tile::Room(665)),
         "the live canvas must hide a visited room in a foreign region"
     );
 
     // Panning the camera away turns the filter off (`live_filter_region`'s
     // else branch): the same canvas centred on 665 itself is reviewing
     // explored history, and the foreign room comes back.
-    let panned = super::map_canvas(&coords, coords[&665], scols, srows, &all, world.start_room, &std::collections::HashSet::new());
+    let panned = super::map_canvas(
+        &coords,
+        coords[&665],
+        scols,
+        srows,
+        &all,
+        world.start_room,
+        &std::collections::HashSet::new(),
+    );
     assert!(
         panned
             .iter()
@@ -445,7 +458,15 @@ fn a_seam_exit_stubs_instead_of_drawing_a_corridor_into_blank_space() {
 
     let visited: HashSet<_> = [3, 9000].into_iter().collect();
     let (cols, rows) = (21, 11);
-    let canvas = super::map_canvas(&coords, c3, cols, rows, &visited, 3, &std::collections::HashSet::new());
+    let canvas = super::map_canvas(
+        &coords,
+        c3,
+        cols,
+        rows,
+        &visited,
+        3,
+        &std::collections::HashSet::new(),
+    );
     let (cx, cy) = (cols as usize / 2, rows as usize / 2);
     assert!(
         !canvas
@@ -494,7 +515,15 @@ fn a_visited_foreign_boss_stays_drawn_through_the_live_region_filter() {
     );
 
     let visited: HashSet<_> = [308, 651].into_iter().collect();
-    let canvas = super::map_canvas(&coords, c308, 42, 22, &visited, 308, &std::collections::HashSet::new());
+    let canvas = super::map_canvas(
+        &coords,
+        c308,
+        42,
+        22,
+        &visited,
+        308,
+        &std::collections::HashSet::new(),
+    );
     assert!(
         canvas
             .iter()
@@ -815,7 +844,15 @@ fn map_canvas_draws_corridors_between_visited_rooms_and_fogs_the_rest() {
 
     // Everything visited: the centre is the start room, and corridors render.
     let all: HashSet<_> = world.rooms.keys().copied().collect();
-    let canvas = super::map_canvas(&coords, center, cols, rows, &all, start, &std::collections::HashSet::new());
+    let canvas = super::map_canvas(
+        &coords,
+        center,
+        cols,
+        rows,
+        &all,
+        start,
+        &std::collections::HashSet::new(),
+    );
     assert!(matches!(canvas[cy][cx], Tile::Room(id) if id == start));
     assert!(
         canvas
@@ -827,7 +864,15 @@ fn map_canvas_draws_corridors_between_visited_rooms_and_fogs_the_rest() {
 
     // Nothing visited: only the player shows, and no corridors leak the layout.
     let empty = HashSet::new();
-    let fogged = super::map_canvas(&coords, center, cols, rows, &empty, start, &std::collections::HashSet::new());
+    let fogged = super::map_canvas(
+        &coords,
+        center,
+        cols,
+        rows,
+        &empty,
+        start,
+        &std::collections::HashSet::new(),
+    );
     let visible_rooms: Vec<_> = fogged
         .iter()
         .flatten()
@@ -897,7 +942,15 @@ fn a_discovered_room_ringed_by_fog_shows_exit_hints() {
 
     // Only the anchor is explored - every neighbour is fog.
     let visited: std::collections::HashSet<_> = std::iter::once(anchor).collect();
-    let canvas = super::map_canvas(&coords, coords[&anchor], 21, 21, &visited, anchor, &std::collections::HashSet::new());
+    let canvas = super::map_canvas(
+        &coords,
+        coords[&anchor],
+        21,
+        21,
+        &visited,
+        anchor,
+        &std::collections::HashSet::new(),
+    );
 
     let hints = canvas
         .iter()
@@ -960,7 +1013,15 @@ fn a_link_to_an_already_visited_scattered_room_shows_a_known_hint() {
     // actually renders rather than assuming the first candidate always will.
     let renders = candidates.into_iter().any(|(anchor, dest)| {
         let visited: std::collections::HashSet<_> = [anchor, dest].into_iter().collect();
-        let canvas = super::map_canvas(&coords, coords[&anchor], 21, 21, &visited, anchor, &std::collections::HashSet::new());
+        let canvas = super::map_canvas(
+            &coords,
+            coords[&anchor],
+            21,
+            21,
+            &visited,
+            anchor,
+            &std::collections::HashSet::new(),
+        );
         canvas
             .iter()
             .flatten()
@@ -1019,7 +1080,15 @@ fn a_room_with_a_way_down_shows_a_stair_on_the_map() {
         "the square keeps its Frontier stair down and its city stair up"
     );
     let visited = std::collections::HashSet::from([square]);
-    let canvas = super::map_canvas(coords, coords[&square], 21, 11, &visited, square, &std::collections::HashSet::new());
+    let canvas = super::map_canvas(
+        coords,
+        coords[&square],
+        21,
+        11,
+        &visited,
+        square,
+        &std::collections::HashSet::new(),
+    );
     let stairs: Vec<char> = canvas
         .iter()
         .flatten()
@@ -1046,7 +1115,15 @@ fn stair_corners_never_collide_with_rooms_corridors_or_each_other() {
     // A dense hand-authored neighbourhood with stairs, houses and roads in it.
     let here = super::world().start_room;
     let visited: std::collections::HashSet<_> = super::world().rooms.keys().copied().collect();
-    let canvas = super::map_canvas(coords, coords[&here], 41, 21, &visited, here, &std::collections::HashSet::new());
+    let canvas = super::map_canvas(
+        coords,
+        coords[&here],
+        41,
+        21,
+        &visited,
+        here,
+        &std::collections::HashSet::new(),
+    );
     for (r, row) in canvas.iter().enumerate() {
         for (c, tile) in row.iter().enumerate() {
             // Rooms land on even offsets from the centre cell, corridors on the
@@ -1139,7 +1216,15 @@ fn a_scattered_links_stub_follows_the_exit_not_the_coordinate_delta() {
 
     let visited: std::collections::HashSet<_> = w.rooms.keys().copied().collect();
     let (cols, rows) = (11, 7);
-    let canvas = super::map_canvas(coords, coords[&entrance], cols, rows, &visited, entrance, &std::collections::HashSet::new());
+    let canvas = super::map_canvas(
+        coords,
+        coords[&entrance],
+        cols,
+        rows,
+        &visited,
+        entrance,
+        &std::collections::HashSet::new(),
+    );
     let (cx, cy) = ((cols / 2) as usize, (rows / 2) as usize);
     assert!(
         matches!(canvas[cy][cx + 1], super::Tile::HintKnown(_)),

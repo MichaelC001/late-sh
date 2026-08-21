@@ -792,8 +792,7 @@ pub fn map_canvas(
     // out of a hash-ordered iterator.
     let player_region = super::world::region_atlas_entry(player_room).map(|(name, _)| name);
     let filter_region = live_filter_region(coords, center, player_room, player_region);
-    let viewed =
-        |id: RoomId| in_viewed_region(id, filter_region) || exempt.contains(&id);
+    let viewed = |id: RoomId| in_viewed_region(id, filter_region) || exempt.contains(&id);
     let mut winners: HashMap<(i32, i32), RoomId> = HashMap::new();
     for (id, c) in visible(coords, center, rxw, ryw) {
         if c.z != center.z || !seen(id) {
