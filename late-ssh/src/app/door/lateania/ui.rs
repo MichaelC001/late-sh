@@ -3041,7 +3041,51 @@ fn leaderboard_panel(view: &PlayerView, usernames: &UsernameLookup<'_>) -> Vec<L
     lines
 }
 
-fn vitals(view: &PlayerView) -> Vec<Line<'static>> {
+/// How the vitals block renders HP and the class resource.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VitalStyle {
+    /// Compact numbers, for the peaceful panels: nothing is swinging back, so
+    /// there is nothing to judge at a glance.
+    Numbers,
+    /// Wide meters sized to the given panel width, for the battle frame - the
+    /// same shape the foe's bar uses, so both sides of the fight read the same
+    /// way and "can I out-trade this" is a look, not arithmetic.
+    Meters(usize),
+}
+
+fn vitals(view: &PlayerView, style: VitalStyle) -> Vec<Line<'static>> {
+    let hp_fg = hp_color(view.hp, view.max_hp);
+    let (hp_line, resource_line) = match style {
+        VitalStyle::Numbers => (
+            Line::from(vec![
+                Span::styled(vital_label("HP"), Style::default().fg(theme::TEXT_DIM())),
+                Span::styled(
+                    format!("{}/{}", view.hp, view.max_hp),
+                    Style::default().fg(hp_fg).add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled(
+                    vital_label(&short_res(&view.resource_name)),
+                    Style::default().fg(theme::TEXT_DIM()),
+                ),
+                Span::styled(
+                    format!("{}/{}", view.resource, view.max_resource),
+                    Style::default().fg(theme::MENTION()),
+                ),
+            ]),
+        ),
+        VitalStyle::Meters(width) => (
+            panel_meter_line(&vital_label("HP"), view.hp, view.max_hp, hp_fg, width),
+            panel_meter_line(
+                &vital_label(&short_res(&view.resource_name)),
+                view.resource,
+                view.max_resource,
+                theme::MENTION(),
+                width,
+            ),
+        ),
+    };
     let mut lines = vec![
         Line::from(vec![
             Span::styled(
@@ -3062,25 +3106,8 @@ fn vitals(view: &PlayerView) -> Vec<Line<'static>> {
                 Style::default().fg(theme::BADGE_GOLD()),
             ),
         ]),
-        Line::from(vec![
-            Span::styled(vital_label("HP"), Style::default().fg(theme::TEXT_DIM())),
-            Span::styled(
-                format!("{}/{}", view.hp, view.max_hp),
-                Style::default()
-                    .fg(hp_color(view.hp, view.max_hp))
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled(
-                vital_label(&short_res(&view.resource_name)),
-                Style::default().fg(theme::TEXT_DIM()),
-            ),
-            Span::styled(
-                format!("{}/{}", view.resource, view.max_resource),
-                Style::default().fg(theme::MENTION()),
-            ),
-        ]),
+        hp_line,
+        resource_line,
         Line::from(vec![
             Span::styled(vital_label("gold"), Style::default().fg(theme::TEXT_DIM())),
             Span::styled(
@@ -3113,7 +3140,7 @@ fn room_panel(
 ) -> (Vec<Line<'static>>, Vec<(usize, u32)>, Vec<(usize, Uuid)>) {
     let mut foe_hits: Vec<(usize, u32)> = Vec::new();
     let mut player_hits: Vec<(usize, Uuid)> = Vec::new();
-    let mut lines = vitals(view);
+    let mut lines = vitals(view, VitalStyle::Numbers);
     lines.push(Line::raw(""));
     lines.push(section("Here"));
     // The zone plus its level band, so one glance answers "do I belong here".
@@ -3482,7 +3509,7 @@ fn battle_side_panel(
     width: usize,
 ) -> (Vec<Line<'static>>, Vec<(usize, ClickAction)>) {
     let mut hits: Vec<(usize, ClickAction)> = Vec::new();
-    let mut lines = vitals(view);
+    let mut lines = vitals(view, VitalStyle::Meters(width));
     lines.push(Line::raw(""));
     lines.push(section("Battle"));
     let wrap_w = width.saturating_sub(4).max(6);
@@ -3491,17 +3518,7 @@ fn battle_side_panel(
     // fit: meters shrink to leave room for their numbers, prose goes through
     // `side_text_wrap`, ability detail truncates.
     let hp_meter_line = |label: &'static str, hp: i32, max_hp: i32| {
-        let nums = format!("{hp}/{max_hp}");
-        let meter_w = width
-            .saturating_sub(5 + UnicodeWidthStr::width(nums.as_str()) + 1)
-            .clamp(6, 22);
-        Line::from(vec![
-            Span::styled(label, Style::default().fg(theme::TEXT_DIM())),
-            Span::styled(
-                format!("{} {nums}", meter(hp, max_hp, meter_w)),
-                Style::default().fg(hp_color(hp, max_hp)),
-            ),
-        ])
+        panel_meter_line(label, hp, max_hp, hp_color(hp, max_hp), width)
     };
     if let Some(mob) = view.mobs.iter().find(|m| m.targeted) {
         let name_style = Style::default()
@@ -4113,6 +4130,32 @@ fn meter(cur: i32, max: i32, width: usize) -> String {
         .collect()
 }
 
+/// One meter row in the field layout's side panel: a dim label in a fixed
+/// gutter, then the bar and its numbers in the row's own color. The bar shrinks
+/// to leave room for the numbers, since the panel draws without terminal
+/// wrapping and every row must stay a single line for click mapping. Both sides
+/// of a fight render through here, so your bar and the foe's are the same
+/// object at the same width.
+fn panel_meter_line(
+    label: &str,
+    cur: i32,
+    max: i32,
+    color: Color,
+    width: usize,
+) -> Line<'static> {
+    let nums = format!("{cur}/{max}");
+    let meter_w = width
+        .saturating_sub(UnicodeWidthStr::width(label) + UnicodeWidthStr::width(nums.as_str()) + 1)
+        .clamp(6, 22);
+    Line::from(vec![
+        Span::styled(label.to_string(), Style::default().fg(theme::TEXT_DIM())),
+        Span::styled(
+            format!("{} {nums}", meter(cur, max, meter_w)),
+            Style::default().fg(color),
+        ),
+    ])
+}
+
 /// Truncate (with an ellipsis) or right-pad `name` to exactly `w` display
 /// columns, so roster rows line up into clean columns regardless of name width.
 fn fit(name: &str, w: usize) -> String {
@@ -4325,7 +4368,7 @@ fn composed_portrait(class_key: &str, sel: &[u8], accent: Color) -> Vec<Line<'st
 // ---- The panel behind each key: pack, shop, craft, tame, atlas -----------
 
 fn character_panel(view: &PlayerView) -> Vec<Line<'static>> {
-    let mut lines = vitals(view);
+    let mut lines = vitals(view, VitalStyle::Numbers);
     lines.push(Line::raw(""));
     lines.push(section("Combat"));
     lines.push(stat("attack", view.attack.to_string()));
