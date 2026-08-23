@@ -38,4 +38,3 @@ fn restored_finished_game_does_not_resubmit_its_final_score() {
 
     assert_eq!(state.score, 11_000, "the finished board is still on screen");
 }
-

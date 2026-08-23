@@ -168,7 +168,10 @@ fn failed_word_fetch_retries_after_backoff() {
     // Without a runtime the fetch sender drops, standing in for a DB error.
     assert!(state.ensure_current_daily());
     assert!(state.poll_word_reload(), "the dead fetch should be noticed");
-    assert_eq!(state.puzzle_date, yesterday, "a failure must not bank today");
+    assert_eq!(
+        state.puzzle_date, yesterday,
+        "a failure must not bank today"
+    );
     assert!(!state.daily_word_loaded);
 
     // Inside the backoff window: no hammering.

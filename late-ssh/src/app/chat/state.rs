@@ -879,6 +879,14 @@ pub enum TranslationDisplay {
     Failed,
 }
 
+/// The session identity a `ChatState` is built for: who is connected, under
+/// what name, with what rights.
+pub(crate) struct ChatSession {
+    pub user_id: Uuid,
+    pub username: String,
+    pub permissions: Permissions,
+}
+
 pub(crate) struct ChatServices {
     pub chat: ChatService,
     pub translation: crate::app::ai::translate::TranslationService,
@@ -899,14 +907,17 @@ impl Drop for ChatState {
 impl ChatState {
     pub(crate) fn new(
         services: ChatServices,
-        user_id: Uuid,
-        username: String,
-        permissions: Permissions,
+        session: ChatSession,
         active_users: Option<ActiveUsers>,
         notifier: Notifier,
         mention_ladders: MentionLadders,
         files: Option<crate::config::FilesConfig>,
     ) -> Self {
+        let ChatSession {
+            user_id,
+            username,
+            permissions,
+        } = session;
         let ChatServices {
             chat: service,
             translation: translation_service,

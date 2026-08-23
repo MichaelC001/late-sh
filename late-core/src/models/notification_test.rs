@@ -58,10 +58,9 @@ async fn rendering_a_mention_clears_it_and_leaves_unrendered_ones_unread() {
     );
 
     // Only the newer message was rendered; the old one sits above the tail.
-    let cleared =
-        Notification::mark_read_for_messages(&client, reader.id, &[seen_message.id])
-            .await
-            .expect("mark rendered mention read");
+    let cleared = Notification::mark_read_for_messages(&client, reader.id, &[seen_message.id])
+        .await
+        .expect("mark rendered mention read");
     assert_eq!(cleared, 1);
 
     assert_eq!(

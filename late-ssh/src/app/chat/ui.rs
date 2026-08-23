@@ -1430,7 +1430,6 @@ fn is_unread_boundary_message(
     marker.is_some_and(|marker| message.created > marker && message.user_id != current_user_id)
 }
 
-
 /// Whether `message` is a reply to a message written by `user_id`. Human
 /// replies carry only the target message id, so the target's author is looked
 /// up in `message_authors`; bot replies carry the target user id directly.

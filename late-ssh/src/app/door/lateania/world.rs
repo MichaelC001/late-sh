@@ -11365,55 +11365,55 @@ fn extend_wildbound(
         let entrance = carve.entrance();
         let (reachable, dist, cell_exits): (Vec<bool>, Vec<usize>, Vec<Vec<(Dir, usize)>>) =
             if let WildboundCarve::Cavern(floor) = &carve {
-            let dist = cavern_distances(floor, w, h, entrance);
-            let reachable: Vec<bool> = (0..n).map(|c| dist[c] != usize::MAX).collect();
-            let exits: Vec<Vec<(Dir, usize)>> = (0..n)
-                .map(|c| {
-                    let mut v = Vec::new();
-                    if !reachable[c] {
-                        return v;
-                    }
-                    let (x, y) = (c % w, c / w);
-                    let consider = |nx: i64, ny: i64, d: Dir, v: &mut Vec<(Dir, usize)>| {
-                        if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
-                            let nb = ny as usize * w + nx as usize;
-                            if reachable[nb] {
-                                v.push((d, nb));
+                let dist = cavern_distances(floor, w, h, entrance);
+                let reachable: Vec<bool> = (0..n).map(|c| dist[c] != usize::MAX).collect();
+                let exits: Vec<Vec<(Dir, usize)>> = (0..n)
+                    .map(|c| {
+                        let mut v = Vec::new();
+                        if !reachable[c] {
+                            return v;
+                        }
+                        let (x, y) = (c % w, c / w);
+                        let consider = |nx: i64, ny: i64, d: Dir, v: &mut Vec<(Dir, usize)>| {
+                            if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
+                                let nb = ny as usize * w + nx as usize;
+                                if reachable[nb] {
+                                    v.push((d, nb));
+                                }
+                            }
+                        };
+                        consider(x as i64, y as i64 - 1, Dir::North, &mut v);
+                        consider(x as i64 + 1, y as i64, Dir::East, &mut v);
+                        consider(x as i64, y as i64 + 1, Dir::South, &mut v);
+                        consider(x as i64 - 1, y as i64, Dir::West, &mut v);
+                        v
+                    })
+                    .collect();
+                (reachable, dist, exits)
+            } else {
+                let WildboundCarve::Maze(open) = &carve else {
+                    unreachable!("a carve is either a cavern or a maze");
+                };
+                let dist = maze_distances(open, w, h, 0);
+                let reachable: Vec<bool> = (0..n).map(|c| dist[c] != usize::MAX).collect();
+                let exits: Vec<Vec<(Dir, usize)>> = (0..n)
+                    .map(|c| {
+                        let mut v = Vec::new();
+                        if !reachable[c] {
+                            return v;
+                        }
+                        for d in 0..4 {
+                            if open[c][d]
+                                && let Some(nb) = maze_neighbor(c, d, w, h)
+                            {
+                                v.push((DIRS[d], nb));
                             }
                         }
-                    };
-                    consider(x as i64, y as i64 - 1, Dir::North, &mut v);
-                    consider(x as i64 + 1, y as i64, Dir::East, &mut v);
-                    consider(x as i64, y as i64 + 1, Dir::South, &mut v);
-                    consider(x as i64 - 1, y as i64, Dir::West, &mut v);
-                    v
-                })
-                .collect();
-            (reachable, dist, exits)
-        } else {
-            let WildboundCarve::Maze(open) = &carve else {
-                unreachable!("a carve is either a cavern or a maze");
+                        v
+                    })
+                    .collect();
+                (reachable, dist, exits)
             };
-            let dist = maze_distances(open, w, h, 0);
-            let reachable: Vec<bool> = (0..n).map(|c| dist[c] != usize::MAX).collect();
-            let exits: Vec<Vec<(Dir, usize)>> = (0..n)
-                .map(|c| {
-                    let mut v = Vec::new();
-                    if !reachable[c] {
-                        return v;
-                    }
-                    for d in 0..4 {
-                        if open[c][d]
-                            && let Some(nb) = maze_neighbor(c, d, w, h)
-                        {
-                            v.push((DIRS[d], nb));
-                        }
-                    }
-                    v
-                })
-                .collect();
-            (reachable, dist, exits)
-        };
 
         let deepest = (0..n)
             .filter(|&c| reachable[c])

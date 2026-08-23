@@ -2,8 +2,8 @@
 
 use crate::authz::Permissions;
 use crate::test_helpers::{
-    assert_render_not_contains_for, chat_compose_app, make_app, make_app_with_chat_service,
-    make_app_in_world, make_app_with_permissions, new_test_db, render_plain,
+    assert_render_not_contains_for, chat_compose_app, make_app, make_app_in_world,
+    make_app_with_chat_service, make_app_with_permissions, new_test_db, render_plain,
     wait_for_render_contains, wait_for_render_not_contains, wait_until, with_session_key,
 };
 use late_core::models::cyberspace_account::CyberspaceAccount;
