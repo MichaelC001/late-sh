@@ -171,7 +171,7 @@ Reactions:
 
 Notifications:
 - Mentions are stored in `notifications`.
-- Mention unread state is cursor-based through `mention_feed_reads`.
+- Mention unread state clears two ways, and **either** is enough: the global `mention_feed_reads` watermark (opening the Mentions entry) or the mention row's own `read_at`, stamped when the message it rides on is rendered in its room. `ChatState::flush_rendered_mention_reads` collects mentions of the current user among the *loaded* messages of each room being marked read (on the same debounced flush as the read cursors) and sends them through `NotificationService::mark_read_for_messages_task`, which stamps `notifications.read_at` and republishes the unread count in the same task after the update commits, so the rail badge clears live. The room's coarse `chat_room_members.last_read_at` cursor deliberately plays no part: it moves whenever a room is merely opened (including the auto-selected room at connect), which would clear mentions above the loaded tail that were never on screen; those stay unread. `list_for_user` returns `read_at` so the list's unread dot applies the same rule (still against the marker frozen on entry, so the dots survive the visit that read them). (`MentionFeedRead::unread_count_for_user` is an older single-cursor copy of the count with no production callers.)
 - Mention resolution excludes the actor and recipients who ignore the actor; DMs only notify DM participants, private rooms only members, and non-game public rooms may mention any user. Game-room chat does not create Mentions feed notifications.
 
 ---
@@ -268,7 +268,8 @@ Submit flow in `ChatState::submit_composer`:
 - `/leave` and `/invite` resolve through the active composer room or selected real room. Synthetic entries do not fall back to stale `selected_room_id` values; `/leave` on a selected synthetic entry exits that entry back to the last real room.
 - `/members` uses the same real-room resolver as `/leave` and `/invite`.
 - Normal send calls `send_message_with_reply_task`.
-- Edit calls `edit_message_task`.
+- Edit calls `edit_message_task`. There is no edited flag: a message counts as edited when `updated > created`, which appends `(edited)` to the author header's stamp. Because of that, an edited message never groups as a continuation under the message above it (`ensure_chat_rows_cache`): it takes its own author header back so the marker has somewhere to live. Editing the second message in a run visibly breaks the run; that is the intent.
+- An image upload started from the composer carries its reply target with it (`PendingUrlUpload`/`PendingClipboardImageUpload`, then `image_upload_reply_target`), because both `/upload` and `/paste-image` clear the composer at submit and the finished URL reopens it through `start_composing_in_room`. `tick.rs` restores the target after reopening, and drops it on a failed upload.
 - Enter submits and closes.
 - `Alt+S` submits and keeps the composer open.
 - The `keep_composer_focused` Tweaks setting flips Enter to behave like
