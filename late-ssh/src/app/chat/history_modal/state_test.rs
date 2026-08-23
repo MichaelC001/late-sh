@@ -234,7 +234,12 @@ fn unread_divider_targets_the_first_foreign_message_past_the_cutoff() {
         VIEWER,
         Some(cutoff),
     );
-    state.apply_page(request_id, HistoryDirection::Older, messages, HashMap::new());
+    state.apply_page(
+        request_id,
+        HistoryDirection::Older,
+        messages,
+        HashMap::new(),
+    );
 
     assert_eq!(state.unread_divider_target(), Some(message(11).id));
 }

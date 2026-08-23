@@ -3592,7 +3592,10 @@ async fn a_ready_summary_waits_for_an_open_overlay_instead_of_clobbering_it() {
 
     // The overlay the user is reading stays; a banner says the summary
     // waits for the surface.
-    assert_eq!(state.overlay.as_ref().map(|o| o.title.as_str()), Some("Rules"));
+    assert_eq!(
+        state.overlay.as_ref().map(|o| o.title.as_str()),
+        Some("Rules")
+    );
     assert_eq!(
         tick.banner.expect("banner").message,
         "Summary ready, close the open panel to view"

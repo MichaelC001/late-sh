@@ -7705,10 +7705,7 @@ fn short_user_id(user_id: Uuid) -> String {
 /// unread waiting (inner `None`), and a default look-back when caught up
 /// (no entry) so `/summary` still answers "what happened today". The
 /// service re-clamps every request to the max window as cost policy.
-fn summary_since(
-    marker: Option<&Option<DateTime<Utc>>>,
-    now: DateTime<Utc>,
-) -> DateTime<Utc> {
+fn summary_since(marker: Option<&Option<DateTime<Utc>>>, now: DateTime<Utc>) -> DateTime<Utc> {
     match marker {
         Some(Some(marker)) => *marker,
         Some(None) => {

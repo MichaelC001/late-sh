@@ -97,7 +97,9 @@ pub enum SummaryOutcome {
     /// A request for this room is already running; the duplicate collapses
     /// into it and spends nothing.
     InFlight,
-    Cooldown { remaining: Duration },
+    Cooldown {
+        remaining: Duration,
+    },
     CapExhausted,
     /// AI is disabled or unconfigured for this deployment.
     Unavailable,

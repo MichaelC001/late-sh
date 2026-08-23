@@ -25,8 +25,8 @@ fn inert_service(ai_enabled_with_key: bool) -> SummaryService {
 }
 
 fn message(index: u64, author: Uuid, body: &str) -> ChatMessage {
-    let created =
-        Utc.with_ymd_and_hms(2026, 8, 1, 12, 0, 0).unwrap() + chrono::Duration::seconds(index as i64);
+    let created = Utc.with_ymd_and_hms(2026, 8, 1, 12, 0, 0).unwrap()
+        + chrono::Duration::seconds(index as i64);
     ChatMessage {
         id: Uuid::from_u128(1000 + index as u128),
         created,

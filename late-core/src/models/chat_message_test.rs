@@ -552,16 +552,18 @@ async fn list_public_room_since_scopes_to_public_members_and_window() {
 
     // Floor between the two peer messages: only the later two qualify, own
     // messages included, oldest first.
-    let page = ChatMessage::list_public_room_since(&client, room.id, member.id, early.created, &[], 100)
-        .await
-        .unwrap();
+    let page =
+        ChatMessage::list_public_room_since(&client, room.id, member.id, early.created, &[], 100)
+            .await
+            .unwrap();
     let ids: Vec<Uuid> = page.iter().map(|message| message.id).collect();
     assert_eq!(ids, vec![late.id, own.id]);
 
     // Over-cap backlogs keep the newest end.
-    let capped = ChatMessage::list_public_room_since(&client, room.id, member.id, early.created, &[], 1)
-        .await
-        .unwrap();
+    let capped =
+        ChatMessage::list_public_room_since(&client, room.id, member.id, early.created, &[], 1)
+            .await
+            .unwrap();
     let capped_ids: Vec<Uuid> = capped.iter().map(|message| message.id).collect();
     assert_eq!(capped_ids, vec![own.id]);
 
@@ -591,16 +593,10 @@ async fn list_public_room_since_scopes_to_public_members_and_window() {
     )
     .await
     .unwrap();
-    let outside = ChatMessage::list_public_room_since(
-        &client,
-        room.id,
-        outsider.id,
-        early.created,
-        &[],
-        100,
-    )
-    .await
-    .unwrap();
+    let outside =
+        ChatMessage::list_public_room_since(&client, room.id, outsider.id, early.created, &[], 100)
+            .await
+            .unwrap();
     assert!(outside.is_empty());
 }
 
