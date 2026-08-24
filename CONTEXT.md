@@ -3,7 +3,7 @@
 ## Metadata
 - Domain: late.sh - Command-Line Clubhouse for Computer People
 - Primary audience: LLM agents working on this codebase, human contributors
-- Last updated: 2026-08-23 (chat catch-up trio: `j`/`k` scroll by rows inside a selected message taller than the pane before moving selection; the `/history` modal gained the `new messages` divider and opens on the first unread; new `/summary` command asks the AI for a public-room catch-up since the last read, capped at 48h / 200k transcript chars with cooldown + daily cap (`late-ssh/src/app/ai/summary.rs`). Details in `late-ssh/src/app/chat/CONTEXT.md` §9 and §14. Also merged from main, a batch of chat-room suggestions: global `Ctrl+L` force-repaint (every screen but the Scratchpad, which keeps the chord for its language cycle); one shared `primitives::draw_too_small` so every minimum-size screen names the size it needs and the size you have; the poll strip carries its author (`ActiveChatPoll::author_username`); display-time `:shortcode:` emoji expansion in `common/emoji.rs`, applied in the markdown renderer's plain-text funnel so code stays literal; a heavier unread divider; Discover sorts by activity or members (`s`); the Themes tab gained `/` search and `f` favourites (`users.settings.favorite_theme_ids`); Lateris gained a hold slot (`c`, migration 146); and nonogram `r`/`n` now confirm like every other Arcade game. Window title set/restored around the alt screen.)
+- Last updated: 2026-08-24 (arrow keys in the doors, and a `/summary` floor. Every vt100-backed door now retypes cursor keys to the mode the game asked for (shared `late-ssh/src/app/door/keys.rs` gated on `Screen::application_cursor`; a no-op for games that never request it; invariant write-up in `late-ssh/src/app/door/dcss/CONTEXT.md` §4). NetHack needed a windowport change too: the default tty port reads raw `getchar()` and decodes no arrow escapes in any mode, so the `door-nethack` image (tag `5.0.0-r3`) now also compiles the curses windowport, a per-player opt-in via `OPTIONS=windowtype:curses` in the rc paste box; tty stays everyone's default (`late-ssh/src/app/door/nethack/CONTEXT.md` §6/§7). `/summary` now always covers at least the last 24h, widened by an older read marker and still capped at 48h / 200k chars: the read cursor advances just from sitting in a visible room, so an overnight-open terminal used to get "nothing new to summarize". A window can also be typed (`/summary 6h`, `/summary 90m`), which is taken at face value up to the same 48h cap. Policy lives in `summary::window_start` over a closed `SummaryWindow` (`late-ssh/src/app/chat/CONTEXT.md` §14).)
 - Status: Active
 - Stability note: Sections marked `[STABLE]` should change rarely. Sections marked `[VOLATILE]` are expected to change often.
 
@@ -1063,6 +1063,14 @@ Read Postgres logs around an OOM/failover from the affected pod and prior contai
 kubectl logs -n default <postgres-pod> -c postgres --previous --tail=300
 kubectl logs -n default <postgres-pod> -c postgres --tail=300
 ```
+
+### 10.2.3 Chat feedback dumps
+
+`scripts/dump_chat_room.sh` snapshots public topic rooms to text (`#bugs`,
+`#suggestions` by default; `LATE_DUMP_DIR=feedback` refreshes the committed
+copies). Every message header ends with `id=<uuid>`. Feed those ids to
+`scripts/delete_chat_messages.sh` to prune handled entries: it deletes exactly
+the ids given, nothing else, after a preview and a confirmation prompt.
 
 ### 10.3 Testing
 
