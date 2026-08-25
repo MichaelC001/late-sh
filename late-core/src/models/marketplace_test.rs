@@ -5,23 +5,28 @@ use crate::{
         marketplace::{
             AQUARIUM_FISH_ITEM_KIND, AQUARIUM_MAX_FISH, AQUARIUM_SKU, BONSAI_CONSUMABLE_ITEM_KIND,
             BONSAI_DECAY_PROTECTION_KIND, BONSAI_DECAY_SHIELD_SKU, BONSAI_VARIANT_SLOT,
-            CHAT_BADGE_SLOT, CHAT_CONSUMABLE_ITEM_KIND, COMPANION_CONSUMABLE_ITEM_KIND,
-            ConsumableUseStatus, DYNAMIC_BONSAI_SKU, FishActiveStatus, MarketplaceItem,
-            PET_COMPANION_SKU, PurchaseStatus, THEMATRIX_ULTIMATE_SKU, ULTIMATE_SPELL_KIND,
-            USERNAME_EFFECT_ITEM_KIND, UserPurchase, WONDERLAND_ULTIMATE_SKU,
-            adjust_aquarium_fish_active_by_sku, aquarium_is_hungry, consume_aquarium_food_pinch,
-            equip_owned_item_by_sku, purchase_durable_item_by_sku,
-            purchase_item_by_sku_with_username_effect, unequip_slot, username_effect_duration_secs,
+            CHAT_BADGE_SLOT, CHAT_CONSUMABLE_ITEM_KIND, CHAT_FLAG_SLOT,
+            COMPANION_CONSUMABLE_ITEM_KIND, ConsumableUseStatus, DYNAMIC_BONSAI_SKU,
+            FishActiveStatus, MarketplaceItem, PET_COMPANION_SKU, PurchaseStatus,
+            THEMATRIX_ULTIMATE_SKU, ULTIMATE_SPELL_KIND, USERNAME_EFFECT_ITEM_KIND, UserPurchase,
+            WONDERLAND_ULTIMATE_SKU, adjust_aquarium_fish_active_by_sku, aquarium_is_hungry,
+            consume_aquarium_food_pinch, equip_owned_item_by_sku, purchase_durable_item_by_sku,
+            purchase_item_by_sku_with_chat_effect, purchase_item_by_sku_with_custom_title,
+            purchase_item_by_sku_with_username_effect, rental_duration_secs, unequip_slot,
         },
         pet::PetCompanion,
+        rental::{
+            BADGE_RENTAL_ITEM_KIND, BadgeRental, CustomTitle, RENTAL_DAY_SECS, RENTAL_MONTH_SECS,
+            TITLE_EFFECT_KIND, TITLE_MAX_LEN, TITLE_RENTAL_ITEM_KIND, is_custom_title,
+            title_from_payload,
+        },
         shop_consumable_effect::ShopConsumableEffect,
         ultimate_cooldown::UltimateCastCooldown,
         user::User,
         username_effect::{
-            GlowColor, GradientPair, USERNAME_EFFECT_KIND, USERNAME_EFFECT_MONTH_DURATION_SECS,
-            USERNAME_GLOW_MONTH_SKU, USERNAME_GLOW_SKU, USERNAME_GRADIENT_MONTH_SKU,
-            USERNAME_GRADIENT_SKU, USERNAME_SHIMMER_MONTH_SKU, USERNAME_SHIMMER_SKU,
-            UsernameEffect,
+            GlowColor, GradientPair, USERNAME_EFFECT_KIND, USERNAME_GLOW_MONTH_SKU,
+            USERNAME_GLOW_SKU, USERNAME_GRADIENT_MONTH_SKU, USERNAME_GRADIENT_SKU,
+            USERNAME_SHIMMER_MONTH_SKU, USERNAME_SHIMMER_SKU, UsernameEffect,
         },
     },
     test_utils::{create_test_user, test_db},
@@ -39,6 +44,10 @@ const AQUARIUM_BIGBERT_PRICE: i64 = 10_000;
 const ULTIMATE_SPELL_PRICE: i64 = 10_000_000;
 const ROOM_SPARK_PRICE: i64 = 2_000;
 const AQUARIUM_FOOD_PRICE: i64 = 100;
+const BADGE_RENTAL_DAY_PRICE: i64 = 100;
+const BADGE_RENTAL_MONTH_PRICE: i64 = 3_000;
+const CUSTOM_TITLE_DAY_PRICE: i64 = 2_000;
+const CUSTOM_TITLE_MONTH_PRICE: i64 = 80_000;
 
 #[tokio::test]
 async fn seeded_catalog_contains_pet_companion_unlock() {
@@ -80,45 +89,77 @@ async fn seeded_catalog_contains_dynamic_bonsai_unlock() {
 }
 
 #[tokio::test]
-async fn seeded_catalog_contains_badge_shop_items() {
+async fn seeded_catalog_rents_every_badge_and_flag_and_retires_the_permanent_skus() {
     let test_db = test_db().await;
     let client = test_db.db.get().await.expect("db client");
 
     let items = MarketplaceItem::list_visible(&client)
         .await
         .expect("list items");
-    let cat_badge = items
-        .iter()
-        .find(|item| item.sku == "badge_cat")
-        .expect("cat badge");
-    let gem_badge = items
-        .iter()
-        .find(|item| item.sku == "badge_gem")
-        .expect("gem badge");
 
-    assert_eq!(cat_badge.item_kind, "badge");
-    assert_eq!(cat_badge.slot.as_deref(), Some(CHAT_BADGE_SLOT));
-    assert_eq!(cat_badge.price_chips, BASIC_BADGE_PRICE);
-    assert_eq!(cat_badge.payload["emoji"], "🐱");
-    assert_eq!(cat_badge.payload["tier"], "basic");
-    assert!(
-        items
+    // sku, emoji, slot, day price, month price
+    let expectations = [
+        ("badge_cat", "🐱", CHAT_BADGE_SLOT, 100, 4_000),
+        ("badge_lightning", "⚡", CHAT_BADGE_SLOT, 100, 4_000),
+        ("badge_gem", "💎", CHAT_BADGE_SLOT, 250, 10_000),
+        ("badge_flag_pl", "🇵🇱", CHAT_FLAG_SLOT, 100, 4_000),
+    ];
+    for (legacy_sku, emoji, slot, day_price, month_price) in expectations {
+        let day = items
             .iter()
-            .any(|item| item.sku == "badge_lightning" && item.payload["emoji"] == "⚡")
-    );
-    assert!(
-        items
+            .find(|item| item.sku == format!("{legacy_sku}_day"))
+            .unwrap_or_else(|| panic!("missing {legacy_sku}_day"));
+        let month = items
             .iter()
-            .any(|item| item.sku == "badge_droplet" && item.payload["emoji"] == "💧")
-    );
+            .find(|item| item.sku == format!("{legacy_sku}_month"))
+            .unwrap_or_else(|| panic!("missing {legacy_sku}_month"));
+
+        for (item, price, duration) in [
+            (day, day_price, RENTAL_DAY_SECS),
+            (month, month_price, RENTAL_MONTH_SECS),
+        ] {
+            assert_eq!(item.item_kind, BADGE_RENTAL_ITEM_KIND);
+            // A rental never equips anything: the slot it fills lives in the
+            // payload, and reaches chat through an effect row.
+            assert_eq!(item.slot, None);
+            assert_eq!(item.price_chips, price);
+            assert_eq!(item.payload["emoji"], emoji);
+            assert_eq!(item.payload["slot"], slot);
+            assert_eq!(rental_duration_secs(item), duration);
+            assert_eq!(
+                BadgeRental::from_payload(&item.payload)
+                    .expect("renderable rental")
+                    .emoji,
+                emoji
+            );
+        }
+        // The month tier lists directly under its day twin.
+        assert_eq!(month.sort_order, day.sort_order + 5);
+
+        // The permanent SKU is retired, not deleted: history in
+        // `user_purchases` still resolves, and legacy owners keep rendering.
+        assert!(
+            !items.iter().any(|item| item.sku == legacy_sku),
+            "{legacy_sku} must not be buyable any more"
+        );
+        let legacy = client
+            .query_one(
+                "SELECT active, item_kind FROM marketplace_items WHERE sku = $1",
+                &[&legacy_sku],
+            )
+            .await
+            .expect("legacy row still present");
+        assert!(!legacy.get::<_, bool>("active"));
+        assert_eq!(legacy.get::<_, String>("item_kind"), "badge");
+    }
+
+    // Nothing permanent is left on either chat-label slot.
     assert!(
-        items
+        !items
             .iter()
-            .any(|item| item.sku == "badge_snowflake" && item.payload["emoji"] == "❄️")
+            .any(|item| item.slot.as_deref() == Some(CHAT_BADGE_SLOT)
+                || item.slot.as_deref() == Some(CHAT_FLAG_SLOT))
     );
-    assert!(!items.iter().any(|item| item.sku == "badge_elements"));
-    assert_eq!(gem_badge.price_chips, 5_000);
-    assert_eq!(gem_badge.payload["tier"], "premium");
 }
 
 #[tokio::test]
@@ -153,6 +194,43 @@ async fn seeded_catalog_contains_chat_and_companion_consumables() {
     assert_eq!(aquarium_food.item_kind, COMPANION_CONSUMABLE_ITEM_KIND);
     assert_eq!(aquarium_food.price_chips, AQUARIUM_FOOD_PRICE);
     assert_eq!(aquarium_food.payload["effect_kind"], "aquarium_food");
+}
+
+#[tokio::test]
+async fn hack_room_is_retired_and_room_bump_leads_the_chat_consumables() {
+    let test_db = test_db().await;
+    let client = test_db.db.get().await.expect("db client");
+
+    // Catalog order is the Chat tab's order: Room Bump first, nothing named
+    // Hack Room anywhere on sale.
+    let items = MarketplaceItem::list_visible(&client)
+        .await
+        .expect("list items");
+    let chat_consumables: Vec<&str> = items
+        .iter()
+        .filter(|item| item.item_kind == CHAT_CONSUMABLE_ITEM_KIND)
+        .map(|item| item.sku.as_str())
+        .collect();
+    assert_eq!(
+        chat_consumables,
+        vec![
+            "chat_room_bump",
+            "chat_room_spark",
+            "chat_room_glow",
+            "chat_room_pulse"
+        ]
+    );
+
+    // Retired, not deleted: the row stays for purchase history, inactive.
+    let active: bool = client
+        .query_one(
+            "SELECT active FROM marketplace_items WHERE sku = 'chat_pinned_vibe'",
+            &[],
+        )
+        .await
+        .expect("hack room row")
+        .get(0);
+    assert!(!active);
 }
 
 #[tokio::test]
@@ -700,14 +778,8 @@ async fn badge_purchase_equips_one_chat_badge_per_user() {
     .await
     .expect("fund chips");
 
-    let first = purchase_durable_item_by_sku(&mut client, user.id, "badge_cat")
-        .await
-        .expect("first purchase")
-        .expect("first badge");
-    let second = purchase_durable_item_by_sku(&mut client, user.id, "badge_dog")
-        .await
-        .expect("second purchase")
-        .expect("second badge");
+    let first = buy_retired_permanent_badge(&mut client, user.id, "badge_cat").await;
+    let second = buy_retired_permanent_badge(&mut client, user.id, "badge_dog").await;
 
     assert_eq!(first.status, PurchaseStatus::Purchased);
     assert_eq!(second.status, PurchaseStatus::Purchased);
@@ -917,11 +989,531 @@ async fn durable_purchase_is_idempotent_for_owned_item() {
     assert_eq!(debit_count, 1);
 }
 
+/// Buys a permanent badge the way its owner did before rentals retired the
+/// SKU. Migration 148 leaves the row in place with `active = false`, so this
+/// flips it on for the purchase and back off again: the user ends up in
+/// exactly the state a pre-rental owner is in today, reached through the same
+/// purchase path production used.
+async fn buy_retired_permanent_badge(
+    client: &mut tokio_postgres::Client,
+    user_id: uuid::Uuid,
+    sku: &str,
+) -> crate::models::marketplace::PurchaseResult {
+    client
+        .execute(
+            "UPDATE marketplace_items SET active = true WHERE sku = $1",
+            &[&sku],
+        )
+        .await
+        .expect("un-retire legacy badge");
+    let result = purchase_durable_item_by_sku(client, user_id, sku)
+        .await
+        .expect("legacy badge purchase")
+        .expect("legacy badge exists");
+    client
+        .execute(
+            "UPDATE marketplace_items SET active = false WHERE sku = $1",
+            &[&sku],
+        )
+        .await
+        .expect("re-retire legacy badge");
+    result
+}
+
+/// Every live user-scoped effect row of one kind for one user.
+async fn active_effect_rows(
+    client: &tokio_postgres::Client,
+    user_id: uuid::Uuid,
+    effect_kind: &str,
+) -> Vec<ShopConsumableEffect> {
+    ShopConsumableEffect::active_user_effects_for_user(client, user_id, &[effect_kind])
+        .await
+        .expect("active effects")
+}
+
+/// Ages a live effect row out, the way its `ends_at` would pass on its own.
+async fn expire_effect_rows(
+    client: &tokio_postgres::Client,
+    user_id: uuid::Uuid,
+    effect_kind: &str,
+) {
+    client
+        .execute(
+            "UPDATE shop_consumable_effects
+             SET ends_at = current_timestamp - INTERVAL '1 second'
+             WHERE user_id = $1 AND effect_kind = $2 AND room_id IS NULL",
+            &[&user_id, &effect_kind],
+        )
+        .await
+        .expect("expire effect rows");
+}
+
+async fn chat_label(
+    client: &tokio_postgres::Client,
+    user_id: uuid::Uuid,
+) -> (Option<String>, Option<String>) {
+    let metadata = User::list_chat_author_metadata(client, &[user_id])
+        .await
+        .expect("chat author metadata");
+    let row = metadata.into_iter().next().expect("one row per user");
+    (row.chat_badge, row.chat_flag)
+}
+
+#[tokio::test]
+async fn badge_rental_activates_one_row_per_slot_and_a_rebuy_replaces_it() {
+    let test_db = test_db().await;
+    let user = create_test_user(&test_db.db, "badge-rental-buy").await;
+    let mut client = test_db.db.get().await.expect("db client");
+    let starting_balance = UserChips::apply(
+        &**client,
+        user.id,
+        ChipMove::Credit,
+        BADGE_RENTAL_MONTH_PRICE * 2,
+        None,
+    )
+    .await
+    .expect("fund chips")
+    .expect("credited")
+    .balance;
+
+    let before = chrono::Utc::now();
+    let result = purchase_item_by_sku_with_chat_effect(&mut client, user.id, "badge_cat_day", None)
+        .await
+        .expect("rent cat badge");
+    let purchase = result.purchase.expect("item available");
+    assert_eq!(purchase.status, PurchaseStatus::Purchased);
+    assert_eq!(purchase.balance, starting_balance - BADGE_RENTAL_DAY_PRICE);
+
+    let row = result.badge_rental.expect("activated rental row");
+    assert_eq!(row.user_id, user.id);
+    assert_eq!(row.room_id, None);
+    assert_eq!(row.effect_kind, CHAT_BADGE_SLOT);
+    assert_eq!(row.source_sku, "badge_cat_day");
+    assert_eq!(row.payload["emoji"], "🐱");
+    let expected_end = before + chrono::Duration::seconds(RENTAL_DAY_SECS);
+    assert!(row.ends_at >= expected_end - chrono::Duration::seconds(60));
+    assert!(row.ends_at <= expected_end + chrono::Duration::seconds(60));
+    assert_eq!(
+        chat_label(&client, user.id).await,
+        (Some("🐱".into()), None)
+    );
+
+    // A rebuy across badges and tiers replaces the live row and resets the
+    // clock: still exactly one badge.
+    let before = chrono::Utc::now();
+    let row = purchase_item_by_sku_with_chat_effect(&mut client, user.id, "badge_dog_month", None)
+        .await
+        .expect("rent dog badge")
+        .badge_rental
+        .expect("activated rental row");
+    assert_eq!(row.source_sku, "badge_dog_month");
+    let expected_end = before + chrono::Duration::seconds(RENTAL_MONTH_SECS);
+    assert!(row.ends_at >= expected_end - chrono::Duration::seconds(60));
+    let rows = active_effect_rows(&client, user.id, CHAT_BADGE_SLOT).await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, row.id);
+    assert_eq!(
+        chat_label(&client, user.id).await,
+        (Some("🐶".into()), None)
+    );
+
+    // The flag is its own slot: renting one leaves the badge alone.
+    purchase_item_by_sku_with_chat_effect(&mut client, user.id, "badge_flag_pl_day", None)
+        .await
+        .expect("rent flag");
+    assert_eq!(
+        active_effect_rows(&client, user.id, CHAT_BADGE_SLOT)
+            .await
+            .len(),
+        1
+    );
+    assert_eq!(
+        active_effect_rows(&client, user.id, CHAT_FLAG_SLOT)
+            .await
+            .len(),
+        1
+    );
+    assert_eq!(
+        chat_label(&client, user.id).await,
+        (Some("🐶".into()), Some("🇵🇱".into()))
+    );
+
+    // Expiry needs no background task: the label query stops seeing the row
+    // the moment `ends_at` passes.
+    expire_effect_rows(&client, user.id, CHAT_BADGE_SLOT).await;
+    expire_effect_rows(&client, user.id, CHAT_FLAG_SLOT).await;
+    assert_eq!(chat_label(&client, user.id).await, (None, None));
+}
+
+#[tokio::test]
+async fn chat_label_prefers_a_live_rental_over_the_legacy_permanent_badge() {
+    let test_db = test_db().await;
+    let user = create_test_user(&test_db.db, "badge-rental-legacy").await;
+    let mut client = test_db.db.get().await.expect("db client");
+    UserChips::apply(
+        &**client,
+        user.id,
+        ChipMove::Credit,
+        BASIC_BADGE_PRICE + BADGE_RENTAL_DAY_PRICE,
+        None,
+    )
+    .await
+    .expect("fund chips");
+
+    // Bought before rentals existed, and still equipped.
+    buy_retired_permanent_badge(&mut client, user.id, "badge_cat").await;
+    assert_eq!(
+        chat_label(&client, user.id).await,
+        (Some("🐱".into()), None)
+    );
+
+    // A live rental wins over it...
+    purchase_item_by_sku_with_chat_effect(&mut client, user.id, "badge_dog_day", None)
+        .await
+        .expect("rent dog badge");
+    assert_eq!(
+        chat_label(&client, user.id).await,
+        (Some("🐶".into()), None)
+    );
+
+    // ...and the permanent badge comes back when the rental lapses.
+    expire_effect_rows(&client, user.id, CHAT_BADGE_SLOT).await;
+    assert_eq!(
+        chat_label(&client, user.id).await,
+        (Some("🐱".into()), None)
+    );
+}
+
+#[tokio::test]
+async fn a_badge_rental_never_shows_on_another_users_label() {
+    let test_db = test_db().await;
+    let renter = create_test_user(&test_db.db, "badge-rental-renter").await;
+    let bystander = create_test_user(&test_db.db, "badge-rental-bystander").await;
+    let mut client = test_db.db.get().await.expect("db client");
+
+    purchase_item_by_sku_with_chat_effect(&mut client, renter.id, "badge_cat_day", None)
+        .await
+        .expect("rent cat badge");
+    purchase_item_by_sku_with_chat_effect(&mut client, renter.id, "badge_flag_pl_day", None)
+        .await
+        .expect("rent flag");
+
+    assert_eq!(
+        chat_label(&client, renter.id).await,
+        (Some("🐱".into()), Some("🇵🇱".into()))
+    );
+    assert_eq!(chat_label(&client, bystander.id).await, (None, None));
+    assert!(
+        active_effect_rows(&client, bystander.id, CHAT_BADGE_SLOT)
+            .await
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn curated_titles_are_retired_and_cannot_be_bought() {
+    let test_db = test_db().await;
+    let user = create_test_user(&test_db.db, "curated-title-retired").await;
+    let mut client = test_db.db.get().await.expect("db client");
+
+    // The only title on sale is the one the buyer writes: nothing visible
+    // carries a text of its own.
+    let items = MarketplaceItem::list_visible(&client)
+        .await
+        .expect("list items");
+    assert!(
+        items
+            .iter()
+            .filter(|item| item.item_kind == TITLE_RENTAL_ITEM_KIND)
+            .all(|item| is_custom_title(&item.payload)),
+        "a curated title is still on sale"
+    );
+
+    // Retired, not deleted: the 36 curated titles keep their day and month
+    // rows for purchase history, switched off.
+    let retired: i64 = client
+        .query_one(
+            "SELECT COUNT(*)
+             FROM marketplace_items
+             WHERE item_kind = $1
+               AND active = false
+               AND COALESCE((payload->>'custom')::boolean, false) = false",
+            &[&TITLE_RENTAL_ITEM_KIND],
+        )
+        .await
+        .expect("count retired titles")
+        .get(0);
+    assert_eq!(retired, 72);
+
+    // A retired SKU is not for sale, funded or not: the purchase is a no-op
+    // (nothing bought, nothing activated), the same contract the retired
+    // permanent badges follow.
+    UserChips::apply(
+        &**client,
+        user.id,
+        ChipMove::Credit,
+        CUSTOM_TITLE_MONTH_PRICE,
+        None,
+    )
+    .await
+    .expect("fund chips");
+    let funded = UserChips::ensure(&client, user.id)
+        .await
+        .expect("balance")
+        .balance;
+    let result = purchase_item_by_sku_with_chat_effect(
+        &mut client,
+        user.id,
+        "title_the_insufferable_day",
+        None,
+    )
+    .await
+    .expect("retired sku purchase");
+    assert!(result.purchase.is_none());
+    assert!(result.title_rental.is_none());
+    assert!(
+        active_effect_rows(&client, user.id, TITLE_EFFECT_KIND)
+            .await
+            .is_empty()
+    );
+    let balance = UserChips::ensure(&client, user.id)
+        .await
+        .expect("balance")
+        .balance;
+    assert_eq!(balance, funded, "a retired title is never charged for");
+}
+
+#[tokio::test]
+async fn title_rental_replaces_expires_and_leaves_the_username_effect_alone() {
+    let test_db = test_db().await;
+    let user = create_test_user(&test_db.db, "title-rental-buy").await;
+    let mut client = test_db.db.get().await.expect("db client");
+    UserChips::apply(
+        &**client,
+        user.id,
+        ChipMove::Credit,
+        CUSTOM_TITLE_MONTH_PRICE + CUSTOM_TITLE_DAY_PRICE + USERNAME_GLOW_PRICE,
+        None,
+    )
+    .await
+    .expect("fund chips");
+
+    let before = chrono::Utc::now();
+    let row = purchase_item_by_sku_with_custom_title(
+        &mut client,
+        user.id,
+        "title_custom_day",
+        CustomTitle::parse("the insufferable").expect("valid title"),
+    )
+    .await
+    .expect("rent title")
+    .title_rental
+    .expect("activated title row");
+    assert_eq!(row.effect_kind, TITLE_EFFECT_KIND);
+    assert_eq!(row.room_id, None);
+    assert_eq!(row.source_sku, "title_custom_day");
+    assert_eq!(
+        title_from_payload(&row.payload).as_deref(),
+        Some("the insufferable")
+    );
+    let expected_end = before + chrono::Duration::seconds(RENTAL_DAY_SECS);
+    assert!(row.ends_at >= expected_end - chrono::Duration::seconds(60));
+
+    // A color effect is a different slot: buying one leaves the title alone.
+    purchase_item_by_sku_with_username_effect(
+        &mut client,
+        user.id,
+        USERNAME_GLOW_SKU,
+        UsernameEffect::Glow(GlowColor::Ember),
+    )
+    .await
+    .expect("buy glow");
+    assert_eq!(
+        active_effect_rows(&client, user.id, TITLE_EFFECT_KIND)
+            .await
+            .len(),
+        1
+    );
+
+    // A second title replaces the first, month over day; the color effect is
+    // still live.
+    let row = purchase_item_by_sku_with_custom_title(
+        &mut client,
+        user.id,
+        "title_custom_month",
+        CustomTitle::parse("the night clerk").expect("valid title"),
+    )
+    .await
+    .expect("rent second title")
+    .title_rental
+    .expect("activated title row");
+    let rows = active_effect_rows(&client, user.id, TITLE_EFFECT_KIND).await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, row.id);
+    assert_eq!(rows[0].source_sku, "title_custom_month");
+    assert_eq!(
+        title_from_payload(&rows[0].payload).as_deref(),
+        Some("the night clerk")
+    );
+    assert_eq!(
+        active_effect_rows(&client, user.id, USERNAME_EFFECT_KIND)
+            .await
+            .len(),
+        1
+    );
+
+    // The title lapses on its own clock and leaves the color running.
+    expire_effect_rows(&client, user.id, TITLE_EFFECT_KIND).await;
+    assert!(
+        active_effect_rows(&client, user.id, TITLE_EFFECT_KIND)
+            .await
+            .is_empty()
+    );
+    assert_eq!(
+        active_effect_rows(&client, user.id, USERNAME_EFFECT_KIND)
+            .await
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn seeded_catalog_contains_custom_title_tiers() {
+    let test_db = test_db().await;
+    let client = test_db.db.get().await.expect("db client");
+
+    let items = MarketplaceItem::list_visible(&client)
+        .await
+        .expect("list items");
+    let custom: Vec<&MarketplaceItem> = items
+        .iter()
+        .filter(|item| item.item_kind == TITLE_RENTAL_ITEM_KIND)
+        .filter(|item| is_custom_title(&item.payload))
+        .collect();
+    assert_eq!(custom.len(), 2, "one day tier and one month tier");
+
+    let day = custom
+        .iter()
+        .find(|item| item.sku == "title_custom_day")
+        .expect("custom title, day tier");
+    let month = custom
+        .iter()
+        .find(|item| item.sku == "title_custom_month")
+        .expect("custom title, month tier");
+    assert_eq!(day.price_chips, CUSTOM_TITLE_DAY_PRICE);
+    assert_eq!(month.price_chips, CUSTOM_TITLE_MONTH_PRICE);
+    assert_eq!(rental_duration_secs(day), RENTAL_DAY_SECS);
+    assert_eq!(rental_duration_secs(month), RENTAL_MONTH_SECS);
+    assert_eq!(month.sort_order, day.sort_order + 5);
+    for item in &custom {
+        assert_eq!(item.name, "Your Own Title");
+        assert_eq!(item.slot, None);
+        // The text does not exist until someone types it, so nothing can read
+        // one out of the payload.
+        assert_eq!(title_from_payload(&item.payload), None);
+    }
+}
+
+#[tokio::test]
+async fn custom_title_purchase_wears_the_buyers_collapsed_text() {
+    let test_db = test_db().await;
+    let user = create_test_user(&test_db.db, "custom-title-buy").await;
+    let mut client = test_db.db.get().await.expect("db client");
+    UserChips::apply(
+        &**client,
+        user.id,
+        ChipMove::Credit,
+        CUSTOM_TITLE_DAY_PRICE,
+        None,
+    )
+    .await
+    .expect("fund chips");
+    let funded = UserChips::ensure(&client, user.id)
+        .await
+        .expect("balance")
+        .balance;
+
+    let row = purchase_item_by_sku_with_custom_title(
+        &mut client,
+        user.id,
+        "title_custom_day",
+        CustomTitle::parse("  the  wrong hour ").expect("valid title"),
+    )
+    .await
+    .expect("rent custom title")
+    .title_rental
+    .expect("activated custom title");
+    assert_eq!(row.effect_kind, TITLE_EFFECT_KIND);
+    assert_eq!(row.room_id, None);
+    assert_eq!(row.source_sku, "title_custom_day");
+
+    // The live row wears the collapsed text the buyer typed, inside the cap.
+    let rows = active_effect_rows(&client, user.id, TITLE_EFFECT_KIND).await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, row.id);
+    assert_eq!(
+        title_from_payload(&rows[0].payload).as_deref(),
+        Some("the wrong hour")
+    );
+    assert!(
+        title_from_payload(&rows[0].payload)
+            .unwrap()
+            .chars()
+            .count()
+            <= TITLE_MAX_LEN
+    );
+
+    let balance = UserChips::ensure(&client, user.id)
+        .await
+        .expect("balance")
+        .balance;
+    assert_eq!(balance, funded - CUSTOM_TITLE_DAY_PRICE);
+}
+
+#[tokio::test]
+async fn a_custom_title_bought_without_text_charges_nobody() {
+    let test_db = test_db().await;
+    let user = create_test_user(&test_db.db, "custom-title-mismatch").await;
+    let mut client = test_db.db.get().await.expect("db client");
+    UserChips::apply(
+        &**client,
+        user.id,
+        ChipMove::Credit,
+        CUSTOM_TITLE_MONTH_PRICE,
+        None,
+    )
+    .await
+    .expect("fund chips");
+    let funded = UserChips::ensure(&client, user.id)
+        .await
+        .expect("balance")
+        .balance;
+
+    // The custom SKU bought through the plain path carries no text at all, so
+    // the transaction fails rather than activating an empty title.
+    assert!(
+        purchase_item_by_sku_with_chat_effect(&mut client, user.id, "title_custom_day", None)
+            .await
+            .is_err()
+    );
+
+    assert!(
+        active_effect_rows(&client, user.id, TITLE_EFFECT_KIND)
+            .await
+            .is_empty()
+    );
+    let balance = UserChips::ensure(&client, user.id)
+        .await
+        .expect("balance")
+        .balance;
+    assert_eq!(balance, funded, "a refused title is never charged for");
+}
+
 const USERNAME_GLOW_PRICE: i64 = 200;
 const USERNAME_GRADIENT_PRICE: i64 = 500;
 const USERNAME_SHIMMER_PRICE: i64 = 1_000;
-/// The month tier is the day tier's price times thirty, one chip per day.
-const USERNAME_MONTH_PRICE_MULTIPLIER: i64 = 30;
+/// The month tier is 40x the day tier (migration 153): a convenience premium.
+const USERNAME_MONTH_PRICE_MULTIPLIER: i64 = 40;
 
 #[tokio::test]
 async fn seeded_catalog_contains_username_effects() {
@@ -956,7 +1548,7 @@ async fn seeded_catalog_contains_username_effects() {
         assert_eq!(item.price_chips, price);
         assert_eq!(item.payload["variant"], variant);
         assert_eq!(item.payload["duration_secs"], 86_400);
-        assert_eq!(username_effect_duration_secs(item), 86_400);
+        assert_eq!(rental_duration_secs(item), 86_400);
         assert!(item.active);
     }
 }
@@ -1008,10 +1600,7 @@ async fn seeded_catalog_contains_monthly_username_effects() {
             day_price * USERNAME_MONTH_PRICE_MULTIPLIER
         );
         assert_eq!(item.payload["variant"], variant);
-        assert_eq!(
-            username_effect_duration_secs(item),
-            USERNAME_EFFECT_MONTH_DURATION_SECS
-        );
+        assert_eq!(rental_duration_secs(item), RENTAL_MONTH_SECS);
         assert!(item.active);
         // The month item lists directly under its day twin.
         assert_eq!(item.sort_order, day_item.sort_order + 5);
@@ -1119,7 +1708,7 @@ async fn monthly_username_effect_purchase_runs_for_thirty_days() {
         UsernameEffect::from_payload(&row.payload),
         Some(UsernameEffect::Glow(GlowColor::Sky))
     );
-    let expected_end = before + chrono::Duration::seconds(USERNAME_EFFECT_MONTH_DURATION_SECS);
+    let expected_end = before + chrono::Duration::seconds(RENTAL_MONTH_SECS);
     assert!(row.ends_at >= expected_end - chrono::Duration::seconds(60));
     assert!(row.ends_at <= expected_end + chrono::Duration::seconds(60));
 
