@@ -26,13 +26,24 @@ docker run --rm "$IMAGE" sh -c '
 # and differently from a forced-curses one. The second test also catches the
 # degenerate case where both ports fail identically and the probe proves
 # nothing; a red there means the probe needs rework, not that the image is bad.
+#
+# Two things must hold for the ports to reach their own init failure at all,
+# or every probe stalls on a pre-init "Hit return to continue:" prompt (stdin
+# is /dev/null, so it only ends when `timeout` fires) with identical output:
+#   - the playground must be writable by the probe's unprivileged uid, or
+#     check_recordfile() warns about the scoreboard before any port is up,
+#     hence the tmpfs, same as the -s test below;
+#   - the default probe must leave NETHACKOPTIONS unset rather than empty,
+#     since an empty value parses as "Empty statement" and warns the same way.
 probe() {
-  docker run --rm --user 65534:65534 -e TERM= -e "NETHACKOPTIONS=${1}" "$IMAGE" \
+  docker run --rm --user 65534:65534 \
+    --tmpfs /var/games/nethack-var:rw,mode=1777 \
+    -e TERM= "$@" "$IMAGE" \
     sh -c 'timeout 15 /var/games/nethack/nethack </dev/null 2>&1 || true'
 }
-default_out="$(probe '')"
-tty_out="$(probe 'windowtype:tty')"
-curses_out="$(probe 'windowtype:curses')"
+default_out="$(probe)"
+tty_out="$(probe -e NETHACKOPTIONS=windowtype:tty)"
+curses_out="$(probe -e NETHACKOPTIONS=windowtype:curses)"
 test "$default_out" = "$tty_out"
 test "$default_out" != "$curses_out"
 
