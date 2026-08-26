@@ -102,6 +102,10 @@ chip_moves!(
     /// Two thirds of a gild reaching the message's author. The other third
     /// has no ledger row at all: that gap is the burn.
     GildReceived,
+    /// Chips paid to take the crown. Floor-guarded, and burned whole: there
+    /// is no matching credit anywhere, so every take shrinks the supply by
+    /// the full price. `source_ref` is the reign id.
+    CrownTaken,
     DrinkPurchase,
     ShopPurchase,
     QuestReward,
@@ -161,6 +165,7 @@ impl ChipMove {
             Self::GiftReceived => "chip_gift_received",
             Self::GildSent => "chip_gild_sent",
             Self::GildReceived => "chip_gild_received",
+            Self::CrownTaken => "chip_crown_taken",
             Self::DrinkPurchase => "drink_purchase",
             Self::ShopPurchase => "shop_purchase",
             Self::QuestReward => "quest_reward",
@@ -205,6 +210,7 @@ impl ChipMove {
             | Self::SsnakeArenaEarned
             | Self::SsnakeArenaLost => "user_chips",
             Self::GildSent | Self::GildReceived => "chat_messages",
+            Self::CrownTaken => "crown_reigns",
             Self::DrinkPurchase => "bartender",
             Self::ShopPurchase => "marketplace_item",
             Self::QuestReward => "quest_assignment",
@@ -271,7 +277,7 @@ impl ChipMove {
             Self::Bet | Self::ShopPurchase | Self::SsnakeArenaLost => {
                 ChipDirection::Debit { floor: 0 }
             }
-            Self::GiftSent | Self::GildSent | Self::DrinkPurchase => {
+            Self::GiftSent | Self::GildSent | Self::CrownTaken | Self::DrinkPurchase => {
                 ChipDirection::Debit { floor: CHIP_FLOOR }
             }
             Self::FloorRestore => ChipDirection::Restore,
@@ -284,8 +290,12 @@ impl ChipMove {
         match self {
             // A gild's credit is a tip, not a standing: Top Chips ranks what
             // a player earned, and buying an author to the top of the board
-            // would make the board about who has generous friends.
-            Self::FloorRestore | Self::ShopPurchase | Self::GildReceived => false,
+            // would make the board about who has generous friends. The crown
+            // is Shop-like vanity spending: a burn that bought a glyph must
+            // not knock the buyer off the earners board.
+            Self::FloorRestore | Self::ShopPurchase | Self::GildReceived | Self::CrownTaken => {
+                false
+            }
             Self::Credit
             | Self::Bet
             | Self::GiftSent

@@ -86,6 +86,19 @@ pub enum ActivityKind {
         count: i64,
         room_slug: Option<String>,
     },
+    /// Someone took the crown. Both players are named because that is the
+    /// whole story: a takeover is one person outbidding another in public.
+    /// `reign_id` keys the #lounge repeat throttle, so back-to-back
+    /// takeovers each post (the 1.5x price ladder is the real throttle).
+    CrownTaken {
+        reign_id: Uuid,
+        price: i64,
+        /// What the next take costs, so the #lounge headline can quote it
+        /// without every reader re-deriving the ladder.
+        next_price: i64,
+        /// The deposed holder, absent when the crown was vacant.
+        from: Option<String>,
+    },
     /// A linked user published an entry on cyberspace.online from late.sh.
     /// Announces our user's own action, never cyberspace content.
     CyberspacePosted {
@@ -121,6 +134,7 @@ impl ActivityKind {
             | Self::BadgeRented { .. }
             | Self::TitleApplied { .. }
             | Self::MessageGilded { .. }
+            | Self::CrownTaken { .. }
             | Self::CyberspacePosted { .. }
             | Self::WentLive { .. }
             | Self::WatchingStream { .. } => ActivityCategory::Session,
@@ -483,6 +497,37 @@ impl ActivityEvent {
                 message_id,
                 count,
                 room_slug,
+            },
+            action,
+        )
+    }
+
+    /// A takeover. Unlike the gild line this one names the loser on purpose:
+    /// the crown is a single slot, so "stole it from mira" is the event, and
+    /// nothing about it is a private embarrassment. A vacant crown reads
+    /// "claimed the vacant crown for 500". This is the ticker line; the
+    /// full #lounge headline is `filter::lounge_headline`.
+    pub fn crown_taken(
+        taker_id: Uuid,
+        taker: impl Into<String>,
+        reign_id: Uuid,
+        price: i64,
+        next_price: i64,
+        from: Option<String>,
+    ) -> Self {
+        let price_text = crate::app::common::primitives::thousands(price);
+        let action = match &from {
+            Some(from) => format!("stole the crown from {from} for {price_text}"),
+            None => format!("claimed the vacant crown for {price_text}"),
+        };
+        Self::new(
+            Some(taker_id),
+            taker,
+            ActivityKind::CrownTaken {
+                reign_id,
+                price,
+                next_price,
+                from,
             },
             action,
         )
