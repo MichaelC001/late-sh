@@ -13,6 +13,7 @@ use late_core::{
     models::{
         article::{ArticleFeedItem, NEWS_MARKER},
         chat_message::ChatMessage,
+        chat_message_gild::{ChatMessageGild, ChatMessageGildSummary, GildTier},
         chat_message_reaction::{ChatMessageReactionOwners, ChatMessageReactionSummary},
         chat_poll::ActiveChatPoll,
         chat_room::ChatRoom,
@@ -52,10 +53,15 @@ use crate::usernames::UsernameResolver;
 
 use super::{
     commands::{RoomScopedCommand, rank_command_matches, room_owns_command},
-    cyberspace, discover, feeds, history_modal, news, notifications,
+    cyberspace, discover, feeds,
+    gild::state::GildTarget,
+    history_modal, news, notifications,
     notifications::svc::NotificationService,
     showcase,
-    svc::{ChatEvent, ChatService, ChatSnapshot, GIFT_MAX_AMOUNT, ReportKind, RoomMemberListItem},
+    svc::{
+        ChatEvent, ChatService, ChatSnapshot, GIFT_MAX_AMOUNT, GildRefusal, ReportKind,
+        RoomMemberListItem,
+    },
     ui_text::{NewsPayload, parse_news_payload, parse_report_payload},
     work,
 };
@@ -711,6 +717,9 @@ pub struct ChatState {
     pub(crate) chat_badges: HashMap<Uuid, String>,
     pub(crate) profile_award_badges: HashMap<Uuid, String>,
     pub(crate) message_reactions: HashMap<Uuid, Vec<ChatMessageReactionSummary>>,
+    /// Gild markers by message. Only gilded messages have an entry, which is
+    /// almost none of them, so this stays tiny even in a busy room.
+    pub(crate) message_gilds: HashMap<Uuid, ChatMessageGildSummary>,
     pub(crate) voice_channels_by_room_id: HashMap<Uuid, VoiceChannel>,
     /// Translation handle + result feed (`app/ai/translate.rs`). Requests are
     /// fire-and-forget; results land on `translation_rx` and drain in tick.
@@ -1059,6 +1068,7 @@ impl ChatState {
             chat_badges: HashMap::new(),
             profile_award_badges: HashMap::new(),
             message_reactions: HashMap::new(),
+            message_gilds: HashMap::new(),
             voice_channels_by_room_id: HashMap::new(),
             translation_rx: translation_service.subscribe(),
             translation_service,
@@ -2470,6 +2480,49 @@ impl ChatState {
         None
     }
 
+    /// What the gild picker needs about the selected message, or the refusal
+    /// the service would answer with anyway. The picker never opens on a
+    /// message that could only be refused: your own message, one in a DM or
+    /// private room, or one in a game or stream chat. Only the rules a room
+    /// list can answer live here; the rest (membership, bots, cooldown,
+    /// balance) stay with the service.
+    pub(crate) fn gild_target_in_room(&self, room_id: Uuid) -> Result<GildTarget, GildRefusal> {
+        let Some(message) = self.selected_message_in_room(room_id) else {
+            return Err(GildRefusal::MessageNotFound);
+        };
+        let Some(room) = self.room_by_id(room_id) else {
+            return Err(GildRefusal::MessageNotFound);
+        };
+        if room.visibility != "public" {
+            return Err(GildRefusal::NotPublic);
+        }
+        if room.kind == "game" {
+            return Err(GildRefusal::GameRoom);
+        }
+        if message.user_id == self.user_id {
+            return Err(GildRefusal::SelfGild);
+        }
+        Ok(GildTarget {
+            message_id: message.id,
+            author_username: self.username_for(message.user_id),
+            // One line, always: the picker prints the preview in a single
+            // row, and a multi-line body would otherwise walk over the
+            // tier rows below it.
+            preview: message
+                .body
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+        })
+    }
+
+    /// Ask the service to buy a gild. Fire and forget: the answer arrives as
+    /// a banner, and the marker arrives as a repaint.
+    pub fn gild_message(&self, message_id: Uuid, tier: GildTier) {
+        self.service
+            .gild_message_task(self.user_id, message_id, tier);
+    }
+
     fn find_message_in_room(&self, room_id: Uuid, message_id: Uuid) -> Option<&ChatMessage> {
         self.rooms
             .iter()
@@ -2947,12 +3000,43 @@ impl ChatState {
         ));
     }
 
-    fn reaction_owner_lines(&self, owners: &[ChatMessageReactionOwners]) -> Vec<String> {
-        if owners.is_empty() {
+    /// The `ff` overlay: gilds first, one block per tier held (best tier
+    /// first, since that is what the buyers paid for), then one block per
+    /// reaction icon. Gilds are per buyer, so a tier block's names are the
+    /// people holding exactly that tier on this message.
+    fn reaction_owner_lines(
+        &self,
+        gilds: &[ChatMessageGild],
+        owners: &[ChatMessageReactionOwners],
+    ) -> Vec<String> {
+        if gilds.is_empty() && owners.is_empty() {
             return vec!["No reactions yet".to_string()];
         }
 
         let mut lines = Vec::new();
+        for tier in GildTier::ALL.iter().rev() {
+            let buyers: Vec<Uuid> = gilds
+                .iter()
+                .filter(|gild| gild.tier == *tier)
+                .map(|gild| gild.user_id)
+                .collect();
+            if buyers.is_empty() {
+                continue;
+            }
+            if !lines.is_empty() {
+                lines.push(String::new());
+            }
+            let count = buyers.len();
+            let noun = if count == 1 { "gild" } else { "gilds" };
+            lines.push(format!(
+                "{} {} {} {}",
+                tier.marker(),
+                count,
+                tier.label(),
+                noun
+            ));
+            lines.extend(self.owner_name_rows(&buyers));
+        }
         for reaction in owners {
             if !lines.is_empty() {
                 lines.push(String::new());
@@ -2965,31 +3049,35 @@ impl ChatState {
                 lines.push("  unknown".to_string());
                 continue;
             }
-            let mut labels: Vec<String> = reaction
-                .user_ids
-                .iter()
-                .take(REACTION_OWNER_DISPLAY_LIMIT)
-                .map(|user_id| {
-                    self.usernames
-                        .get(user_id)
-                        .map(|name| name.trim())
-                        .filter(|name| !name.is_empty())
-                        .map(|name| format!("@{name}"))
-                        .unwrap_or_else(|| format!("@<unknown:{}>", short_user_id(*user_id)))
-                })
-                .collect();
-            let hidden_count = reaction
-                .user_ids
-                .len()
-                .saturating_sub(REACTION_OWNER_DISPLAY_LIMIT);
-            if hidden_count > 0 {
-                labels.push(format!("[+{hidden_count} more]"));
-            }
-            for row in labels.chunks(REACTION_OWNER_COLUMNS) {
-                lines.push(format!("  {}", row.join(" ")));
-            }
+            lines.extend(self.owner_name_rows(&reaction.user_ids));
         }
         lines
+    }
+
+    /// `@name` labels for one block of the `ff` overlay, capped at
+    /// `REACTION_OWNER_DISPLAY_LIMIT` with a `[+N more]` tail, wrapped
+    /// `REACTION_OWNER_COLUMNS` per row.
+    fn owner_name_rows(&self, user_ids: &[Uuid]) -> Vec<String> {
+        let mut labels: Vec<String> = user_ids
+            .iter()
+            .take(REACTION_OWNER_DISPLAY_LIMIT)
+            .map(|user_id| {
+                self.usernames
+                    .get(user_id)
+                    .map(|name| name.trim())
+                    .filter(|name| !name.is_empty())
+                    .map(|name| format!("@{name}"))
+                    .unwrap_or_else(|| format!("@<unknown:{}>", short_user_id(*user_id)))
+            })
+            .collect();
+        let hidden_count = user_ids.len().saturating_sub(REACTION_OWNER_DISPLAY_LIMIT);
+        if hidden_count > 0 {
+            labels.push(format!("[+{hidden_count} more]"));
+        }
+        labels
+            .chunks(REACTION_OWNER_COLUMNS)
+            .map(|row| format!("  {}", row.join(" ")))
+            .collect()
     }
 
     fn ignore_list_lines(&self) -> Vec<String> {
@@ -5060,6 +5148,10 @@ impl ChatState {
         &self.message_reactions
     }
 
+    pub fn message_gilds(&self) -> &HashMap<Uuid, ChatMessageGildSummary> {
+        &self.message_gilds
+    }
+
     /// Returns true when applying the snapshot changed anything
     /// render-visible. Snapshots arrive on a fixed cadence whether or not
     /// anything changed, so every write below detects real change before
@@ -5353,6 +5445,7 @@ impl ChatState {
                     last_read_at,
                     messages,
                     message_reactions,
+                    message_gilds,
                     usernames,
                     bonsai_glyphs,
                     chat_badges,
@@ -5400,7 +5493,17 @@ impl ChatState {
                             }
                         }
                     }
-                    if reactions_changed {
+                    let mut gilds_changed = false;
+                    for (message_id, gild) in message_gilds {
+                        match self.message_gilds.get(&message_id) {
+                            Some(existing) if *existing == gild => {}
+                            _ => {
+                                self.message_gilds.insert(message_id, gild);
+                                gilds_changed = true;
+                            }
+                        }
+                    }
+                    if reactions_changed || gilds_changed {
                         self.bump_room_version(room_id);
                     }
                     if self.visible_room_id == Some(room_id) {
@@ -5710,6 +5813,52 @@ impl ChatState {
                     self.message_reactions.insert(message_id, reactions);
                     self.bump_room_version(room_id);
                 }
+                ChatEvent::MessageGildsUpdated {
+                    room_id,
+                    message_id,
+                    summary,
+                } => {
+                    // Gilds only exist in public rooms, so there is no
+                    // audience to filter: what one viewer of the room sees,
+                    // every viewer sees.
+                    match summary {
+                        Some(summary) => {
+                            self.message_gilds.insert(message_id, summary);
+                        }
+                        None => {
+                            self.message_gilds.remove(&message_id);
+                        }
+                    }
+                    self.bump_room_version(room_id);
+                }
+                ChatEvent::GildSucceeded {
+                    user_id,
+                    tier,
+                    buyer_balance,
+                    ..
+                } if self.user_id == user_id => {
+                    banner = Some(Banner::success(&format!(
+                        "Gilded {} for {} chips ({buyer_balance} left)",
+                        tier.label(),
+                        tier.price()
+                    )));
+                }
+                ChatEvent::GildSucceeded {
+                    author_user_id,
+                    tier,
+                    buyer_username,
+                    author_balance,
+                    ..
+                } if self.user_id == author_user_id => {
+                    banner = Some(Banner::success(&format!(
+                        "@{buyer_username} gilded your message {} (+{} chips, balance {author_balance})",
+                        tier.marker(),
+                        tier.author_share()
+                    )));
+                }
+                ChatEvent::GildFailed { user_id, message } if self.user_id == user_id => {
+                    banner = Some(Banner::error(&message));
+                }
                 ChatEvent::EditSucceeded {
                     user_id,
                     request_id,
@@ -5833,6 +5982,7 @@ impl ChatState {
                 ChatEvent::ReactionOwnersListed {
                     user_id,
                     message_id,
+                    gilds,
                     owners,
                     usernames,
                 } if self.user_id == user_id
@@ -5840,7 +5990,7 @@ impl ChatState {
                 {
                     self.pending_reaction_owners_message_id = None;
                     self.extend_usernames(usernames);
-                    let lines = self.reaction_owner_lines(&owners);
+                    let lines = self.reaction_owner_lines(&gilds, &owners);
                     self.overlay = Some(Overlay::dismissible("Reactions", lines));
                 }
                 ChatEvent::ReactionOwnersListFailed { user_id, message }
@@ -6011,6 +6161,7 @@ impl ChatState {
             messages.truncate(500);
             for message_id in removed_ids {
                 self.message_reactions.remove(&message_id);
+                self.message_gilds.remove(&message_id);
                 // Evicted messages can never render again this session, so
                 // their translation state is dead weight; without this a
                 // long-lived auto-translate session grows unbounded.
@@ -6035,6 +6186,11 @@ impl ChatState {
             changed = messages.len() != before;
         }
         if self.message_reactions.remove(&message_id).is_some() {
+            changed = true;
+        }
+        // The gild rows went with the message (`ON DELETE CASCADE`), so the
+        // marker must go too.
+        if self.message_gilds.remove(&message_id).is_some() {
             changed = true;
         }
         self.forget_translation(message_id);

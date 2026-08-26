@@ -1,5 +1,6 @@
 use asterion_core::MAX_MAZE_ID;
 
+use crate::app::common::primitives::thousands;
 use crate::app::lobby::house::{
     ssnake::settings::{
         SSNAKE_BONUS_FOOD_MULTIPLIER, SSNAKE_CLEAR_CHIPS, SSNAKE_CRASH_CHIPS,
@@ -10,6 +11,7 @@ use crate::app::lobby::house::{
 };
 use late_core::models::{
     asterion::ASTERION_DAILY_ESCAPE_PAYOUT,
+    chat_message_gild::GildTier,
     drinks::{DRINK_PRICE_MAX, DRINK_PRICE_MIN, DRUNK_DECAY_PER_HOUR},
     quest::{DAILY_QUEST_STREAK_BONUS_CHIPS_PER_LEVEL, MAX_DAILY_QUEST_STREAK_BONUS_LEVEL},
 };
@@ -54,12 +56,27 @@ fn chip_sections() -> Vec<GuideSection> {
             ],
         },
         GuideSection {
+            title: "Gilds",
+            body: vec![
+                "Press g on someone else's message in a public room to gild it.".to_string(),
+                format!(
+                    "Three tiers: Bronze {}, Silver {}, Gold {} chips.",
+                    thousands(GildTier::Bronze.price()),
+                    thousands(GildTier::Silver.price()),
+                    thousands(GildTier::Gold.price())
+                ),
+                "Two thirds reaches the author; the last third is destroyed.".to_string(),
+                "The marker is permanent, and the count shows on the author's profile.".to_string(),
+                "No self-gilds, no gilding bots, and no un-gilding.".to_string(),
+            ],
+        },
+        GuideSection {
             title: "Top Chips",
             body: vec![
                 "Monthly Top Chips counts net chip delta.".to_string(),
                 "Betting losses offset betting wins; Shop spending does not lower your rank."
                     .to_string(),
-                "Floor restores are excluded from the board.".to_string(),
+                "Floor restores and gilds you receive are excluded from the board.".to_string(),
             ],
         },
     ]

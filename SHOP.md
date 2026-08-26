@@ -88,10 +88,10 @@ North-star check, borrowed from GAME.md: **does it ship a story into
 | Badge rental, basic | 100 / 24h, 4,000 / 30d |
 | Badge rental, premium | 250 / 24h, 10,000 / 30d |
 | Flag rental | same as basic badge |
-| Title rental (Your Own Title, the only title on sale) | 2,000 / 24h, 80,000 / 30d |
+| Title rental (Your Own Title, the only title on sale) | 1,000 / 24h, 40,000 / 30d (migration 155; was 2,000 / 80,000: the title alone ate a full arcade day, now title plus top effect is one day) |
 | Username effect | 200 / 500 / 1,000 per 24h, 8,000 / 20,000 / 40,000 per 30d |
 | Title max length | 20 characters |
-| Gild tiers | 500 / 5,000 / 50,000 |
+| Gild tiers | 500 / 2,000 / 10,000 (an hour, a day, a week of completionist arcade play; Gold is also the most one buyer can put on a message, so it must be reachable) |
 | Gild split | 2/3 to the author (`GildReceived`), 1/3 never re-minted |
 | Gild feed threshold | a message's 3rd gild, once |
 | Crown minimum price | 5,000 |
@@ -271,7 +271,8 @@ Behavior:
   a three-row tier picker with prices and the balance, `Enter` confirms,
   `Esc` cancels. Keyboard only, like Shop purchases.
 - Rendering: a marker on the message row that shows the highest tier the
-  message holds and the count (for example `$ x2`, `$$`, `$$$ x3`), loaded
+  message holds and the count (for example `◆ ×2`, `◆◆`, `◆◆◆ ×3`), plus a
+  tier-colored bar down the message gutter, loaded
   the way reaction summaries are (`ChatMessageReaction::list_summaries_for_messages`
   shape: one query per page of messages, never per row). Colors: bronze /
   silver / gold from the theme palette.
@@ -282,18 +283,43 @@ Behavior:
   #lounge"). Never per gild.
 - IRC sees nothing new (no marker), documented as such.
 
+Status: shipped 2026-08-25 (migration 154,
+`late-core/src/models/chat_message_gild.rs`, `ChatService::gild_message`,
+`late-ssh/src/app/chat/gild/`). Deviations from the design above, each
+deliberate:
+- The marker rides the **message footer**, ahead of the reaction chips,
+  not the author header. A message inside a run of messages has no header
+  at all, so a header marker would vanish on every continuation line.
+- The #lounge line reads "mira got a message gilded 3 times in #lounge".
+  The feed format is `<username> <action>`, always space-joined, so the
+  possessive "mira's message got gilded" is not expressible; the intent
+  (name the author, name nobody who paid) is unchanged.
+- Gilding has its **own** 30s cooldown map rather than sharing the gift
+  one. Two separate sinks, and a gift silently blocking a gild would read
+  as a bug.
+- `GildReceived` is `counts_as_earnings = false` as decided, which is not
+  what gifts do (`GiftReceived` counts). The explicit decision won.
+- The marker crosses processes over a `chat_message_gilded` Postgres
+  notify, and the selling replica repaints through the same path rather
+  than through its own broadcast, so there is one code path per marker.
+- One slot per buyer per message, and it only goes up: a higher tier from
+  the same buyer raises the row at the new tier's full price, the same or a
+  lower tier is refused (`AlreadyGilded` / `HeldHigher`). The marker's
+  count is therefore distinct buyers, and a raise never fires the #lounge
+  line.
+
 Acceptance:
-- [ ] Ledger math: sender pays the tier price, author receives exactly
+- [x] Ledger math: sender pays the tier price, author receives exactly
       2/3, `SUM(chip_ledger)` for the pair shows the 1/3 gap.
-- [ ] Self-gild, DM, private room, bot author, and cooldown are refused
+- [x] Self-gild, DM, private room, bot author, and cooldown are refused
       uncharged, each as its own tagged error and its own test.
-- [ ] A message shows its marker to every viewer after one refresh on
+- [x] A message shows its marker to every viewer after one refresh on
       every replica.
-- [ ] Profile counts per tier are correct and scoped to the profile's
+- [x] Profile counts per tier are correct and scoped to the profile's
       user in the query.
-- [ ] Top Chips excludes `GildReceived` (assert through
+- [x] Top Chips excludes `GildReceived` (assert through
       `excluded_earning_reasons`).
-- [ ] Tests beside the model, the service, and the render; help copy;
+- [x] Tests beside the model, the service, and the render; help copy;
       `chat/CONTEXT.md`.
 
 Out of scope: gilding from IRC, un-gilding, a gild leaderboard.
@@ -440,24 +466,73 @@ chips, more than one pot at a time.
 
 ## Phase 6: door payouts, repeatable
 
-Goal: every door milestone pays again. Today each one is a
-`reward_templates` row with `claim_policy = per_event` credited through the
-lifetime claim (`ChipService::credit_lifetime_reward_template`), so it pays
-exactly once per account, forever. A NetHack ascension is the same 20+ hours
-the second time, and a Green Dragon kill or an A Dark Room escape is a full
-run every time, so a repeat pays the full amount. The gate is whatever
+Goal: every door milestone pays again. A NetHack ascension is the same 20+
+hours the second time, and a Green Dragon kill or an A Dark Room escape is a
+full run every time, so a repeat pays the full amount. The gate is whatever
 naturally limits the game; only where nothing does is a lockout added.
 
-Decided numbers (2026-08-25; one number per milestone, no first/repeat split):
+What the code says today (investigated 2026-08-25):
+- Thirteen `reward_templates` rows, all `claim_policy = per_event`, all
+  credited through `ChipService::credit_lifetime_reward_template`, which
+  writes one `game_payout_claims` row keyed `(period_kind = 'lifetime',
+  period_key = 'once')`. That row is what makes every door pay once per
+  account forever. Roguelikes: `dcss_orb` 10k, `dcss_win` 20k,
+  `nethack_amulet` 10k, `nethack_ascension` 20k, `brogue_escape` 10k,
+  `brogue_mastery` 20k. Green Dragon `greendragon_dragon_slain` 10k. A Dark
+  Room `darkroom_escape` 10k, `darkroom_beacon_escape` 10k. Lateania
+  `lateania_archdemon_defeat`, `_frontier_king_defeat`,
+  `_sundering_deep_defeat`, `_kaethyr_ascendant_defeat`, 10k each.
+- The claim model already has the two other shapes needed:
+  `GamePayout::grant_period` (any `period_kind`/`period_key`, used with
+  `event` for the per-match daily payouts) and `GamePayout::grant_cooldown`
+  (advisory-locked, looks back only at rows with `period_kind =
+  'cooldown'`, so an old `lifetime` row never blocks a cooldown claim).
+  `RewardTemplate::cooldown()` reads `cooldown_seconds`.
+- **Roguelike replay hazard.** `door/ingest/svc.rs` grants awards on every
+  sighting of a win line, fresh or replayed, on purpose: a cursor reset or a
+  backfill re-ingests a log from offset 0 and relies on the lifetime claim
+  to make the re-grant a no-op. Under a plain 7-day cooldown, a replayed
+  line older than 7 days would pay again. The repeat claim therefore has to
+  be keyed on the run's identity as well: `door_runs` and
+  `door_milestones` carry `UNIQUE (game, source_file, source_offset)`, and
+  `insert_ignore` returns whether the row was fresh. NetHack's Amulet and
+  DCSS's Orb are granted twice per winning run (once from the milestone
+  line, once from the win line, `award.rs::grant`); the cooldown absorbs the
+  second sighting.
+- **Green Dragon.** `Character::slay_dragon` bumps `dragon_kills` and resets
+  the character to level 1 (gold and gems restart from the kill count), so
+  the loop already exists in-game. `reward_dragon_kill(user_id, kills)`
+  already carries the kill number. `greendragon_characters` is one row per
+  user with its own uuidv7 `id`; `delete_by_user_id` drops the row, so a
+  deleted-and-recreated character restarts at kill 1 with a new row id.
+- **A Dark Room.** `darkroom_saves` is one row per user, deleted by
+  `delete_by_user_id` when an ending is reached (`reward_escape`), so a
+  replay is a full run from nothing. The save blob carries no run id.
+- **Lateania.** `mud_characters` has a uuidv7 `id` and, since migration 139,
+  `UNIQUE (user_id, slot)`; `delete_slot` drops the row (`d` in the Games
+  hub), so a recreated character is a new id. The grant site,
+  `publish_kill_outcome`, only knows `KillOutcome { user_id, mob_name,
+  achievement }`; the character slot is not in it.
+- **In-door copy that says "once per account"** and must change with the
+  gate: `door/nethack/render.rs:102,107`, `door/dcss/render.rs:106,109`,
+  `door/brogue/render.rs:115,116`, `door/darkroom/ui.rs:507`
+  (`ENDING_REWARD`) and `darkroom/state.rs:142`,
+  `door/lateania/svc.rs:6546` (the loot log line),
+  `profile_modal/badges.rs:98`, and the thirteen template descriptions.
+- Asterion is the odd one: `asterion_daily_escape`, `utc_day`, 4,000,
+  through `credit_asterion_daily_escape`. The maze is 8 deep
+  (`asterion_core::MAX_MAZE_ID = 7`), heroes die to minotaurs, no idle kick.
+
+Decided numbers (one number per milestone, no first/repeat split):
 
 | Door | Milestone | Pays | Gate |
 |---|---|---|---|
-| NetHack | Amulet / Ascension | 20,000 / 50,000 | 7-day lockout, each |
-| DCSS | Orb / Escape | 20,000 / 50,000 | 7-day lockout, each |
-| Brogue | Escape / Mastery | 20,000 / 50,000 | 7-day lockout, each |
-| Green Dragon | dragon kill | 20,000 | none: the daily turn cap makes a kill 7-10 days |
-| A Dark Room | escape / beacon escape | 15,000 / 20,000 | none: the run is the gate (~5 days) |
-| Lateania | Archdemon, Frontier King | 10,000 each | once per character AND 7-day lockout per crown per account |
+| NetHack | Amulet / Ascension | 20,000 / 50,000 | run identity + 7-day lockout, each |
+| DCSS | Orb / Escape | 20,000 / 50,000 | run identity + 7-day lockout, each |
+| Brogue | Escape / Mastery | 20,000 / 50,000 | run identity + 7-day lockout, each |
+| Green Dragon | dragon kill | 20,000 | kill number per character row; the daily turn cap makes a kill 7-10 days |
+| A Dark Room | escape / beacon escape | 15,000 / 20,000 | run id; the run is the gate (~5 days) |
+| Lateania | Archdemon, Frontier King | 10,000 each | once per `mud_characters.id` AND 7-day lockout per crown per account |
 | Lateania | Yssgar, Kaethyr | 20,000 each | same |
 
 Rate check: everything lands near 2,000 chips per day of effort, a
@@ -468,62 +543,75 @@ in one DCSS run (70k) stays: the Orb row exists for the player who dies on
 the way up.
 
 Why Lateania has two rules: the character persists, so a maxed character
-kills the easy two in an evening (lockout needed), and `d` in the Games hub
-deletes the character, so per-character alone would be a reroll farm of the
-easy two (lockout needed, and it must key on the account, not the
-character). Together the worst week is 20k from rerolling the easy pair, and
-the hard pair needs a leveled character each time.
+kills the easy two in an evening (lockout needed), and `d` deletes the
+character, so per-character alone would be a reroll farm of the easy two
+(lockout needed, and it must key on the account, not the character).
+Together the worst week is 20k from rerolling the easy pair, and the hard
+pair needs a leveled character each time.
 
 Behavior:
-- Roguelikes (`dcss_orb`, `dcss_win`, `nethack_amulet`, `nethack_ascension`,
-  `brogue_escape`, `brogue_mastery`): `claim_policy = cooldown`,
-  `cooldown_seconds = 604800`, credited through
-  `credit_cooldown_reward_template` from `door/ingest/award.rs`. The
-  ingest's per-run idempotency is unchanged: one run still credits at most
-  once.
-- Green Dragon (`greendragon_dragon_slain`): `per_event`, event key = the
-  kill number the service already carries (`kills`), credited through
-  `credit_per_event_reward_template`.
-- A Dark Room (`darkroom_escape`, `darkroom_beacon_escape`): `per_event`,
-  event key = the finished run's identity. If the save has no run id, add a
-  uuidv7 stamped when a run starts (the save is wiped on escape, so the next
-  run gets a new one); never key on the escape count alone.
-- Lateania (the four `lateania_*_defeat` rows): both checks in one
-  transaction, one ledger row: a `per_event` claim keyed on
-  `mud_characters.id`, and a `cooldown` claim (604800s) keyed on the account
-  and the crown. Either failing means no chips. Extend
-  `late-core/src/models/game_payout.rs` with one grant that does both under
-  the same advisory lock rather than calling two grants in sequence.
-- Profile badges (`NHA`/`NHY`, DCSS and Brogue pairs, `GDS`, `ADE`/`ADB`,
-  `LMG`/`LKN`/`LYS`/...) stay once per account: the `NOT EXISTS` award
-  insert is untouched. Only chips repeat.
-- #lounge feed: unchanged (every kill/escape already posts). A claim that
-  was gated (lockout, or same character) pays nothing and says nothing
-  extra; the in-door copy that reads "once per account" changes to name the
-  real gate ("pays again after 7 days", "once per character").
-- Asterion (`asterion_daily_escape`, 4,000 per UTC day) is NOT in this
-  table. Owner to time a final-maze escape first: under an hour means it is
-  the best rate in the app and should drop to ~1,000 or take the lockout
-  shape; multi-hour means it stays.
+- One new primitive in `late-core/src/models/game_payout.rs`: an
+  all-or-nothing grant that inserts several `game_payout_claims` rows in
+  one transaction (each its own `(period_kind, period_key)`), optionally
+  with a cooldown look-back on one of them, under the same advisory lock
+  `grant_cooldown` takes. Any conflict or live cooldown means no rows, no
+  chips, no ledger line. Phase 7's pair-day cap is the same primitive;
+  whichever phase lands first builds it.
+- Roguelikes: `claim_policy = cooldown`, `cooldown_seconds = 604800`, and
+  the grant carries the run identity as an `event` key. `award.rs` needs
+  the identity: pass the `door_runs`/`door_milestones` natural key (`game`,
+  `source_file`, `source_offset`) or the row id from the ingest handlers
+  into `DoorAwards::grant`. Backfilled historical wins still grant (owner
+  decision, unchanged), but each run at most once, and the lockout spaces
+  them.
+- Green Dragon: `per_event`, event key `<greendragon_characters.id>:<kill
+  number>`. The row id keeps a recreated character's kill 1 distinct from
+  the old character's kill 1. Load the id with the character (`svc.rs`
+  already loads the row).
+- A Dark Room: `per_event`, event key = a uuidv7 `run_id` stamped into the
+  save blob when a run starts (a save with no `run_id` gets one on first
+  load; the wipe on escape means the next run gets a new one). Never key
+  on an escape count alone.
+- Lateania: `KillOutcome` gains the character slot (the world knows which
+  slot each player loaded), the grant task resolves `mud_characters.id`
+  for `(user_id, slot)`, and the multi-key grant writes the `event` row on
+  that id plus the `cooldown` row for the crown. Loot log line and the
+  `BossReward` doc comment stop saying "once per account".
+- Profile badges (`NHA`/`NHY`, `DCO`/`DCW`, `BRE`/`BRM`, `GDS`, `ADE`/`ADB`,
+  `LMG`/`LKN`/`LYS`/...) stay once per account: the `NOT EXISTS`
+  `grant_unique_milestone_award` insert is untouched and keeps running on
+  every sighting. Only chips repeat.
+- #lounge feed: unchanged (every kill/escape already posts, gated on
+  freshness and recency in the ingest). A gated claim pays nothing and says
+  nothing extra.
+- Copy: every "once per account" listed above becomes the real gate ("pays
+  again after 7 days", "once per character, 7 days between crowns", "every
+  run").
+- Asterion is NOT in this phase. Owner to time a final-maze escape first:
+  under an hour means it is the best rate in the app and should drop to
+  ~1,000 or take the lockout shape; multi-hour means it stays.
 
 Checklist:
-- [ ] Migration updates `reward_chips`, `claim_policy`, `cooldown_seconds`
-      on the thirteen rows above, and rewrites each description to name its
-      gate. Existing `game_payout_claims` rows are history: a lifetime claim
-      already on file must not block the first gated repeat (check how the
-      cooldown claim reads prior rows for the same `payout_kind`).
-- [ ] Lateania grant does the per-character and per-account checks in one
-      transaction; test: same character twice pays once, a second character
-      inside 7 days pays nothing, a second character after 7 days pays.
-- [ ] Roguelike cooldown: a second win inside 7 days pays nothing and the
-      badge insert still no-ops; a win after 7 days pays.
-- [ ] A Dark Room run id survives save/load and changes across runs.
-- [ ] Tests beside each model and service touched; door CONTEXT.md files
-      and the chips/quests context updated; the payout table above copied
-      nowhere else (link here).
+- [ ] Migration: `reward_chips`, `claim_policy`, `cooldown_seconds`, and
+      the description on the thirteen rows. Existing `lifetime` claim rows
+      stay as history and must not block the first gated repeat (they have
+      a different `period_kind`; add a test that proves it).
+- [ ] Multi-key grant in `game_payout.rs` with tests: all rows or none,
+      cooldown honoured, conflict on any key pays nothing, concurrent calls
+      serialize under the lock.
+- [ ] Roguelikes: a replayed win line (same natural key) never pays twice;
+      a second distinct win inside 7 days pays nothing and the badge insert
+      still no-ops; a win after 7 days pays.
+- [ ] Green Dragon: kill N pays once; a recreated character's kill 1 pays.
+- [ ] A Dark Room: `run_id` survives save/load, differs across runs, and an
+      old save without one is upgraded on load.
+- [ ] Lateania: same character twice pays once; a second character inside
+      7 days pays nothing; a second character after 7 days pays.
+- [ ] Copy sites above; door CONTEXT.md files, `door/ingest` notes, and the
+      chips context updated; this table copied nowhere else (link here).
 
-Out of scope: new milestones, Lobby game stakes, the loser consolation
-payout (both still under "To discuss"), Asterion until timed.
+Out of scope: new milestones, Lobby game stakes and the loser payout
+(Phase 7), Asterion until timed.
 
 ## Phase 7: Lobby economics (daily matches)
 

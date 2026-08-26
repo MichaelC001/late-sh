@@ -226,6 +226,7 @@ fn a_rented_title_renders_after_the_author_name_in_chat() {
     let afk_user_ids = HashSet::new();
     let live_user_ids = HashSet::new();
     let message_reactions = HashMap::new();
+    let message_gilds = HashMap::new();
     let inline_images = HashMap::new();
     let profile_award_badges = HashMap::new();
     let drunk_levels = HashMap::new();
@@ -253,6 +254,7 @@ fn a_rented_title_renders_after_the_author_name_in_chat() {
         chat_badges: &chat_badges,
         profile_award_badges: &profile_award_badges,
         message_reactions: &message_reactions,
+        message_gilds: &message_gilds,
         inline_images: &inline_images,
         unread_marker: None,
         drunk_levels: &drunk_levels,
@@ -297,6 +299,7 @@ fn chat_rows_cache_key_changes_when_theme_changes() {
     let afk_user_ids = HashSet::new();
     let live_user_ids = HashSet::new();
     let message_reactions = HashMap::new();
+    let message_gilds = HashMap::new();
     let inline_images = HashMap::new();
     let profile_award_badges = HashMap::new();
     let drunk_levels = HashMap::new();
@@ -319,6 +322,7 @@ fn chat_rows_cache_key_changes_when_theme_changes() {
         chat_badges: &chat_badges,
         profile_award_badges: &profile_award_badges,
         message_reactions: &message_reactions,
+        message_gilds: &message_gilds,
         inline_images: &inline_images,
         unread_marker: None,
         drunk_levels: &drunk_levels,
@@ -350,6 +354,7 @@ fn chat_rows_cache_key_changes_with_any_version_counter() {
     let afk_user_ids = HashSet::new();
     let live_user_ids = HashSet::new();
     let message_reactions = HashMap::new();
+    let message_gilds = HashMap::new();
     let inline_images = HashMap::new();
     let profile_award_badges = HashMap::new();
     let drunk_levels = HashMap::new();
@@ -378,6 +383,7 @@ fn chat_rows_cache_key_changes_with_any_version_counter() {
         chat_badges: &chat_badges,
         profile_award_badges: &profile_award_badges,
         message_reactions: &message_reactions,
+        message_gilds: &message_gilds,
         inline_images: &inline_images,
         unread_marker: None,
         drunk_levels: &drunk_levels,
@@ -448,6 +454,7 @@ fn editing_a_grouped_message_gives_it_its_own_header() {
     let afk_user_ids = HashSet::new();
     let live_user_ids = HashSet::new();
     let message_reactions = HashMap::new();
+    let message_gilds = HashMap::new();
     let inline_images = HashMap::new();
     let profile_award_badges = HashMap::new();
     let drunk_levels = HashMap::new();
@@ -469,6 +476,7 @@ fn editing_a_grouped_message_gives_it_its_own_header() {
         chat_badges: &chat_badges,
         profile_award_badges: &profile_award_badges,
         message_reactions: &message_reactions,
+        message_gilds: &message_gilds,
         inline_images: &inline_images,
         unread_marker: None,
         drunk_levels: &drunk_levels,
@@ -657,6 +665,7 @@ fn mentions_and_replies_paint_a_background_wash() {
     let afk_user_ids = HashSet::new();
     let live_user_ids = HashSet::new();
     let message_reactions = HashMap::new();
+    let message_gilds = HashMap::new();
     let inline_images = HashMap::new();
     let profile_award_badges = HashMap::new();
     let drunk_levels = HashMap::new();
@@ -678,6 +687,7 @@ fn mentions_and_replies_paint_a_background_wash() {
         chat_badges: &chat_badges,
         profile_award_badges: &profile_award_badges,
         message_reactions: &message_reactions,
+        message_gilds: &message_gilds,
         inline_images: &inline_images,
         unread_marker: None,
         drunk_levels: &drunk_levels,
@@ -738,6 +748,7 @@ fn background_wash_fills_the_whole_row_width() {
     let afk_user_ids = HashSet::new();
     let live_user_ids = HashSet::new();
     let message_reactions = HashMap::new();
+    let message_gilds = HashMap::new();
     let inline_images = HashMap::new();
     let profile_award_badges = HashMap::new();
     let drunk_levels = HashMap::new();
@@ -759,6 +770,7 @@ fn background_wash_fills_the_whole_row_width() {
         chat_badges: &chat_badges,
         profile_award_badges: &profile_award_badges,
         message_reactions: &message_reactions,
+        message_gilds: &message_gilds,
         inline_images: &inline_images,
         unread_marker: None,
         drunk_levels: &drunk_levels,
@@ -844,6 +856,7 @@ fn chat_view<'a>(
         OnceLock::new();
     static PEER_POMODOROS: OnceLock<HashMap<Uuid, String>> = OnceLock::new();
     static ROOM_VERSIONS: OnceLock<HashMap<Uuid, u64>> = OnceLock::new();
+    static MESSAGE_GILDS: OnceLock<HashMap<Uuid, ChatMessageGildSummary>> = OnceLock::new();
 
     ChatRenderInput {
         pet_strip: None,
@@ -896,6 +909,7 @@ fn chat_view<'a>(
         countries,
         friend_user_ids: FRIEND_USER_IDS.get_or_init(HashSet::new),
         message_reactions,
+        message_gilds: MESSAGE_GILDS.get_or_init(HashMap::new),
         inline_images: INLINE_IMAGES.get_or_init(HashMap::new),
         room_unread_markers: ROOM_UNREAD_MARKERS.get_or_init(HashMap::new),
         unread_counts,
@@ -1118,6 +1132,30 @@ fn visible_rows_paint_background_for_selected_highlighted_message() {
             .any(|span| span.style.bg == Some(theme::BG_SELECTION())),
         "expected selected highlighted message to receive background"
     );
+}
+
+#[test]
+fn selection_marker_takes_the_gutter_over_a_gild_bar() {
+    // A gilded message paints its tier bar in the gutter cell; selecting it
+    // must still show the marker there. Selection always sits on top.
+    let message_id = Uuid::now_v7();
+    let bar = Span::styled("┃", Style::default().fg(theme::BADGE_GOLD()));
+    let mut cache = ChatRowsCache {
+        all_rows: vec![
+            Line::from(vec![bar.clone(), Span::raw("alice [1m]")]),
+            Line::from(vec![bar.clone(), Span::raw("hello")]),
+            Line::from(vec![bar, Span::raw("◆◆◆")]),
+        ],
+        ..Default::default()
+    };
+    cache.selected_ranges.insert(message_id, (0, 3));
+
+    let visible = visible_chat_rows(&cache, Some(message_id), None, 3, None);
+    for (row, line) in visible.lines.iter().enumerate() {
+        let marker = &line.spans[0];
+        assert_eq!(marker.content, "▸", "row {row}: {:?}", marker.content);
+        assert_eq!(marker.style.fg, Some(theme::AMBER()), "row {row}");
+    }
 }
 
 #[test]
@@ -1368,6 +1406,30 @@ fn empty_composer_placeholder_uses_hint_text_when_not_composing() {
     let rendered: String = (0..width).map(|x| buf[(x, 0)].symbol()).collect();
     assert_eq!(rendered, expected);
     assert_eq!(buf[(0, 0)].fg, theme::TEXT_DIM());
+}
+
+#[test]
+fn empty_composer_placeholder_names_the_gild_key_for_a_selected_message() {
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let ta = TextArea::default();
+    let mut view = composer_view(&ta);
+    view.composing = false;
+    view.selected_message = true;
+
+    let expected = "f react · r reply · e edit · d delete · g gild · p profile · t translate · Enter jump to reply";
+    let width = expected.chars().count() as u16;
+    let placeholder = empty_composer_placeholder(&view, width as usize);
+    let backend = TestBackend::new(width, 1);
+    let mut terminal = Terminal::new(backend).expect("term");
+
+    terminal
+        .draw(|f| f.render_widget(placeholder, Rect::new(0, 0, width, 1)))
+        .unwrap();
+
+    let buf = terminal.backend().buffer();
+    let rendered: String = (0..width).map(|x| buf[(x, 0)].symbol()).collect();
+    assert_eq!(rendered, expected);
 }
 
 #[test]
@@ -2240,17 +2302,21 @@ fn header_segments_split_chat_flag_from_regular_badge() {
         (HeaderTarget::StoreBadge, "🐱"),
         (HeaderTarget::StoreFlag, "US"),
     ];
-    let (prefix, segs, author_range, title_range) =
-        build_author_prefix_and_segments_with_chat_badges(
-            false,
-            "bob",
-            None,
-            &[],
-            &chat_badges,
-            None,
-            None,
-            &[],
-        );
+    let AuthorPrefix {
+        prefix,
+        segments: segs,
+        author_range,
+        title_range,
+    } = build_author_prefix_and_segments_with_chat_badges(AuthorPrefixInput {
+        is_friend: false,
+        author: "bob",
+        title: None,
+        special_badges: &[],
+        chat_badges: &chat_badges,
+        bonsai_glyph: None,
+        profile_award_badges: None,
+        presence_badges: &[],
+    });
     assert_eq!(prefix, "bob 🐱 US");
     assert_eq!(author_range, (0, 3));
     assert_eq!(title_range, None);
@@ -2263,17 +2329,21 @@ fn header_segments_split_chat_flag_from_regular_badge() {
 #[test]
 fn header_prefix_puts_a_rented_title_between_the_name_and_the_badges() {
     let chat_badges = [(HeaderTarget::StoreBadge, "🐱")];
-    let (prefix, segs, author_range, title_range) =
-        build_author_prefix_and_segments_with_chat_badges(
-            false,
-            "bob",
-            Some("the insufferable"),
-            &[],
-            &chat_badges,
-            None,
-            None,
-            &[],
-        );
+    let AuthorPrefix {
+        prefix,
+        segments: segs,
+        author_range,
+        title_range,
+    } = build_author_prefix_and_segments_with_chat_badges(AuthorPrefixInput {
+        is_friend: false,
+        author: "bob",
+        title: Some("the insufferable"),
+        special_badges: &[],
+        chat_badges: &chat_badges,
+        bonsai_glyph: None,
+        profile_award_badges: None,
+        presence_badges: &[],
+    });
     assert_eq!(prefix, "bob, the insufferable 🐱");
     assert_eq!(author_range, (0, 3));
     // The title starts where the name ends, so the two runs stay adjacent.
@@ -2287,16 +2357,20 @@ fn header_prefix_puts_a_rented_title_between_the_name_and_the_badges() {
     assert_eq!(segs[1].start_col, 23);
 
     // A blank title is not a title: nothing is printed and no range is set.
-    let (prefix, _, _, title_range) = build_author_prefix_and_segments_with_chat_badges(
-        false,
-        "bob",
-        Some("   "),
-        &[],
-        &[],
-        None,
-        None,
-        &[],
-    );
+    let AuthorPrefix {
+        prefix,
+        title_range,
+        ..
+    } = build_author_prefix_and_segments_with_chat_badges(AuthorPrefixInput {
+        is_friend: false,
+        author: "bob",
+        title: Some("   "),
+        special_badges: &[],
+        chat_badges: &[],
+        bonsai_glyph: None,
+        profile_award_badges: None,
+        presence_badges: &[],
+    });
     assert_eq!(prefix, "bob");
     assert_eq!(title_range, None);
 }
@@ -2307,17 +2381,17 @@ fn header_prefix_orders_all_badge_classes() {
         (HeaderTarget::StoreBadge, "badge"),
         (HeaderTarget::StoreFlag, "flag"),
     ];
-    let (prefix, _segs, _author_range, _title_range) =
-        build_author_prefix_and_segments_with_chat_badges(
-            false,
-            "alice",
-            None,
-            &["mod", "developer", "artist"],
-            &chat_badges,
-            Some("bonsai"),
-            Some("AW1 CHIP2"),
-            &["brb"],
-        );
+    let prefix = build_author_prefix_and_segments_with_chat_badges(AuthorPrefixInput {
+        is_friend: false,
+        author: "alice",
+        title: None,
+        special_badges: &["mod", "developer", "artist"],
+        chat_badges: &chat_badges,
+        bonsai_glyph: Some("bonsai"),
+        profile_award_badges: Some("AW1 CHIP2"),
+        presence_badges: &["brb"],
+    })
+    .prefix;
 
     assert_eq!(
         prefix,

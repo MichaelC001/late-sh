@@ -3,7 +3,7 @@
 ## Metadata
 - Domain: late.sh SSH chat, synthetic chat entries, and dashboard/room chat surfaces
 - Primary audience: LLM agents working in `late-ssh/src/app/chat`
-- Last updated: 2026-08-25 (rented titles: a Shop title prints as `, <title>` between the author name and the badge stack in chat and on the clubhouse floor, painted in the dim label color and carrying its own `title_range` in `AuthorTint`; `App.name_flair` now resolves to `ResolvedName { style, title }`. Author labels §. Previous: `/summary` window: `summary::window_start` resolves a closed `SummaryWindow`, so a bare `/summary` reaches at least `SUMMARY_DEFAULT_WINDOW_HOURS` (24h) back and at most 48h while an explicit `/summary 6h` gets exactly what it asked for, capped at 48h. The 24h minimum is not a missing-cursor fallback: `last_read_at` tracks presence, so a terminal left open overnight used to shrink the window to nothing. §14 Summary.)
+- Last updated: 2026-08-25 (gilds: `g` on a selected message opens a three-tier picker (Bronze 500 / Silver 2,000 / Gold 10,000) that pays the author two thirds and burns the rest, leaving a permanent tier-colored bar down the message and a `◆`-glyph marker at the head of its footer. Public topic, lounge and language rooms only (never a DM, a private room, or a game/stream chat), never your own message and never a bot's, one slot per buyer per message that only ever goes up. The marker crosses replicas over the `chat_message_gilded` notify rather than the chat broadcast, and #lounge hears about a message once, on its third gild. §9b Gilds.)
 - Status: Active
 - Parent context: `../../../../CONTEXT.md`
 
@@ -40,6 +40,7 @@ late-ssh/src/app/chat/
 |-- cyberspace/                  # Cyberspace rail section: personal client for cyberspace.online, incl. their chat (cIRC)
 |-- discover/                    # Synthetic Discover entry: public rooms not yet joined
 |-- feeds/                       # Synthetic RSS entry: private per-user RSS/Atom inbox
+|-- gild/                        # Gild tier picker: state/input/ui for the `g` message action
 |-- news/                        # Synthetic News entry: articles + #lounge announcement
 |-- notifications/               # Synthetic Mentions entry: mention notifications
 |-- polls/                       # /poll modal state/input/UI
@@ -63,6 +64,7 @@ late-ssh/src/app/announcements_test.rs   # Login #announcements loading/read-cur
 
 Core models used by chat live in `late-core/src/models/`:
 `chat_room.rs`, `chat_room_member.rs`, `chat_message.rs`, `chat_message_reaction.rs`,
+`chat_message_gild.rs`,
 `notification.rs`, `rss_feed.rs`, `rss_entry.rs`, `article.rs`, `article_feed_read.rs`, `cyberspace_account.rs`, `showcase.rs`,
 `showcase_feed_read.rs`, `work_profile.rs`, `work_feed_read.rs`, and `chat_poll.rs`.
 Chat-owned moderation commands also use `room_ban.rs`,
@@ -163,6 +165,13 @@ Slow modes:
 - Enforcement happens in `ChatService::send_message` after membership/room-ban checks and before insert. Room-slow is checked first; server-slow applies to non-DM chat rooms only, so DMs are not throttled. Admin sends bypass the throttle; moderators are not inherently exempt unless they are admins.
 - A slowed user keeps room membership. Early sends are rejected privately with a `Slow mode in #room: wait ...` banner; messages are not queued.
 - `/mod slow <server|#room> @user <interval> <duration|permanent> [reason...]` applies it, `/mod unslow <server|#room> @user [reason...]` removes it, and `/mod view slows [server|#room] [page]` lists active slow modes. Applying/removing slow mode uses targeted session toasts and writes moderation audit actions `room_slow` / `room_unslow` or `server_slow` / `server_unslow`.
+
+Gilds:
+- `chat_message_gilds` is append-only: no update path, no un-gild, `created` and no `updated`.
+- Unique on `(message_id, user_id)`: one slot per buyer per message. A higher tier from the same buyer raises the row in place (`ChatMessageGild::place_in_tx`, a closed `GildPlacement`: `Placed` / `Upgraded` / `SameTier` / `HeldHigher`), at the new tier's full price; the same or a lower tier is refused. So `count` is distinct buyers by construction.
+- `author_user_id` is denormalized off `chat_messages` so `chat_message_gilds_no_self_gild CHECK (user_id <> author_user_id)` can exist at all, and so the profile count reads one owner-scoped query.
+- `chips` records what was paid at purchase time; a later reprice never rewrites history.
+- `ON DELETE CASCADE` from both the message and the users.
 
 Reactions:
 - `chat_message_reactions` primary key is `(message_id, user_id)`.
@@ -344,7 +353,7 @@ Reply mode:
 - Enters compose mode and clears edit.
 - On submit, stores `reply_to_message_id` and prefixes the stored body with a visible quote line for backward-compatible rendering.
 - Enter on a selected reply jumps only if the target is already loaded in the current room tail.
-- `g` on a selected reply also jumps to the loaded target. Enter is overloaded (image/News modals take precedence), so a reply that contains an inline image can only be followed with `g`, not Enter.
+- `G` on a selected reply also jumps to the loaded target. Enter is overloaded (image/News modals take precedence), so a reply that contains an inline image can only be followed with `G`, not Enter. Lowercase `g` is the gild key.
 
 Edit mode:
 - Allowed for the message author or admins.
@@ -387,6 +396,7 @@ Keys:
 - `p` opens the selected author's read-only profile modal.
 - `c` copies the selected message body.
 - `t` toggles the message's translation (see Translation below).
+- `g` opens the gild tier picker (see Gilds below). Consumed whenever a message is selected: on your own message, or one in a DM, a private room, or a game/stream chat, it banners the refusal instead of opening (`ChatState::gild_target_in_room` answers those room rules locally; the rest stay with the service).
 - Enter jumps from a reply to its loaded target.
 - `f` enters reaction leader mode.
 - `f` again while reaction leader is active opens reaction-owner overlay.
@@ -394,6 +404,84 @@ Keys:
 - Digit `0` while reaction leader is active opens the icon picker for a custom reaction.
 
 Selection deltas are message-based, not row-based. Positive means older, negative means newer.
+
+---
+
+## 9b. Gilds
+
+A gild is chips paid to mark someone else's message, permanently. It is a
+purchase, not a reaction: there is no un-gild, and the row outlives every
+session. `late-core/src/models/chat_message_gild.rs` owns the table
+(migration 154) and `GildTier` (Bronze 500 / Silver 2,000 / Gold 10,000);
+`chips.rs::UserChips::transfer_gild` owns the money.
+
+- **Split.** The author receives `floor(price * 2 / 3)` as
+  `ChipMove::GildReceived`; the buyer pays the full price as
+  `ChipMove::GildSent` (floor-guarded like a gift). The last third has no
+  ledger row at all: the burn *is* the gap between the two reasons.
+  `GildReceived` is excluded from earnings, so Top Chips ranks what a player
+  earned rather than who has generous friends.
+- **Guards** (`ChatService::gild_message`, one closed `GildRefusal` enum with
+  the wording): message gone, not a member, not a public room (so never a DM
+  and never a private room), a game room (`kind = 'game'`: arcade tables,
+  daily matches and `#user-live` stream chats are public by visibility but
+  not on the Home rail, and the #lounge line must point somewhere people can
+  go), self-gild, bot author, the 30s per-buyer cooldown, the same tier
+  already held on this message (`AlreadyGilded`), a higher tier already held
+  (`HeldHigher`: a gild never goes down), and the chip floor.
+  Every refusal is uncharged, and a refusal after the cooldown was stamped
+  releases it again.
+- **Transaction** (`ChatService::settle_gild`): `SELECT ... FOR UPDATE` on the
+  `chat_messages` row first, so every gild on one message serializes. That is
+  what makes both the duplicate-tier check and the "third gild" count exact.
+  Then insert (`ON CONFLICT DO NOTHING` = already gilded), move the chips,
+  count, `pg_notify`, commit. Any early return drops the transaction.
+- **Repaint is DB-backed, not broadcast-backed.** The gild transaction
+  notifies `chat_message_gilded` with a `<message id>:<room id>` payload;
+  `ChatService::start_gild_listener_task` (one connection per process, wired
+  in `main.rs`, reconnecting after 5s) turns each notification into a local
+  `ChatEvent::MessageGildsUpdated`. This process is not special-cased: it
+  learns about its own gilds the same way a second replica does, so there is
+  exactly one code path that draws a marker. `GildSucceeded` / `GildFailed`
+  ride the in-process broadcast, but they only carry the two banners (buyer
+  and author).
+- **Rendering.** `message_gilds: HashMap<Uuid, ChatMessageGildSummary>` on
+  `ChatState`, loaded with the room tail and patched by the notify. The
+  marker leads the message footer, ahead of the reaction chips
+  (`ui_text.rs::render_message_footer_lines`): the tier's glyphs
+  (`GildTier::marker`, `◆` / `◆◆` / `◆◆◆`) alone, `◆◆◆ ×3` once more than one
+  gild is on it, bold in the tier's `BADGE_BRONZE/SILVER/GOLD`. The same
+  color runs a heavy bar (`┃`) down the gutter of every line the message
+  renders (`ui_text.rs::Gutter`, the cell the yellow mention bar uses), so a
+  gilded message reads as a block. `Gutter` is a closed enum ranking the two
+  claims on that cell: a mention of you keeps its bar, since the footer chip
+  still spells the gild and the mention bar has no other signal. The selection marker `▸` paints over whichever bar holds the cell (`ui.rs::visible_chat_rows` asks `Gutter::is_glyph`), so selection is always visible. Both ride
+  the footer and gutter rather than the author header because a message
+  inside a run has no header, and a paid marker that vanishes on the second
+  line of a run is the one thing nobody would accept. Gild changes bump
+  `room_version`, so the row cache repaints.
+- **Feed.** `ActivityKind::MessageGilded` fires once, on the message's third
+  buyer (`GILD_FEED_THRESHOLD`, `GildOutcome::fires_feed_line`), and names
+  only the author: "mira got a message gilded 3 times in #lounge". Never per
+  gild, and never on a raise, which adds no buyer. Keyed on the message id
+  in the lounge repeat throttle.
+- **Who gilded.** `ff` on the message (the reaction-owners overlay) lists the
+  gilds above the reactions, one block per tier held with the buyers under
+  it. Same event, same membership check (§10).
+- **Profile.** `ChatMessageGild::counts_for_author` (owner-scoped in the
+  query, off the denormalized `author_user_id`) fills `ProfileSnapshot.gild_counts`
+  and renders as a "Gilds received" section, hidden entirely when empty.
+- **IRC sees nothing.** The marker is a TUI footer chip; IRC clients get the
+  message body and nothing else. There is no `/gild` command either: gilding
+  is a message action on a selection, and IRC has no selection.
+- **Message deletion takes the gilds with it** (`ON DELETE CASCADE`), and
+  `ChatState::remove_message` drops the marker to match. The chip ledger rows
+  survive; they are keyed on the message id as `source_ref`.
+
+The tier picker is `chat/gild/` (`state.rs` selection only, `input.rs`
+j/k/1-3/Enter/Esc, `ui.rs` the popup). It reads `App.chip_balance` at draw
+time rather than caching a balance of its own, and dims tiers the balance
+cannot cover; the floor guard in the chip move is what actually decides.
 
 ---
 
@@ -405,7 +493,7 @@ Reactions:
 - Quick reaction keys `1..9` map to the default emoji set; `0` opens the full icon picker.
 - UI appends reaction footer chips under the message body or news card.
 - Reaction summaries live in `message_reactions: HashMap<Uuid, Vec<ChatMessageReactionSummary>>`.
-- Reaction-owner overlay waits for a matching `ReactionOwnersListed` event keyed by `pending_reaction_owners_message_id`.
+- Reaction-owner overlay (`ff`) waits for a matching `ReactionOwnersListed` event keyed by `pending_reaction_owners_message_id`. The event also carries the message's gilds (`ChatMessageGild::list_for_message`, best tier first), which `reaction_owner_lines` lists above the reactions as one block per tier held (`◆◆◆ 1 Gold gild`, buyers under it), sharing the reaction blocks' name capping.
 
 Ignores:
 - `users.settings.ignored_user_ids` stores UUIDs, not usernames.
@@ -546,7 +634,7 @@ Cache:
 | `i` | Start composing in selected room, or start News composer when selected |
 | `/` | Start command composer in selected room |
 | `Enter` | Submit composer; open selected chat news preview; jump reply target; copy URL in News; join Discover; jump Mention |
-| `g` | Jump a selected reply to its loaded original, even when the reply contains an inline image (Enter opens the image instead) |
+| `G` | Jump a selected reply to its loaded original, even when the reply contains an inline image (Enter opens the image instead) |
 | `Alt+Enter` / `Ctrl+J` | Insert newline in main chat composer |
 | `Alt+S` | Submit main chat composer and keep it open. Dropped (no-op) while the `keep_composer_focused` Tweaks setting is on; Enter then owns send-and-stay. |
 | `Esc` | Cancel compose/overlay/autocomplete/room jump |
@@ -556,6 +644,7 @@ Cache:
 | `p` | Open selected author's read-only profile |
 | `c` | Copy selected message body |
 | `t` | Translate selected message; press again to collapse, again to reopen. A message already in your target language banners instead of spending a call. |
+| `g` | Open the gild tier picker on the selected message (your own message, a DM, a private room, or a game/stream chat banners the refusal instead of opening). In the picker: `j`/`k` or `1`-`3` pick a tier, `Enter` buys, `Esc` cancels. |
 | `f` | Favorite/unfavorite the selected real room |
 | `[` / `]` | Move the selected favorite up/down in the room rail |
 | `f` then `1..9` | Quick-react to selected message |
@@ -743,6 +832,8 @@ Existing DB-backed coverage:
 - `work/svc_test.rs`: profile create/update snapshot behavior, public slug preservation, non-owner update failure, admin delete, unread cursor behavior.
 - `state_test.rs`: placeholder; direct `ChatState` tests need accessors or indirect UI/input tests.
 - `state_internal_test.rs`: `t` toggle over a cached translation (pending → ready → collapse → reopen, plus the same-script no-op banner), target-language switching dropping stale translations, auto mode firing without a pending placeholder, and author-shared display (shared row by someone else shows with no auto mode or `t`; private rows and the viewer's own shared row stay hidden). Note the harness gotcha these pinned: snapshots carry rooms with **empty** message vectors, so a test needing a concrete message must pull the room tail (`load_room_tail`), not wait for a snapshot.
+- `svc_test.rs::gild`: the split landing (two ledger rows, author counts), and one test per refusal (self, DM, private room, game room, bot author, non-member, cooldown, short balance), each asserting the ledger stayed empty; `raises_a_held_gild_at_full_price_and_never_lowers_it` lifts the cooldown to walk one buyer through a raise (full price, no new buyer, no feed line) and both `AlreadyGilded` and `HeldHigher`.
+- `late-core/src/models/chat_message_gild_test.rs`: tier roster (prices, split, markers), the one-slot-per-buyer placement (`a_buyers_gild_only_ever_goes_up`), the self-gild CHECK, owner-scoped counts, page summaries, and that only a committed gild notifies `chat_message_gilded`.
 - `app/ai/translate_test.rs`: cache-hit service path with AI disabled, the failure path clearing single-flight so `t` can retry, and author-shared rows broadcasting their flag (request and sweep alike).
 - `late-core/src/models/message_translation_test.rs`: script detection against each target, language key round-trip, cache upsert/read/cascade-delete, and `author_shared` surviving a later private rewrite.
 
@@ -750,7 +841,7 @@ Existing unit coverage:
 - `state.rs`: command parsing, autocomplete ranking, visual order, reply preview/target helpers, DM sort keys, textarea theme behavior.
 - `input.rs`: room navigation aliases and reaction leader key parsing.
 - `ui.rs`: title fitting, composer title degradation, visible rows, room-list rows, hit testing, scroll helpers.
-- `ui_text.rs`: news parsing/rendering, reaction footer, wrapping, composer rows.
+- `ui_text.rs`: news parsing/rendering, message footer (gild marker leading the reaction chips), wrapping, composer rows.
 - Synthetic modules: selection clamp/move helpers, tag parsing, URL validation, payload sanitation, loading transitions.
 
 Test gaps:
@@ -774,6 +865,7 @@ Test gaps:
 - `#announcements` admin-only currently depends on the provided `room_slug`; stale/missing slug is a fragile path.
 - Login `#announcements` modal marks `chat_room_members.last_read_at` only when dismissed; do not add a separate announcement-read table unless the room model itself changes.
 - Reaction tasks are async; UI should not assume optimistic success.
+- A gild marker repaints off the Postgres notify, not off `evt_tx`. If `start_gild_listener_task` is not running (tests, or a process wired without it) the marker only appears on the next room tail load. Do not "fix" that by broadcasting locally as well: two paths would mean two repaints and a marker that behaves differently on the replica that sold it.
 - Poll create/vote tasks are async; `ChatEvent::PollUpdated` patches the local active-poll map and `ChatSnapshot.active_polls` refreshes authoritative visibility. Successful poll creation spawns a sleep-until-expiry finalizer that atomically claims the expired poll in Postgres, marks it inactive, and posts compact results into the room as the poll creator. `ChatService::start_poll_finalizer_recovery_task` runs a coarse 10-minute recovery scan for expired active polls so restarts/redeploys do not strand result posts; the DB claim is the cross-replica duplicate guard.
 - Poll vote shortcuts use `va/vb/vc` when the selected/visible real room has an active poll, leaving music `v1/v2/v3` selectors available.
 - Room visual order must stay consistent between state and UI hit-testing/row-building.

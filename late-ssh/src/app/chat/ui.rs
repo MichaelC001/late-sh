@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use late_core::models::chat_message_gild::ChatMessageGildSummary;
 use late_core::models::chat_message_reaction::ChatMessageReactionSummary;
 use late_core::models::chat_poll::{ActiveChatPoll, ChatPollOptionSummary};
 use late_core::models::{
@@ -42,7 +43,7 @@ use super::state::{
     dm_is_promoted_unread, dm_peer_is_ignored, is_chat_list_room, is_selected_slot,
     visual_order_for_rooms,
 };
-use super::ui_text::{AuthorTint, reaction_label, wrap_chat_entry_to_lines};
+use super::ui_text::{AuthorTint, Gutter, reaction_label, wrap_chat_entry_to_lines};
 
 const REACTION_PICKER_KEYS: [i16; 9] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 /// The gap between messages and composer: a blank breather row on top so the
@@ -99,6 +100,7 @@ pub struct DashboardChatView<'a> {
     /// Users whose stream is on air; painted as the LIVE presence tag.
     pub live_user_ids: &'a HashSet<Uuid>,
     pub message_reactions: &'a HashMap<Uuid, Vec<ChatMessageReactionSummary>>,
+    pub message_gilds: &'a HashMap<Uuid, ChatMessageGildSummary>,
     pub unread_marker: Option<DateTime<Utc>>,
     pub current_user_id: Uuid,
     pub voice_channel_id: Option<Uuid>,
@@ -443,7 +445,7 @@ fn empty_composer_placeholder(view: &ComposerBlockView<'_>, width: usize) -> Par
         ))]
     } else if view.selected_message {
         vec![Line::from(Span::styled(
-            "f react · r reply · e edit · d delete · p profile · c copy · t translate · Enter jump to reply",
+            "f react · r reply · e edit · d delete · g gild · p profile · t translate · Enter jump to reply",
             dim,
         ))]
     } else {
@@ -1193,6 +1195,7 @@ pub fn draw_dashboard_chat_card(
                 chat_badges: view.chat_badges,
                 profile_award_badges: view.profile_award_badges,
                 message_reactions: view.message_reactions,
+                message_gilds: view.message_gilds,
                 inline_images: view.inline_images,
                 unread_marker: view.unread_marker,
                 drunk_levels: view.drunk_levels,
@@ -1282,6 +1285,7 @@ struct ChatRowsContext<'a> {
     chat_badges: &'a HashMap<Uuid, String>,
     profile_award_badges: &'a HashMap<Uuid, String>,
     message_reactions: &'a HashMap<Uuid, Vec<ChatMessageReactionSummary>>,
+    message_gilds: &'a HashMap<Uuid, ChatMessageGildSummary>,
     inline_images: &'a HashMap<Uuid, InlineImagePreview>,
     unread_marker: Option<DateTime<Utc>>,
     /// Per-author drunk levels (1-4) for the tavern glow under usernames.
@@ -1622,17 +1626,21 @@ fn ensure_chat_rows_cache(
             presence_badges.push(badge);
         }
         let flair = ctx.name_flair.get(&msg.user_id);
-        let (prefix, segments, author_range, title_range) =
-            build_author_prefix_and_segments_with_chat_badges(
-                is_friend,
-                &author,
-                flair.and_then(|flair| flair.title.as_deref()),
-                special_list,
-                &chat_badge_refs,
-                bonsai_opt,
-                profile_award_badges,
-                &presence_badges,
-            );
+        let AuthorPrefix {
+            prefix,
+            segments,
+            author_range,
+            title_range,
+        } = build_author_prefix_and_segments_with_chat_badges(AuthorPrefixInput {
+            is_friend,
+            author: &author,
+            title: flair.and_then(|flair| flair.title.as_deref()),
+            special_badges: special_list,
+            chat_badges: &chat_badge_refs,
+            bonsai_glyph: bonsai_opt,
+            profile_award_badges,
+            presence_badges: &presence_badges,
+        });
         let drunk_word = ctx.drunk_levels.get(&msg.user_id).and_then(|level| {
             late_core::models::drinks::drunk_label_word(*level)
                 .map(|word| (word, theme::DRUNK_WORD_FG(*level)))
@@ -1651,6 +1659,7 @@ fn ensure_chat_rows_cache(
             .get(&msg.id)
             .map(Vec::as_slice)
             .unwrap_or(&[]);
+        let gild = ctx.message_gilds.get(&msg.id).copied();
 
         // A reply is checked before a mention because the composer prepends a
         // `> @author: …` quote line to every reply, which would otherwise make
@@ -1710,6 +1719,7 @@ fn ensure_chat_rows_cache(
             system_text,
             image_lines,
             reactions,
+            gild,
             translation,
         );
         let line_count = wrapped.lines.len();
@@ -1898,7 +1908,7 @@ fn visible_chat_rows(
         for idx in start..end {
             let row = &mut lines[idx - visible_start];
             if let Some(first_span) = row.spans.first()
-                && (first_span.content == " " || first_span.content == "│")
+                && Gutter::is_glyph(&first_span.content)
             {
                 // Keep the row's whole treatment (the mention or reply wash,
                 // or the highlight inversion), so the marker does not punch
@@ -2370,38 +2380,56 @@ fn build_author_prefix_and_segments(
     if let Some(chat_badge) = chat_badge {
         chat_badges.push((HeaderTarget::StoreBadge, chat_badge));
     }
-    let (prefix, segments, _, _) = build_author_prefix_and_segments_with_chat_badges(
+    let built = build_author_prefix_and_segments_with_chat_badges(AuthorPrefixInput {
         is_friend,
         author,
-        None,
+        title: None,
         special_badges,
-        &chat_badges,
+        chat_badges: &chat_badges,
         bonsai_glyph,
         profile_award_badges,
         presence_badges,
-    );
-    (prefix, segments)
+    });
+    (built.prefix, built.segments)
 }
 
-/// Builds the author header prefix. Returns the prefix, the clickable column
+/// Everything the author header prefix is painted from: one named field per
+/// decoration class, so a call site reads as a list of what the author is
+/// wearing rather than a run of positional arguments.
+struct AuthorPrefixInput<'a> {
+    is_friend: bool,
+    author: &'a str,
+    title: Option<&'a str>,
+    special_badges: &'a [&'a str],
+    chat_badges: &'a [(HeaderTarget, &'a str)],
+    bonsai_glyph: Option<&'a str>,
+    profile_award_badges: Option<&'a str>,
+    presence_badges: &'a [&'a str],
+}
+
+/// The built author header prefix: the string, the clickable column
 /// segments, the bare username's byte range, and the rented title's byte
 /// range (which always follows the username directly, so the two are
 /// adjacent).
-fn build_author_prefix_and_segments_with_chat_badges(
-    is_friend: bool,
-    author: &str,
-    title: Option<&str>,
-    special_badges: &[&str],
-    chat_badges: &[(HeaderTarget, &str)],
-    bonsai_glyph: Option<&str>,
-    profile_award_badges: Option<&str>,
-    presence_badges: &[&str],
-) -> (
-    String,
-    Vec<HeaderSegment>,
-    (usize, usize),
-    Option<(usize, usize)>,
-) {
+struct AuthorPrefix {
+    prefix: String,
+    segments: Vec<HeaderSegment>,
+    author_range: (usize, usize),
+    title_range: Option<(usize, usize)>,
+}
+
+/// Builds the author header prefix.
+fn build_author_prefix_and_segments_with_chat_badges(input: AuthorPrefixInput<'_>) -> AuthorPrefix {
+    let AuthorPrefixInput {
+        is_friend,
+        author,
+        title,
+        special_badges,
+        chat_badges,
+        bonsai_glyph,
+        profile_award_badges,
+        presence_badges,
+    } = input;
     let mut prefix = String::new();
     let mut segments: Vec<HeaderSegment> = Vec::new();
     // The painted line is `[pad (1 cell)][prefix][ stamp]`, so prefix
@@ -2503,7 +2531,12 @@ fn build_author_prefix_and_segments_with_chat_badges(
         }
     }
 
-    (prefix, segments, author_range, title_range)
+    AuthorPrefix {
+        prefix,
+        segments,
+        author_range,
+        title_range,
+    }
 }
 
 /// Legacy badge-suffix formatter. Production code now builds the author
@@ -2672,6 +2705,7 @@ pub struct ChatRenderInput<'a> {
     pub countries: &'a HashMap<Uuid, String>,
     pub friend_user_ids: &'a HashSet<Uuid>,
     pub message_reactions: &'a HashMap<Uuid, Vec<ChatMessageReactionSummary>>,
+    pub message_gilds: &'a HashMap<Uuid, ChatMessageGildSummary>,
     pub inline_images: &'a HashMap<Uuid, InlineImagePreview>,
     pub room_unread_markers: &'a HashMap<Uuid, Option<DateTime<Utc>>>,
     pub unread_counts: &'a HashMap<Uuid, i64>,
@@ -2842,6 +2876,7 @@ pub struct EmbeddedRoomChatView<'a> {
     /// Users whose stream is on air; painted as the LIVE presence tag.
     pub live_user_ids: &'a HashSet<Uuid>,
     pub message_reactions: &'a HashMap<Uuid, Vec<ChatMessageReactionSummary>>,
+    pub message_gilds: &'a HashMap<Uuid, ChatMessageGildSummary>,
     pub inline_images: &'a HashMap<Uuid, InlineImagePreview>,
     pub unread_marker: Option<DateTime<Utc>>,
     pub current_user_id: Uuid,
@@ -2963,6 +2998,7 @@ pub fn draw_embedded_room_chat(
             chat_badges: view.chat_badges,
             profile_award_badges: view.profile_award_badges,
             message_reactions: view.message_reactions,
+            message_gilds: view.message_gilds,
             inline_images: view.inline_images,
             unread_marker: view.unread_marker,
             drunk_levels: view.drunk_levels,
@@ -4793,6 +4829,7 @@ fn draw_selected_content(
                     chat_badges: view.chat_badges,
                     profile_award_badges: view.profile_award_badges,
                     message_reactions: view.message_reactions,
+                    message_gilds: view.message_gilds,
                     inline_images: view.inline_images,
                     unread_marker: view.room_unread_markers.get(&room.id).copied().flatten(),
                     drunk_levels: view.drunk_levels,
