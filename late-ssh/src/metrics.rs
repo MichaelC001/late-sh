@@ -1,3 +1,4 @@
+use late_core::models::article::NewsShareReward;
 use late_core::models::chat_message_gild::GildTier;
 use late_core::models::leaderboard::DoorGame;
 
@@ -69,7 +70,8 @@ mod inner {
 
     use super::{
         ActivityGame, CrownRefusal, DailyWinPayout, DoorGame, GildRefusal, GildTier,
-        OnlineTimeFlushResult, PotRefusal, RenderReason, SummaryResult, TranslationResult,
+        NewsShareReward, OnlineTimeFlushResult, PotRefusal, RenderReason, SummaryResult,
+        TranslationResult,
     };
 
     fn meter() -> opentelemetry::metrics::Meter {
@@ -412,6 +414,26 @@ mod inner {
         })
     }
 
+    fn news_shares_total() -> &'static Counter<u64> {
+        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
+        METRIC.get_or_init(|| {
+            meter()
+                .u64_counter("late_ssh_news_shares_total")
+                .with_description("News articles published, from the composer or an RSS share")
+                .build()
+        })
+    }
+
+    fn news_share_chips_paid_total() -> &'static Counter<u64> {
+        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
+        METRIC.get_or_init(|| {
+            meter()
+                .u64_counter("late_ssh_news_share_chips_paid_total")
+                .with_description("Chips minted as News share rewards")
+                .build()
+        })
+    }
+
     fn game_wins_total() -> &'static Counter<u64> {
         static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
         METRIC.get_or_init(|| {
@@ -504,6 +526,25 @@ mod inner {
             1,
             &[KeyValue::new("outcome", daily_win_payout_label(payout))],
         );
+    }
+
+    /// A share pays a flat reward, so one counter tracks the shares and
+    /// another the chips they minted; the two together are the sink-free
+    /// half of the News economy.
+    fn news_share_reward_label(reward: NewsShareReward) -> &'static str {
+        match reward {
+            NewsShareReward::Paid => "paid",
+            NewsShareReward::RepeatUrl => "repeat_url",
+            NewsShareReward::DailyCapReached => "daily_cap",
+        }
+    }
+
+    pub fn record_news_shared(reward: NewsShareReward) {
+        news_shares_total().add(
+            1,
+            &[KeyValue::new("reward", news_share_reward_label(reward))],
+        );
+        news_share_chips_paid_total().add(reward.chips() as u64, &[]);
     }
 
     pub fn record_gild_bought(tier: GildTier) {
@@ -667,7 +708,8 @@ mod inner {
 mod inner {
     use super::{
         ActivityGame, CrownRefusal, DailyWinPayout, DoorGame, GildRefusal, GildTier,
-        OnlineTimeFlushResult, PotRefusal, RenderReason, SummaryResult, TranslationResult,
+        NewsShareReward, OnlineTimeFlushResult, PotRefusal, RenderReason, SummaryResult,
+        TranslationResult,
     };
 
     pub fn record_ssh_connection() {}
@@ -685,6 +727,7 @@ mod inner {
     pub fn record_chat_message_edited() {}
     pub fn record_game_win(_game: ActivityGame) {}
     pub fn record_daily_win_payout(_payout: DailyWinPayout) {}
+    pub fn record_news_shared(_reward: NewsShareReward) {}
     pub fn record_gild_bought(_tier: GildTier) {}
     pub fn record_gild_refused(_refusal: GildRefusal) {}
     pub fn record_crown_taken(_price: i64) {}
