@@ -106,6 +106,16 @@ pub enum ActivityKind {
         /// The deposed holder, absent when the crown was vacant.
         from: Option<String>,
     },
+    /// The weekly pot drew. Names the winner and the odds they beat, because
+    /// the odds are the story: a three-ticket win off three hundred reads
+    /// very differently from a fifty-ticket one. `pot_id` keys the #lounge
+    /// repeat throttle; there is one of these a week anyway.
+    PotDrawn {
+        pot_id: Uuid,
+        payout: i64,
+        winner_tickets: i64,
+        total_tickets: i64,
+    },
     /// A linked user published an entry on cyberspace.online from late.sh.
     /// Announces our user's own action, never cyberspace content.
     CyberspacePosted {
@@ -143,6 +153,7 @@ impl ActivityKind {
             | Self::BurnMilestone { .. }
             | Self::MessageGilded { .. }
             | Self::CrownTaken { .. }
+            | Self::PotDrawn { .. }
             | Self::CyberspacePosted { .. }
             | Self::WentLive { .. }
             | Self::WatchingStream { .. } => ActivityCategory::Session,
@@ -561,6 +572,37 @@ impl ActivityEvent {
                 price,
                 next_price,
                 from,
+            },
+            action,
+        )
+    }
+
+    /// The pot drew. The line quotes what the winner actually received (the
+    /// fifth that was burned is not theirs to be congratulated for) and the
+    /// odds behind it.
+    pub fn pot_drawn(
+        winner_id: Uuid,
+        winner: impl Into<String>,
+        pot_id: Uuid,
+        payout: i64,
+        winner_tickets: i64,
+        total_tickets: i64,
+    ) -> Self {
+        use crate::app::common::primitives::thousands;
+        let action = format!(
+            "won {} chips from the pot on {} of {} tickets",
+            thousands(payout),
+            thousands(winner_tickets),
+            thousands(total_tickets)
+        );
+        Self::new(
+            Some(winner_id),
+            winner,
+            ActivityKind::PotDrawn {
+                pot_id,
+                payout,
+                winner_tickets,
+                total_tickets,
             },
             action,
         )

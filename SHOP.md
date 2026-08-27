@@ -101,10 +101,10 @@ North-star check, borrowed from GAME.md: **does it ship a story into
 | Burn milestones | 🕯️ Wick 50,000 / 🧨 Fuse 150,000 / 🌋 Furnace 500,000 (lowered from 100,000 / 500,000 / 1,000,000 on 2026-08-26, when the ultimates came down to 1M and took the ceiling) |
 | Ultimate spell | 1,000,000 (lowered from 10,000,000 on 2026-08-26: at ten million neither spell ever sold, and the shop's ceiling belongs on a thing people can actually reach) |
 | Pot ticket | 100 chips |
-| Pot per-user cap | 50 tickets per pot |
+| Pot per-user cap | 10 tickets per UTC day, 70 a week (was 50 per pot while the pot was daily; decided 2026-08-27) |
 | Pot payout | 80% of ticket sum to one ticket-weighted winner; 20% never re-minted |
-| Pot draw hour | 21:00 UTC, one constant |
-| Pot threshold lines | 50,000 and 100,000, once each per pot |
+| Pot draw | Monday 21:00 UTC, two constants (weekly since 2026-08-27; the hour is the EU evening / US afternoon overlap) |
+| Pot threshold lines | none (removed 2026-08-27, migration 162: the size rides the status HUD on every screen all week, so a mid-week #lounge nudge repeated the border) |
 
 ## Process
 
@@ -525,7 +525,8 @@ ultimate spells, any equip choice between milestones.
 
 ## Phase 5: the pot
 
-Goal: a daily parimutuel raffle. The biggest sink that works at any
+Goal: a parimutuel raffle (daily as designed, weekly as shipped, see the
+status below). The biggest sink that works at any
 concurrency, one story a day, and the arena's betting engine (GAME.md
 phase 4) built early. Do not generalize it into a "pool" abstraction; the
 arena copies the shape when it exists.
@@ -570,18 +571,77 @@ Behavior:
   `pot_changed` notify. No `notifications` row (that table is
   mention-bound).
 
+Status: shipped 2026-08-27 (migration 160, `late-core/src/models/pot.rs`,
+`late-ssh/src/app/pot/`). Deviations from the design above, each deliberate:
+- **Weekly, not daily**, drawn Monday 21:00 UTC, and the cap is **10 a
+  day** rather than N per pot (decided 2026-08-27, same day). At the clubhouse's size a daily pot is a few
+  thousand chips, the 50k / 100k threshold lines would never fire, and empty
+  days rolling would quietly say nobody plays. One real story a week, a
+  countdown in days, and a daily cap so nobody can buy the week on Monday:
+  the raffle is about showing up seven times, and 1,000 chips a day is an
+  arcade afternoon, reachable by anyone who plays. The pot therefore stops
+  being a whale sink (7,000 a week per player at most); the crown and the
+  milestones are the whale sinks. No schema change: `next_draw_at` picks the
+  next Monday, `short_duration` learned days, and the cap check in the insert
+  counts today's rows (`created` on today's UTC date) instead of the pot's. The 21:00 hour stays as the EU evening / US
+  afternoon overlap.
+- **The pot also rides the status HUD**, `pot 84,200 · 4d12h` right before
+  the chips so the prize reads against the viewer's balance, on every
+  screen. It sheds first under a tight border (countdown, then itself).
+- **`/pot` costs no query.** The design put "the caller's ticket count" in
+  the `watch` snapshot, which a process-wide watch cannot carry. Instead
+  `PotSnapshot` holds a private `HashMap<Uuid, i64>` of holdings and
+  `tickets_for(user_id)` is the only way out of it, so the panel and the
+  status line both read owned memory and no session can widen the read. The
+  snapshot is one aggregate query per refresh, which the draw needs anyway.
+  `PotEvent` therefore has no `Status` variant: the command is answered
+  synchronously in `tick_pot` rather than through a task.
+- **The draw posts a headline as well as a ticker line.** The design's own
+  requirement was that an offline winner reads the result on return, and a
+  `· ` ticker line is diverted out of the TUI message list; only a headline
+  (a real un-prefixed `system` message, `filter::lounge_headline`) is a row
+  they can still read. The crown was that arm's only occupant until now.
+- **`ChipMove::PotTicket` is `counts_as_earnings = false` too.** The design
+  only decided the win. Excluding the win and counting the ticket would make
+  buying into the pot a pure negative on a board the winner cannot climb
+  back up, so both sides are out.
+- **No threshold lines.** They shipped as a high-water column
+  (`pots.announced_threshold`, claimed by a guarded `UPDATE`) and were
+  removed the same day (migration 162) once the pot moved into the status
+  HUD: the size is on every screen all week, so a mid-week #lounge nudge
+  only repeated what the border said. The draw is the pot's one story.
+- **`ticket_count`, `payout_chips`, `winner_user_id`, `drawn_at` are
+  nullable**, stamped once at the draw, with one CHECK per status so a
+  half-settled row cannot exist. A drawn pot is told from a rolled one by
+  `ticket_count > 0` rather than by the winner, because the winner's account
+  can be deleted out from under a settled row (`ON DELETE SET NULL`); history
+  keeps what was paid and the ledger keeps who was paid.
+- **The buy holds the pot row `FOR UPDATE`** on top of the in-query cap
+  check. The check alone is not exact: two concurrent buys by one player
+  would read the same sum and both pass. The row lock also means a buy that
+  arrives exactly as the sweeper draws is refused uncharged
+  (`PotRefusal::Closed`) instead of landing in a settled pot.
+- **`ensure_open` is folded into `settle_due`.** The migration seeds no pot,
+  so the sweeper's first pass opens one; that is the same advisory lock and
+  the same transaction that would otherwise have needed a second path.
+- **The panel is two rows of left/right pairs**, not the wide single line the
+  design sketched: the rail is 24 columns and the panel draws into 21, so
+  `pot 84,200 · 312 tickets · draws in 3h12m` was never going to fit. It
+  reads `84,200 / in 3h12m` over `842 tickets / you 5`, and dashes before the
+  first refresh.
+
 Acceptance:
-- [ ] Buy: cap enforced in the query, floor guard, ledger row per buy.
-- [ ] Draw: two replicas sweeping the same pot produce one payout; zero
+- [x] Buy: cap enforced in the query, floor guard, ledger row per buy.
+- [x] Draw: two replicas sweeping the same pot produce one payout; zero
       tickets rolls; the next pot always exists after a draw.
-- [ ] Whole-state test of the draw from a fixed seed and fixed tickets.
-- [ ] Payout math: winner receives `floor(size * 0.8)`, the ledger shows
+- [x] Whole-state test of the draw from a fixed seed and fixed tickets.
+- [x] Payout math: winner receives `floor(size * 0.8)`, the ledger shows
       the 20% gap.
-- [ ] Panel renders on Home and Arcade, shrinks in the right order, and
+- [x] Panel renders on Home and Arcade, shrinks in the right order, and
       the stored panel list of an existing user gains it without a
       settings migration.
-- [ ] Threshold lines fire once each per pot across restarts.
-- [ ] Tests beside the model, the service, the sidebar, and the activity
+- [x] ~~Threshold lines fire once each per pot across restarts.~~ Removed, see the status block.
+- [x] Tests beside the model, the service, the sidebar, and the activity
       filter; help copy; new `late-ssh/src/app/pot/CONTEXT.md` plus the
       root routing table row.
 
@@ -836,7 +896,7 @@ Decided numbers:
 
 | Dial | Value |
 |---|---|
-| Paid results per opponent per UTC day | 1 (win payout and consolation both) |
+| Paid results per opponent per game per posting day | 1 (win payout; the claim is scoped to the roster game, decided 2026-08-27; the consolation was dropped) |
 | Consolation | 100 chips, flat, every roster game |
 | Consolation gate | `state.revision >= DailyGame::consolation_min_moves()`: chess and chess960 40, battleship 40, reversi 30, checkers 30, connect four 20, backgammon 20, briscola 20 (revision counts both players' moves) |
 | Who gets consolation | the loser on every decisive result except `timeout`; both players on `draw`; nobody on `timeout` |
@@ -895,19 +955,49 @@ Behavior:
   wagered match. `DailyGame::win_payout` stays display-only and equal to
   the template, same rule for `consolation_min_moves`.
 
+Status: part 1 shipped 2026-08-27 (migration 161, `DailyService::pay_winner`,
+`ChipService::credit_per_event_pair_day_reward_template`). Part 2, the wager,
+is still open. Deviations from the design above, each deliberate:
+- **The pair-day cap is per opponent per game**, not per opponent. The
+  `pair_day` claim rides `grant_multi` under the template's `game`
+  (`daily_chess`, `daily_battleship`, ...) like every claim row, so chess and
+  battleship against the same person on the same posting day both pay.
+  Decided 2026-08-27 in review: friends who play several games together are
+  never touched, and a colluding pair is bounded at one paid win per roster
+  game per direction per posting day (about 3,300 chips each way, and only
+  after playing all eight games). If Top Chips ever looks wrong, the
+  per-account daily quota is the next step, not a tighter pair key.
+- **A win pays only with at least 5 half-moves played**
+  (`DAILY_WIN_MIN_MOVES`; both players' moves count, a resign is not a move,
+  a timeout counts what was played). Not in the design. It stops the
+  zero-move claim-and-resign and nothing more: a move count sets a rate, not
+  a bound, since there is no minimum time per move. The pair-day cap is the
+  bound.
+- **The consolation is dropped, not built.** 100 chips for showing up could
+  not be paid without reopening the faucet the cap just closed, and the wager
+  is the real finish-your-games lever. The rows for it in the table above
+  stay as the record of what was considered.
+- The credit is awaited inside `finish_events` rather than spawned, so the
+  `MatchFinished` event and the banner say what the chips did
+  (`DailyWinPayout`: paid / unplayed / pair_day_capped / failed), and the same
+  outcome is stored in `daily_matches.win_payout` for the lingering result
+  row, so an offline winner learns why the chips did or did not come. A
+  failed credit never un-finishes a match.
+
 Checklist:
-- [ ] Pair-day cap on the win payout, with a test: two decisive matches
+- [x] Pair-day cap on the win payout, with a test: two decisive matches
       against the same opponent on one UTC day pay once; the next day pays
       again; a different opponent the same day pays.
-- [ ] Consolation: loser at the threshold is paid, one move short is not,
-      draw pays both, timeout pays neither, and the pair-day cap covers it.
+- [ ] Test pinning the per-game scope: chess and battleship against the
+      same opponent on one posting day both pay.
+- [x] Consolation: dropped, see the status block above.
 - [ ] Wager: hold on post, match on claim, short balance fails the right
       step, settle on every finish path, refund on cancel and draw, timeout
       pays the pot, retry of any path is a no-op. Whole-ledger assertions:
       the sum of the four wager moves for a match equals minus the burn.
-- [ ] `daily/CONTEXT.md` sections 1, 3, 6, 8 and the chips context updated;
-      help copy for the stake row; roster protocol ("Adding a game to the
-      roster") gains the `consolation_min_moves` arm.
+- [ ] `daily/CONTEXT.md` sections 1, 3, 6, 8 and the chips context updated
+      (done for part 1); help copy for the stake row waits on the wager. The
+      `consolation_min_moves` roster arm is gone with the consolation.
 
 Out of scope: spectator side bets (the arena, GAME.md phase 4), tournaments,
 draw offers, house-table stakes, an entry fee on unwagered matches, elapsed
@@ -937,9 +1027,8 @@ Owner notes to pick up in a later spitball, kept here so they are not lost:
   eat what they pay). Still open there: Asterion's daily 4,000.
 - ~~Lobby game economics.~~ Phase 7 above (pair-day cap, consolation,
   wagers). Still open in the Lobby: spectator side bets, tournaments.
-- ~~A payout for the loser, gated on effort.~~ Phase 7 above: 100 chips at
-  a per-game move threshold, never on timeout, capped per opponent per
-  day.
+- ~~A payout for the loser, gated on effort.~~ Was Phase 7's consolation;
+  dropped 2026-08-27 (see the Phase 7 status block).
 
 ## Dropped
 
