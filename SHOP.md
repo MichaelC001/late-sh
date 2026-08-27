@@ -988,8 +988,9 @@ Checklist:
 - [x] Pair-day cap on the win payout, with a test: two decisive matches
       against the same opponent on one UTC day pay once; the next day pays
       again; a different opponent the same day pays.
-- [ ] Test pinning the per-game scope: chess and battleship against the
-      same opponent on one posting day both pay.
+- [x] Test pinning the per-game scope: chess and chess960 against the
+      same opponent on one posting day both pay
+      (`pair_day_cap_is_scoped_to_the_game`).
 - [x] Consolation: dropped, see the status block above.
 - [ ] Wager: hold on post, match on claim, short balance fails the right
       step, settle on every finish path, refund on cancel and draw, timeout
