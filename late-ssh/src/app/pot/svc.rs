@@ -2,7 +2,7 @@
 //!
 //! Two commands (`/pot`, `/pot buy N`), one sweeper, one story a week. This
 //! module owns every refusal, every log line, the #lounge lines, and the
-//! process-shared snapshot the sidebar panel reads;
+//! process-shared snapshot the status HUD badge reads;
 //! `late_core::models::pot` owns the tables and the money math underneath it.
 //!
 //! Distribution is the crown's shape: a `watch` for the state every session
@@ -176,7 +176,7 @@ impl PotStatus {
             return "The pot has not opened yet.".to_string();
         };
         // The holding and what it cost, then today's room under the cap: the
-        // one thing a player cannot work out from the panel.
+        // one thing a player cannot work out from the HUD badge.
         let held = match self.my_tickets {
             0 => "you hold none".to_string(),
             held => format!(
@@ -287,7 +287,7 @@ impl PotService {
     pub fn subscribe_snapshot(&self) -> watch::Receiver<Arc<PotSnapshot>> {
         let mut rx = self.snapshot_tx.subscribe();
         // `subscribe` marks the current value as seen, which would leave a
-        // session connecting mid-pot with an empty panel until the next buy.
+        // session connecting mid-pot with an empty HUD badge until the next buy.
         rx.mark_changed();
         rx
     }
@@ -410,10 +410,10 @@ impl PotService {
     }
 
     /// One `pot_changed` notify, on every replica including the one that
-    /// sent it: re-read the pot for the panel, then tell the winner if they
+    /// sent it: re-read the pot for the badge, then tell the winner if they
     /// are connected here.
     ///
-    /// A failed re-read is this replica's panel lagging until the next
+    /// A failed re-read is this replica's badge lagging until the next
     /// notify, not a reason to drop the LISTEN connection: propagating it
     /// would lose every buy committed during the reconnect window. A payload
     /// that does not parse is logged for the same reason; the re-read does
@@ -447,7 +447,7 @@ impl PotService {
         }
     }
 
-    /// Answer `/pot` for one session, from the shared snapshot: the panel
+    /// Answer `/pot` for one session, from the shared snapshot: the badge
     /// already has every number, so the command costs no query at all.
     pub fn status_for(&self, user_id: Uuid) -> PotStatus {
         let snapshot = self.snapshot_tx.borrow().clone();
@@ -542,7 +542,7 @@ impl PotService {
         else {
             return Err(PotError::Refused(PotRefusal::InsufficientChips { price }));
         };
-        // The panel crosses processes over Postgres, not over this process's
+        // The badge crosses processes over Postgres, not over this process's
         // broadcast, so every replica learns about the buy the same way.
         Pot::notify_changed(&tx, &PotChange::Bought).await?;
         let holders = PotTicket::holders(&*tx, pot.id).await?;

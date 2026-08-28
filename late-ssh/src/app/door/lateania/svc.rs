@@ -10122,3 +10122,9 @@ fn push_log(log: &mut Vec<LogLine>, kind: LogKind, text: String) {
 #[cfg(test)]
 #[path = "svc_test.rs"]
 mod svc_test;
+
+/// The test battle arena (see `arena.rs`): drives the real engine with
+/// scripted characters against real spawns and reports who survives.
+#[cfg(test)]
+#[path = "arena.rs"]
+mod arena;

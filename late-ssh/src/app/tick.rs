@@ -245,6 +245,10 @@ impl App {
         }
         self.chat
             .set_favorite_room_ids(self.profile_state.profile().favorite_room_ids.clone());
+        self.chat
+            .set_viewer_tz(crate::app::profile::svc::parse_account_tz(
+                self.profile_state.profile().timezone.as_deref(),
+            ));
         let translate_to = self.profile_state.profile().translate_to;
         let auto_translate = self.profile_state.profile().auto_translate;
         changed |= self

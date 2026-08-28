@@ -560,7 +560,7 @@ Behavior:
   tops Top Chips). The next pot is inserted in the same transaction with
   `draws_at` = the next 21:00 UTC, so there is always exactly one open
   pot.
-- Sidebar: a two-row "Pot" panel in the roster in
+- Sidebar (removed 2026-08-28, see the status block): a two-row "Pot" panel in the roster in
   `late-ssh/src/app/common/sidebar.rs`, on by default for new panel lists
   and appended for stored lists (read how legacy `"activity"` entries are
   dropped on read and do the inverse), shrink priority just above the
@@ -592,11 +592,17 @@ Status: shipped 2026-08-27 (migration 160, `late-core/src/models/pot.rs`,
 - **The pot also rides the status HUD**, `pot 84,200 · 4d12h` right before
   the chips so the prize reads against the viewer's balance, on every
   screen. It sheds first under a tight border (countdown, then itself).
+- **No sidebar panel** (removed 2026-08-28). The HUD badge already carries
+  the size and the countdown on every screen, so the two-row panel spent
+  rail rows on a second copy of the border; `/pot` remains the full read.
+  `RightSidebarComponent::Pot` and `pot/panel.rs` are gone, and a stored
+  `"pot"` key is dropped on read by `from_key` exactly like the retired
+  `"activity"` and `"visualizer"` keys, so no settings migration is needed.
 - **`/pot` costs no query.** The design put "the caller's ticket count" in
   the `watch` snapshot, which a process-wide watch cannot carry. Instead
   `PotSnapshot` holds a private `HashMap<Uuid, i64>` of holdings and
-  `tickets_for(user_id)` is the only way out of it, so the panel and the
-  status line both read owned memory and no session can widen the read. The
+  `tickets_for(user_id)` is the only way out of it, so the HUD badge and the
+  `/pot` line both read owned memory and no session can widen the read. The
   snapshot is one aggregate query per refresh, which the draw needs anyway.
   `PotEvent` therefore has no `Status` variant: the command is answered
   synchronously in `tick_pot` rather than through a task.
@@ -641,9 +647,9 @@ Acceptance:
 - [x] Whole-state test of the draw from a fixed seed and fixed tickets.
 - [x] Payout math: winner receives `floor(size * 0.8)`, the ledger shows
       the 20% gap.
-- [x] Panel renders on Home and Arcade, shrinks in the right order, and
+- [x] ~~Panel renders on Home and Arcade, shrinks in the right order, and
       the stored panel list of an existing user gains it without a
-      settings migration.
+      settings migration.~~ Removed, see the status block.
 - [x] ~~Threshold lines fire once each per pot across restarts.~~ Removed, see the status block.
 - [x] Tests beside the model, the service, the sidebar, and the activity
       filter; help copy; new `late-ssh/src/app/pot/CONTEXT.md` plus the

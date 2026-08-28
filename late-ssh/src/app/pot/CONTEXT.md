@@ -2,7 +2,7 @@
 
 ## Metadata
 - Domain: the weekly pot, late.sh's parimutuel raffle and its largest concurrency-safe chip sink
-- Scope: `late-ssh/src/app/pot/`, `late-core/src/models/pot.rs`, migration 160, the `pot` sidebar panel, the `/pot` composer commands
+- Scope: `late-ssh/src/app/pot/`, `late-core/src/models/pot.rs`, migration 160, the status HUD badge, the `/pot` composer commands
 - Read this before: changing the ticket price or the cap, the draw hour, the payout split, the sweeper, or anything that reads `pots` / `pot_tickets`
 - Related: root `CONTEXT.md` (routing, chips), `SHOP.md` phase 5 (the decided design and the fixed numbers), `late-ssh/src/app/crown/svc.rs` (the service shape this copies)
 
@@ -27,9 +27,8 @@ There is no house wallet and no stored running total. A live pot's size is
 | `late-core/src/models/pot.rs` | Both tables, the fixed numbers (`POT_TICKET_PRICE`, `POT_MAX_TICKETS_PER_DAY`, `POT_DRAW_WEEKDAY`, `POT_DRAW_HOUR_UTC`), and the pure money math: `payout_for`, `next_draw_at`, `draw_from_seed`. |
 | `late-core/src/models/pot_test.rs` | The whole-state draw assertion, the weighting guard, the cap-in-the-insert test, the one-open-pot and one-sweeper-settles tests, the notify test. |
 | `svc.rs` | `PotService`: the shared snapshot, the buy transaction, the sweeper, the Postgres listener, every refusal and every log line. |
-| `state.rs` | `PotView` (the per-session projection the panel draws) and the one countdown format. |
-| `panel.rs` | The two-row sidebar panel. |
-| `svc_test.rs` / `state_test.rs` / `panel_test.rs` | Adjacent tests for each. |
+| `state.rs` | `PotView` (the per-session projection the HUD badge draws) and the one countdown format. |
+| `svc_test.rs` / `state_test.rs` | Adjacent tests for each. |
 
 Commands are parsed in `late-ssh/src/app/chat/state.rs` (`parse_pot_command`,
 `PotCommand`) and carried out in `App::tick_pot`
@@ -120,31 +119,21 @@ their own id: the field breakdown never leaves the service. `/pot` reads
 refused buy; today's part is stamped at query time, so across UTC midnight
 it is stale until the next refresh (the sweeper's minute at most).
 
-## 7. The sidebar panel
+## 7. There is no sidebar panel
 
-`RightSidebarComponent::Pot` (`late-core/src/models/user.rs`), two rows,
-shrink priority 1 (it survives everything but the music stage). New users get
-it from `RightSidebarComponent::ALL`; existing users get it from
-`normalize_right_sidebar_components`, which backfills missing panels **enabled**
-at the end of a stored list, so nobody needs a settings migration.
-
-The rail is 24 columns and the panel draws into 21:
-
-```
-── pot ──────────────
-84,200       in 3h12m
-842 tickets     you 5
-```
-
-Before the first refresh (and in a process with no pot service) both rows are
-dashes rather than a zero-chip pot nobody can buy into.
+The pot had a two-row `RightSidebarComponent::Pot` panel until 2026-08-28; it
+is gone, variant and all. The size and countdown live in the status HUD badge
+below, and `/pot` answers in full. A stored `"pot"` key in a user's panel list
+is dropped on read by `RightSidebarComponent::from_key`, exactly like the
+retired `"activity"` and `"visualizer"` keys, so no settings migration is
+needed.
 
 ## 7b. The status HUD badge
 
 `render.rs::status_hud_title` carries the open pot as `pot 84,200 · 3h12m`,
 placed right before the chips segment so the prize reads against the viewer's
 own balance (`... | pot 84,200 · 3h12m | 1500 chips`). It reads the same
-`App.pot_view` the panel does, so it costs no query and repaints on the same
+`App.pot_view` `/pot` does, so it costs no query and repaints on the same
 ~1s edge. The HUD is painted over the left title, so under a tight border it
 degrades: countdown first (`pot 84,200`), then the whole badge, and it yields
 before the pomodoro badge does because it is ambient and `/pot` still answers.

@@ -3735,6 +3735,51 @@ async fn a_ready_summary_waits_for_an_open_overlay_instead_of_clobbering_it() {
     );
 }
 
+/// The catch-up head is the one absolute time in the overlay, so it is
+/// written on the reader's clock when the account has a zone.
+#[tokio::test]
+async fn a_ready_summary_dates_its_window_in_the_viewers_timezone() {
+    use chrono::TimeZone;
+
+    let test_db = crate::test_helpers::new_test_db().await;
+    let user = late_core::test_utils::create_test_user(&test_db.db, "sum_tz").await;
+    let mut state = chat_state_with_cyberspace(&test_db, user.id).0;
+    let since = Utc
+        .with_ymd_and_hms(2026, 8, 28, 14, 30, 0)
+        .single()
+        .unwrap();
+    let emit = |state: &mut ChatState| {
+        state.summary_service.emit_for_test(SummaryEvent {
+            user_id: user.id,
+            room_id: Uuid::now_v7(),
+            room_label: "#lounge".to_string(),
+            outcome: SummaryOutcome::Ready {
+                text: "- alice shipped the thing".to_string(),
+                message_count: 3,
+                since,
+                truncated: false,
+            },
+        });
+        state.tick();
+    };
+
+    state.set_viewer_tz(Some(chrono_tz::Europe::Warsaw));
+    emit(&mut state);
+    assert_eq!(
+        state.overlay.as_ref().expect("overlay").lines[0],
+        "3 messages since Aug 28 16:30 CEST"
+    );
+
+    // No account zone: the window stays UTC, and says so.
+    state.overlay = None;
+    state.set_viewer_tz(None);
+    emit(&mut state);
+    assert_eq!(
+        state.overlay.as_ref().expect("overlay").lines[0],
+        "3 messages since Aug 28 14:30 UTC"
+    );
+}
+
 #[test]
 fn selection_scroll_steps_within_measured_overflow_and_reports_edges() {
     let scroll = SelectionScroll::default();

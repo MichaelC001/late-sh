@@ -258,7 +258,8 @@ struct DrawContext<'a> {
     show_lobby_modal: bool,
     lobby: &'a crate::app::lobby::state::LobbyState,
     daily: &'a crate::app::lobby::daily::state::DailyState,
-    /// The daily pot as this viewer sees it, resolved on the ~1s tick.
+    /// The pot as this viewer sees it, resolved on the ~1s tick. Feeds the
+    /// border HUD segment; there is no pot panel in the sidebar.
     pot: &'a crate::app::pot::state::PotView,
     login_announcements: Option<&'a announcements::LoginAnnouncements>,
     stream_modal: Option<&'a crate::app::state::StreamModal>,
@@ -1620,7 +1621,6 @@ impl App {
                     radio_now_playing: ctx.radio_now_playing,
                     afk: ctx.afk,
                     daily: ctx.daily,
-                    pot: ctx.pot,
                     lobby_glow: ctx.lobby.glow(),
                     online_count: ctx.online_count,
                     active_friend_names: ctx.active_friend_names,

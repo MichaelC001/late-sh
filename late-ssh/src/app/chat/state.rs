@@ -809,6 +809,9 @@ pub struct ChatState {
     /// Mirrors of the profile's translation settings, synced by `App::tick`.
     translate_to: TranslateLang,
     auto_translate: bool,
+    /// The viewer's account timezone, synced by `App::tick`. `None` (unset or
+    /// unparseable) means every absolute time this pane writes stays UTC.
+    viewer_tz: Option<chrono_tz::Tz>,
     pub(crate) selected_message_id: Option<Uuid>,
     /// Row-level viewport offset inside a selected message that wraps taller
     /// than the chat pane; see [`SelectionScroll`]. Reset whenever the
@@ -1147,6 +1150,7 @@ impl ChatState {
             translation_cache_checked: HashSet::new(),
             translate_to: TranslateLang::En,
             auto_translate: false,
+            viewer_tz: None,
             selected_message_id: None,
             selection_scroll: SelectionScroll::default(),
             pending_delete_message_id: None,
@@ -1389,6 +1393,11 @@ impl ChatState {
     /// Sync the profile's translation settings into this session. Called from
     /// `App::tick`; a target change drops every per-message translation state
     /// (it all describes the old language) and invalidates row caches.
+    /// Mirror the account timezone the summary overlay dates its window in.
+    pub(crate) fn set_viewer_tz(&mut self, timezone: Option<chrono_tz::Tz>) {
+        self.viewer_tz = timezone;
+    }
+
     pub fn set_translate_settings(&mut self, target: TranslateLang, auto: bool) -> bool {
         let mut changed = false;
         if self.translate_to != target {
@@ -1615,7 +1624,7 @@ impl ChatState {
                     let plural = if message_count == 1 { "" } else { "s" };
                     let mut head = format!(
                         "{message_count} message{plural} since {}",
-                        since.format("%b %d %H:%M UTC")
+                        crate::app::common::time::instant_for_viewer(since, self.viewer_tz)
                     );
                     if truncated {
                         head.push_str(" · older messages past the cap left out");

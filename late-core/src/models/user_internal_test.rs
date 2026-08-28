@@ -207,17 +207,17 @@ fn extract_right_sidebar_components_preserves_order_and_backfills() {
             { "key": "bogus", "enabled": true },
             { "key": "activity", "enabled": true },
             { "key": "visualizer", "enabled": true },
+            { "key": "pot", "enabled": true },
         ]
     });
     let components = extract_right_sidebar_components(&settings);
     // Stored order kept for known entries, unknown dropped (including the
-    // retired "pet", "activity", and "visualizer" keys — the visualizer
-    // now renders inline atop Music instead of as its own panel, see
-    // `common/sidebar.rs`), missing (daily, pot) backfilled ENABLED at the
-    // end in ALL order: an existing user's stored list predates newer
-    // panels, so they should appear rather than silently stay hidden. This
-    // is what gives every existing account the pot panel with no settings
-    // migration.
+    // retired "pet", "activity", "visualizer", and "pot" keys — the
+    // visualizer now renders inline atop Music instead of as its own panel,
+    // and the pot lives only in the border HUD, see `common/sidebar.rs`),
+    // missing (daily) backfilled ENABLED at the end in ALL order: an
+    // existing user's stored list predates newer panels, so they should
+    // appear rather than silently stay hidden.
     assert_eq!(
         components,
         vec![
@@ -231,10 +231,6 @@ fn extract_right_sidebar_components_preserves_order_and_backfills() {
             },
             RightSidebarComponentSetting {
                 component: RightSidebarComponent::Daily,
-                enabled: true,
-            },
-            RightSidebarComponentSetting {
-                component: RightSidebarComponent::Pot,
                 enabled: true,
             },
         ]

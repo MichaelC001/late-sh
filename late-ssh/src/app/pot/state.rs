@@ -47,7 +47,7 @@ impl PotView {
 }
 
 /// `4d12h`, `3h12m`, `12m`, `45s`, `soon`: the one countdown format the
-/// pot's copy uses, in the panel, the HUD, and the `/pot` line alike.
+/// pot's copy uses, in the HUD badge and the `/pot` line alike.
 pub(crate) fn countdown(draws_at: DateTime<Utc>, now: DateTime<Utc>) -> String {
     short_duration((draws_at - now).num_seconds())
 }
