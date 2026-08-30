@@ -1,3 +1,6 @@
+use chrono::{Datelike, Duration, Months, Utc};
+
+use crate::models::chips::Difficulty;
 use crate::models::crown::CrownReign;
 use crate::models::profile_award::{
     CROWN_AWARD_CATEGORY, DARKROOM_BEACON_AWARD_CATEGORY, LATEANIA_ARCHDEMON_AWARD_CATEGORY,
@@ -7,6 +10,9 @@ use crate::models::profile_award::{
     is_milestone_award, is_rankless_award, list_profile_awards_for_user,
     snapshot_previous_month_profile_awards, top_badge_per_game,
 };
+use crate::models::rubiks_cube::DailyWin as RubiksCubeDailyWin;
+use crate::models::sliding_puzzle::DailyWin as SlidingPuzzleDailyWin;
+use crate::models::sudoku::DailyWin as SudokuDailyWin;
 use crate::test_utils::{create_test_user, roll_crown_reigns_back_a_month, test_db};
 
 #[test]
@@ -168,4 +174,59 @@ async fn the_months_last_crown_holder_gets_the_badge_once() {
             .any(|award| award.category == CROWN_AWARD_CATEGORY),
         "only the month's last holder is crowned"
     );
+}
+
+/// The persisted Arcade Wins award must score the same roster as the live
+/// board: every `DailyPuzzle`, at `Difficulty::points` weights. A player
+/// whose month came from Sliding Puzzle and Rubik's Cube outranks one easy
+/// Sudoku, exactly as the leaderboard page shows it.
+#[tokio::test]
+async fn arcade_wins_snapshot_scores_every_daily_puzzle_in_the_roster() {
+    let test_db = test_db().await;
+    let client = test_db.db.get().await.expect("db client");
+    let roster = create_test_user(&test_db.db, "arcade-award-roster").await;
+    let classic = create_test_user(&test_db.db, "arcade-award-classic").await;
+
+    let this_month = Utc::now().date_naive().with_day(1).expect("first of month");
+    let last_month = this_month
+        .checked_sub_months(Months::new(1))
+        .expect("previous month");
+    let played_on = last_month + Duration::days(3);
+
+    SlidingPuzzleDailyWin::record_win(&client, roster.id, Difficulty::Hard, played_on, 90)
+        .await
+        .expect("sliding puzzle win");
+    RubiksCubeDailyWin::record_win(&client, roster.id, played_on)
+        .await
+        .expect("rubik's cube win");
+    SudokuDailyWin::record_win(&client, classic.id, "easy".to_string(), played_on, 1)
+        .await
+        .expect("sudoku win");
+
+    snapshot_previous_month_profile_awards(&client)
+        .await
+        .expect("snapshot");
+
+    let arcade_award = |awards: Vec<crate::models::profile_award::ProfileAward>| {
+        awards
+            .into_iter()
+            .find(|award| award.category == "arcade_wins")
+            .map(|award| (award.rank, award.score_value))
+    };
+    let roster_award = arcade_award(
+        list_profile_awards_for_user(&client, roster.id)
+            .await
+            .expect("roster awards"),
+    );
+    let classic_award = arcade_award(
+        list_profile_awards_for_user(&client, classic.id)
+            .await
+            .expect("classic awards"),
+    );
+    assert_eq!(
+        roster_award,
+        Some((1, Difficulty::Hard.points() + Difficulty::Medium.points())),
+        "hard Sliding Puzzle plus Rubik's Cube leads the month"
+    );
+    assert_eq!(classic_award, Some((2, Difficulty::Easy.points())));
 }

@@ -109,6 +109,7 @@ pub(crate) const GAME_SELECTION_SOLITAIRE: usize = 6;
 pub(crate) const GAME_SELECTION_SNAKE: usize = 7;
 pub(crate) const GAME_SELECTION_TRAFFIC: usize = 8;
 pub(crate) const GAME_SELECTION_RUBIKS_CUBE: usize = 9;
+pub(crate) const GAME_SELECTION_SLIDING_PUZZLE: usize = 10;
 pub(crate) const DEFAULT_GAME_SELECTION: usize = GAME_SELECTION_2048;
 
 /// Rail modes in force: this device's stored layout when its key has one, else
@@ -219,6 +220,8 @@ pub struct SessionConfig {
     pub traffic_service: crate::app::arcade::traffic::svc::TrafficService,
     pub rubiks_cube_service: crate::app::arcade::rubiks_cube::svc::RubiksCubeService,
     pub initial_rubiks_cube_game: Option<late_core::models::rubiks_cube::Game>,
+    pub sliding_puzzle_service: crate::app::arcade::sliding_puzzle::svc::SlidingPuzzleService,
+    pub initial_sliding_puzzle_games: Vec<late_core::models::sliding_puzzle::Game>,
     pub initial_tetris_game: Option<late_core::models::tetris::Game>,
     pub initial_snake_game: Option<late_core::models::snake::Game>,
     pub initial_tetris_high_score: Option<late_core::models::tetris::HighScore>,
@@ -639,6 +642,9 @@ pub struct App {
     /// Leaderboard
     pub(super) leaderboard_rx: Option<watch::Receiver<Arc<LeaderboardData>>>,
     pub(crate) leaderboard: Arc<LeaderboardData>,
+    /// Dailies banked in this session today; painted over `leaderboard`'s
+    /// per-user daily statuses so the Arcade card does not wait a refresh.
+    pub(crate) session_daily_wins: crate::app::arcade::workspace::SessionDailyWins,
 
     /// Bonsai
     pub(crate) bonsai_state: crate::app::bonsai::state::BonsaiState,
@@ -778,6 +784,7 @@ pub struct App {
     pub(crate) tetris_state: crate::app::arcade::tetris::state::State,
     pub(crate) snake_state: crate::app::arcade::snake::state::State,
     pub(crate) rubiks_cube_state: crate::app::arcade::rubiks_cube::state::State,
+    pub(crate) sliding_puzzle_state: crate::app::arcade::sliding_puzzle::state::State,
     pub(crate) le_word_state: crate::app::arcade::le_word::state::State,
     pub(crate) sudoku_state: crate::app::arcade::sudoku::state::State,
     pub(crate) nonogram_state: crate::app::arcade::nonogram::state::State,
@@ -1121,6 +1128,11 @@ impl App {
             config.user_id,
             config.rubiks_cube_service.clone(),
             config.initial_rubiks_cube_game,
+        );
+        let sliding_puzzle_state = crate::app::arcade::sliding_puzzle::state::State::new(
+            config.user_id,
+            config.sliding_puzzle_service.clone(),
+            config.initial_sliding_puzzle_games,
         );
         let le_word_state = crate::app::arcade::le_word::state::State::new(
             config.user_id,
@@ -1484,6 +1496,7 @@ impl App {
                 .map(|rx| rx.borrow().clone())
                 .unwrap_or_default(),
             leaderboard_rx: config.leaderboard_rx,
+            session_daily_wins: crate::app::arcade::workspace::SessionDailyWins::new(),
             bonsai_state,
             bonsai_care_state,
             bonsai_v2_state,
@@ -1572,6 +1585,7 @@ impl App {
             tetris_state,
             snake_state,
             rubiks_cube_state,
+            sliding_puzzle_state,
             le_word_state,
             sudoku_state,
             nonogram_state,

@@ -59,6 +59,7 @@ pub fn lounge_includes(event: &ActivityEvent) -> bool {
             | ActivityGame::Nonogram
             | ActivityGame::Poker
             | ActivityGame::RubiksCube
+            | ActivityGame::SlidingPuzzle
             | ActivityGame::Sshattrick
             | ActivityGame::Ssnake
             | ActivityGame::Solitaire
@@ -99,6 +100,7 @@ pub fn lounge_includes(event: &ActivityEvent) -> bool {
             | ActivityGame::Minesweeper
             | ActivityGame::Nonogram
             | ActivityGame::RubiksCube
+            | ActivityGame::SlidingPuzzle
             | ActivityGame::Solitaire
             | ActivityGame::Sudoku => true,
             // Score-run games have no daily-win concept; their final scores

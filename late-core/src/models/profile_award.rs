@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 
 use super::chips::ChipMove;
+use super::leaderboard::DailyPuzzle;
 use tokio_postgres::Client;
 use uuid::Uuid;
 
@@ -183,9 +184,26 @@ pub async fn list_profile_awards_for_user(
 pub async fn snapshot_previous_month_profile_awards(client: &Client) -> Result<u64> {
     let rank_limit = i64::from(PROFILE_AWARD_RANK_LIMIT);
     let excluded_reasons = ChipMove::excluded_earning_reasons();
+    // One arm per daily puzzle, generated from the roster with the same
+    // points expression the live Arcade Wins board uses, so the persisted
+    // award cannot score a different set of games than the page did.
+    let arcade_arms: String = DailyPuzzle::ALL
+        .iter()
+        .map(|puzzle| {
+            format!(
+                "SELECT user_id, {points} AS points
+                 FROM {table}, bounds
+                 WHERE puzzle_date >= bounds.period_month
+                   AND puzzle_date < (bounds.period_month + INTERVAL '1 month')::date",
+                points = puzzle.points_sql(),
+                table = puzzle.wins_table(),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\nUNION ALL\n");
     let inserted = client
         .execute(
-            "INSERT INTO profile_awards (user_id, category, period_month, rank, score_value)
+            &format!("INSERT INTO profile_awards (user_id, category, period_month, rank, score_value)
              WITH bounds AS (
                 SELECT
                     (date_trunc('month', now() AT TIME ZONE 'UTC')::date - INTERVAL '1 month')::date AS period_month,
@@ -202,36 +220,10 @@ pub async fn snapshot_previous_month_profile_awards(client: &Client) -> Result<u
                 HAVING SUM(delta) > 0
              ),
              arcade_wins AS (
-                SELECT user_id, difficulty_key
-                FROM sudoku_daily_wins, bounds
-                WHERE puzzle_date >= bounds.period_month
-                  AND puzzle_date < (bounds.period_month + INTERVAL '1 month')::date
-                UNION ALL
-                SELECT user_id, difficulty_key
-                FROM nonogram_daily_wins, bounds
-                WHERE puzzle_date >= bounds.period_month
-                  AND puzzle_date < (bounds.period_month + INTERVAL '1 month')::date
-                UNION ALL
-                SELECT user_id, difficulty_key
-                FROM solitaire_daily_wins, bounds
-                WHERE puzzle_date >= bounds.period_month
-                  AND puzzle_date < (bounds.period_month + INTERVAL '1 month')::date
-                UNION ALL
-                SELECT user_id, difficulty_key
-                FROM minesweeper_daily_wins, bounds
-                WHERE puzzle_date >= bounds.period_month
-                  AND puzzle_date < (bounds.period_month + INTERVAL '1 month')::date
+                {arcade_arms}
              ),
              arcade_totals AS (
-                SELECT user_id,
-                       SUM(CASE difficulty_key
-                         WHEN 'easy' THEN 1
-                         WHEN 'draw-1' THEN 1
-                         WHEN 'medium' THEN 3
-                         WHEN 'hard' THEN 5
-                         WHEN 'draw-3' THEN 5
-                         ELSE 1
-                       END)::bigint AS value
+                SELECT user_id, SUM(points)::bigint AS value
                 FROM arcade_wins
                 GROUP BY user_id
              ),
@@ -313,7 +305,7 @@ pub async fn snapshot_previous_month_profile_awards(client: &Client) -> Result<u
              CROSS JOIN bounds
              WHERE ranked.rank <= $1
              ON CONFLICT (user_id, category, period_month)
-             DO NOTHING",
+             DO NOTHING"),
             &[&rank_limit, &excluded_reasons],
         )
         .await?;

@@ -196,6 +196,7 @@ pub enum ActivityGame {
     Nonogram,
     Poker,
     RubiksCube,
+    SlidingPuzzle,
     Sshattrick,
     Ssnake,
     Solitaire,
@@ -225,6 +226,7 @@ impl ActivityGame {
             Self::Nonogram => "nonogram",
             Self::Poker => "poker",
             Self::RubiksCube => "rubiks_cube",
+            Self::SlidingPuzzle => "sliding_puzzle",
             Self::Sshattrick => "sshattrick",
             Self::Ssnake => "ssnake",
             Self::Solitaire => "solitaire",
@@ -254,6 +256,7 @@ impl ActivityGame {
             Self::Nonogram => "Nonogram",
             Self::Poker => "Poker",
             Self::RubiksCube => "Rubik's Cube",
+            Self::SlidingPuzzle => "Sliding Puzzle",
             Self::Sshattrick => "ssHattrick",
             Self::Ssnake => "Super Snake",
             Self::Solitaire => "Solitaire",
@@ -329,6 +332,7 @@ impl ActivityEvent {
             ActivityGame::Nonogram => "solved Nonogram",
             ActivityGame::Poker => "won Poker hand",
             ActivityGame::RubiksCube => "solved Rubik's Cube",
+            ActivityGame::SlidingPuzzle => "solved Sliding Puzzle",
             ActivityGame::Sshattrick => "won ssHattrick match",
             ActivityGame::Ssnake => "won Super Snake match",
             ActivityGame::Solitaire => "won Solitaire",
@@ -393,6 +397,7 @@ impl ActivityEvent {
             | ActivityGame::Nonogram
             | ActivityGame::Poker
             | ActivityGame::RubiksCube
+            | ActivityGame::SlidingPuzzle
             | ActivityGame::Sshattrick
             | ActivityGame::Ssnake
             | ActivityGame::Solitaire
