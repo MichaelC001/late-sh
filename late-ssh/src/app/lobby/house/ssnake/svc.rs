@@ -46,6 +46,8 @@ use crate::app::{
     },
 };
 
+const MAX_INPUT_QUEUE: usize = 2;
+
 /// Deliberately shorter than the other house tables' five minutes: the arena
 /// is small and always live, so a seat nobody is touching has to go back into
 /// circulation fast. A player who is genuinely steering resets this several
@@ -347,8 +349,13 @@ impl SsnakeService {
         let svc = self.clone();
         tokio::spawn(async move {
             let mut millis = { svc.state.lock().await.tick_millis() };
+            let mut ticker = tokio::time::interval_at(
+                tokio::time::Instant::now() + Duration::from_millis(millis),
+                Duration::from_millis(millis),
+            );
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                tokio::time::sleep(Duration::from_millis(millis)).await;
+                ticker.tick().await;
                 let outcome = {
                     let mut state = svc.state.lock().await;
                     let outcome = state.tick(tick_loop.generation);
@@ -358,7 +365,16 @@ impl SsnakeService {
                     outcome
                 };
                 match outcome.next_millis {
-                    Some(next) => millis = next,
+                    Some(next) => {
+                        if next != millis {
+                            millis = next;
+                            ticker = tokio::time::interval_at(
+                                tokio::time::Instant::now() + Duration::from_millis(millis),
+                                Duration::from_millis(millis),
+                            );
+                            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                        }
+                    }
                     None => break,
                 }
             }
@@ -435,6 +451,7 @@ struct PlayerState {
     /// pays out one segment per move.
     pending_growth: i32,
     motion: Motion,
+    input_queue: VecDeque<Direction>,
     /// Direction actually applied on the previous move (original `OldDir`);
     /// second half of the reversal guard.
     last_moved: Option<Direction>,
@@ -453,6 +470,7 @@ impl PlayerState {
             body: VecDeque::new(),
             pending_growth: 0,
             motion: Motion::Idle,
+            input_queue: VecDeque::new(),
             last_moved: None,
             chips: 0,
             last_chip: None,
@@ -673,12 +691,24 @@ impl SharedState {
         }
         let player = &mut self.players[index];
         match player.motion {
-            Motion::Idle => player.motion = Motion::Moving(direction),
+            // A standing start queues like any other turn, so a rapid
+            // double-turn out of a spawn keeps both presses.
+            Motion::Idle => {
+                player.motion = Motion::Moving(direction);
+                player.input_queue.push_back(direction);
+            }
             Motion::Moving(current) => {
-                if direction != current.opposite()
-                    && player.last_moved != Some(direction.opposite())
-                {
-                    player.motion = Motion::Moving(direction);
+                // Turns are committed once queued and `motion` stays the
+                // direction being travelled (only `step_player` moves it), so
+                // each press is validated against the turn it will follow.
+                let base_dir = player.input_queue.back().copied().unwrap_or(current);
+                let is_reversal = direction == base_dir.opposite()
+                    || (player.input_queue.is_empty()
+                        && player.last_moved == Some(direction.opposite()));
+                let is_duplicate = direction == base_dir;
+
+                if !is_reversal && !is_duplicate && player.input_queue.len() < MAX_INPUT_QUEUE {
+                    player.input_queue.push_back(direction);
                 }
             }
             Motion::Dying => {}
@@ -733,7 +763,16 @@ impl SharedState {
                 self.step_death_shrink(seat_index);
                 false
             }
-            Motion::Moving(direction) => self.step_move(seat_index, direction),
+            Motion::Moving(current_direction) => {
+                let direction =
+                    if let Some(queued) = self.players[seat_index].input_queue.pop_front() {
+                        self.players[seat_index].motion = Motion::Moving(queued);
+                        queued
+                    } else {
+                        current_direction
+                    };
+                self.step_move(seat_index, direction)
+            }
         }
     }
 
@@ -791,11 +830,13 @@ impl SharedState {
                     .any(|segment| *segment == new_head)
             });
         if hit {
-            let player = &mut self.players[seat_index];
-            let died_at = (player.body.len() as i32 + player.pending_growth).min(MAX_SNAKE_LEN - 1);
-            player.respawn_length = ssnake_respawn_length(died_at);
-            player.pending_growth = 0;
-            player.motion = Motion::Dying;
+            let died_at = (self.players[seat_index].body.len() as i32
+                + self.players[seat_index].pending_growth)
+                .min(MAX_SNAKE_LEN - 1);
+            self.players[seat_index].respawn_length = ssnake_respawn_length(died_at);
+            self.players[seat_index].pending_growth = 0;
+            self.players[seat_index].motion = Motion::Dying;
+            self.players[seat_index].input_queue.clear();
             self.charge(seat_index, SSNAKE_CRASH_CHIPS, SsnakeChipKind::Crash);
             return false;
         }
@@ -1051,6 +1092,7 @@ impl SharedState {
             player.pending_growth = 0;
             player.motion = Motion::Idle;
             player.last_moved = None;
+            player.input_queue.clear();
         }
         if let Some(spawn) = self.spawn_cell(seat_index) {
             self.players[seat_index].body.push_back(spawn);
