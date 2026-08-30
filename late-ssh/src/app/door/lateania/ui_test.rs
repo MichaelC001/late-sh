@@ -1181,6 +1181,7 @@ fn the_point_screen_shows_now_and_after_for_every_score() {
             now: "swings hit for +2%".to_string(),
             after: Some("swings hit for +4%".to_string()),
             rule: "each +1 modifier: +2% swing damage".to_string(),
+            hint: "hint".to_string(),
         },
         ScoreOfferView {
             label: "DEX".to_string(),
@@ -1190,6 +1191,7 @@ fn the_point_screen_shows_now_and_after_for_every_score() {
             now: "2% of swings crit for double".to_string(),
             after: Some("2% of swings crit for double".to_string()),
             rule: "rule".to_string(),
+            hint: "hint".to_string(),
         },
         ScoreOfferView {
             label: "CON".to_string(),
@@ -1199,6 +1201,7 @@ fn the_point_screen_shows_now_and_after_for_every_score() {
             now: "+40 max HP at level 8".to_string(),
             after: None,
             rule: "rule".to_string(),
+            hint: "hint".to_string(),
         },
     ];
     let text: Vec<String> = super::score_point_lines(&view, 40)
@@ -1256,6 +1259,7 @@ fn the_point_screen_fits_the_rows_it_has() {
                 now: scores.effect(which, 8),
                 after,
                 rule: which.rule().to_string(),
+                hint: which.hint().to_string(),
             }
         })
         .collect();
@@ -1293,7 +1297,13 @@ fn the_point_screen_fits_the_rows_it_has() {
         rows[1]
     );
     assert!(rows[2].contains("at the cap of 20"), "{}", rows[2]);
+    assert!(
+        rows[3].ends_with("· +2% spell power a mod, burst"),
+        "the compact row still carries the rule in short: {}",
+        rows[3]
+    );
     assert!(rows[4].starts_with("  5 WIS 9 (-1)"), "{}", rows[4]);
+    assert!(rows[4].ends_with("· +1 regen a mod, stamina"), "{}", rows[4]);
     assert!(rows[5].starts_with("  6 CHA 7 (-2)"), "{}", rows[5]);
     assert!(
         short.iter().any(|l| l.contains("1-6")),

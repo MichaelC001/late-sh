@@ -2165,6 +2165,10 @@ fn score_point_lines_compact(view: &PlayerView) -> Vec<Line<'static>> {
             ));
         }
         spans.push(Span::styled(after, Style::default().fg(theme::SUCCESS())));
+        spans.push(Span::styled(
+            format!(" · {}", row.hint),
+            Style::default().fg(theme::TEXT_DIM()),
+        ));
         lines.push(Line::from(spans));
     }
     lines
