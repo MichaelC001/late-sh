@@ -3404,9 +3404,16 @@ fn a_pre_points_save_blob_is_offered_every_earned_point_on_join() {
     s.join(uid(1));
     s.hydrate(uid(1), &saved);
     let view = &s.snapshot().players[&uid(1)];
-    assert!(view.archetype_choices.is_empty(), "the archetype is restored");
+    assert!(
+        view.archetype_choices.is_empty(),
+        "the archetype is restored"
+    );
     assert_eq!(view.score_points, 7, "seven points back-paid at level 30");
-    assert_eq!(view.score_offer.len(), 6, "and the point screen is open on join");
+    assert_eq!(
+        view.score_offer.len(),
+        6,
+        "and the point screen is open on join"
+    );
 }
 
 #[test]

@@ -1303,7 +1303,11 @@ fn the_point_screen_fits_the_rows_it_has() {
         rows[3]
     );
     assert!(rows[4].starts_with("  5 WIS 9 (-1)"), "{}", rows[4]);
-    assert!(rows[4].ends_with("· +1 regen a mod, stamina"), "{}", rows[4]);
+    assert!(
+        rows[4].ends_with("· +1 regen a mod, stamina"),
+        "{}",
+        rows[4]
+    );
     assert!(rows[5].starts_with("  6 CHA 7 (-2)"), "{}", rows[5]);
     assert!(
         short.iter().any(|l| l.contains("1-6")),

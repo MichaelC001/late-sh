@@ -120,8 +120,12 @@ impl Score {
                 "each +1 modifier: +2% chance a swing crits for double (below 10: glancing blows for half); spiky, same average as STR"
             }
             Self::Constitution => "each +1 modifier: +4 max HP, and +1 more every 2 levels",
-            Self::Intelligence => "each +1 modifier: +2% spell power, on every ability; burst, tells from the first tick",
-            Self::Wisdom => "each +1 modifier: +1 resource regained every tick; stamina, tells once the pool runs dry",
+            Self::Intelligence => {
+                "each +1 modifier: +2% spell power, on every ability; burst, tells from the first tick"
+            }
+            Self::Wisdom => {
+                "each +1 modifier: +1 resource regained every tick; stamina, tells once the pool runs dry"
+            }
             Self::Charisma => "each +1 modifier: shops 3% cheaper, sells 3% dearer, taming +3%",
         }
     }
