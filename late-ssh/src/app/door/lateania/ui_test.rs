@@ -1096,6 +1096,28 @@ fn every_class_wears_its_own_emblem_under_the_portrait() {
 }
 
 #[test]
+fn every_attribute_rule_row_keeps_a_gap_before_the_rule() {
+    use crate::app::door::lateania::stats::AbilityScores;
+    let mut view = crate::app::door::lateania::svc::empty_player_view();
+    view.level = 1;
+    view.scores = AbilityScores {
+        strength: 12,
+        dexterity: 15,
+        constitution: 10,
+        intelligence: 7,
+        wisdom: 17,
+        charisma: 15,
+    };
+    let text: Vec<String> = super::attribute_rule_lines(&view)
+        .iter()
+        .map(line_text)
+        .collect();
+    for row in &text[1..] {
+        assert!(row.contains("  each +1 modifier:"), "{row}");
+    }
+}
+
+#[test]
 fn the_creation_screen_states_what_every_score_does_in_numbers() {
     use crate::app::door::lateania::stats::AbilityScores;
     let mut view = crate::app::door::lateania::svc::empty_player_view();
