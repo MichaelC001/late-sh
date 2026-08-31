@@ -2840,6 +2840,35 @@ fn unread_badge_collapses_at_the_cap() {
     );
 }
 
+/// The `you left` rule carries the `/summary` tip, because the rule and the
+/// bare command read from the same mark. A room too narrow to hold both
+/// keeps the stamp and drops the tip rather than squeezing the rule away.
+#[test]
+fn the_you_left_rule_offers_summary_and_drops_the_tip_when_narrow() {
+    theme::set_current_by_id("late");
+
+    let left_at = Utc::now() - chrono::Duration::hours(9);
+    let text = |width: usize| -> String {
+        left_app_divider_line(width, left_at)
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    };
+
+    let wide = text(80);
+    assert!(wide.contains("you left 9 hrs ago"));
+    assert!(wide.contains("· /summary to catch up"));
+    assert_eq!(UnicodeWidthStr::width(wide.as_str()), 80);
+
+    // 20 columns of stamp plus 23 of tip cannot leave 4 columns of rule at
+    // this width, so only the stamp survives.
+    let narrow = text(44);
+    assert!(narrow.contains("you left 9 hrs ago"));
+    assert!(!narrow.contains("/summary"));
+    assert_eq!(UnicodeWidthStr::width(narrow.as_str()), 44);
+}
+
 /// The two marks draw as two rules. The `you left` rule sits above the first
 /// message from someone else past the left-app mark, your own post after the
 /// mark does not trip it, and when the AFK line lands on the same message the

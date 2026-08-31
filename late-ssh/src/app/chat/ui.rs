@@ -1498,25 +1498,58 @@ fn push_new_messages_divider(
     row_kind.push(RowKindLite::Blank);
 }
 
+/// The tip the `you left` rule carries, split so the command can be tinted
+/// on its own: it is the part you type.
+const LEFT_APP_HINT_LEAD: &str = "· ";
+const LEFT_APP_HINT_COMMAND: &str = "/summary";
+const LEFT_APP_HINT_TAIL: &str = " to catch up ";
+
+/// Rule columns that must survive on either side of the label for the tip
+/// to be worth carrying. Below that the row stops reading as a rule.
+const LEFT_APP_MIN_RULE: usize = 4;
+
 /// The `you left` rule: where the left-app mark falls in this room, the
 /// same mark a bare `/summary` reads from. Thin and dim where the AFK rule
 /// is heavy and amber: it is context ("this is what landed since you were
 /// last on this machine"), not the row people scan for. The stamp is
 /// relative, and the rows cache keys on the minute, so it stays fresh.
+///
+/// The rule carries the `/summary` tip because the two are one mark: this
+/// row is exactly where a bare `/summary` starts reading, so the row that
+/// shows the gap is the row that offers to close it. The command is tinted
+/// while the rest stays dim, and a room too narrow to hold both drops the
+/// tip and keeps the stamp.
 pub(crate) fn left_app_divider_line(width: usize, left_at: DateTime<Utc>) -> Line<'static> {
-    let label = format!(
+    let stamp = format!(
         " you left {} ",
         crate::app::common::primitives::format_relative_time(left_at)
     );
-    let rule_width = width.saturating_sub(label.len()).max(2);
+    let stamp_width = UnicodeWidthStr::width(stamp.as_str());
+    let hint_width = UnicodeWidthStr::width(LEFT_APP_HINT_LEAD)
+        + UnicodeWidthStr::width(LEFT_APP_HINT_COMMAND)
+        + UnicodeWidthStr::width(LEFT_APP_HINT_TAIL);
+    let with_hint = stamp_width + hint_width + LEFT_APP_MIN_RULE <= width;
+
+    let label_width = stamp_width + if with_hint { hint_width } else { 0 };
+    let rule_width = width.saturating_sub(label_width).max(2);
     let left = rule_width / 2;
     let right = rule_width.saturating_sub(left);
     let style = Style::default().fg(theme::BORDER_DIM());
-    Line::from(vec![
+
+    let mut spans = vec![
         Span::styled("─".repeat(left), style),
-        Span::styled(label, style),
-        Span::styled("─".repeat(right), style),
-    ])
+        Span::styled(stamp, style),
+    ];
+    if with_hint {
+        spans.push(Span::styled(LEFT_APP_HINT_LEAD, style));
+        spans.push(Span::styled(
+            LEFT_APP_HINT_COMMAND,
+            Style::default().fg(theme::AMBER_DIM()),
+        ));
+        spans.push(Span::styled(LEFT_APP_HINT_TAIL, style));
+    }
+    spans.push(Span::styled("─".repeat(right), style));
+    Line::from(spans)
 }
 
 fn push_left_app_divider(
