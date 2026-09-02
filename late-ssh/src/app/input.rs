@@ -244,7 +244,7 @@ impl VtInputParser {
         mem::take(&mut self.collector.events)
     }
 
-    fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.parser = Parser::new();
         self.collector.ss3_pending = false;
     }
@@ -585,6 +585,14 @@ pub fn handle(app: &mut App, data: &[u8]) {
                 }
                 _ => {}
             }
+        }
+        // First contact: an armed whisper holds the door, so input goes to
+        // the machine instead of skipping (`app/deadchannel/haunt`).
+        if !saw_terminal_reply
+            && !data.is_empty()
+            && crate::app::deadchannel::haunt::svc::note_splash_input(app)
+        {
+            return;
         }
         // Escape skips the rest of the intro animation. XTVERSION DCS replies
         // also begin with ESC, so avoid treating those as user cancellation.

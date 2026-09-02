@@ -41,8 +41,8 @@ use crate::usernames::UsernameLookup;
 use super::state::{
     MentionMatch, ROOM_JUMP_KEYS, RoomSection, RoomSlot, RoomVisualOrderInput,
     SelectedRoomSlotState, SelectionScroll, TranslationDisplay, compare_dm_rooms_for_nav,
-    dm_is_promoted_unread, dm_peer_is_ignored, is_chat_list_room, is_selected_slot,
-    visual_order_for_rooms,
+    dm_is_promoted_unread, dm_peer_is_ignored, is_chat_list_room, is_deadchannel_room,
+    is_selected_slot, visual_order_for_rooms,
 };
 use super::ui_text::{AuthorTint, Gutter, reaction_label, wrap_chat_entry_to_lines};
 
@@ -142,6 +142,10 @@ pub struct DashboardChatView<'a> {
     /// Per-peer `/pomodoro` badges (countdown only, resolved once a second in
     /// `tick.rs`); painted as a presence badge after AFK.
     pub peer_pomodoros: &'a HashMap<Uuid, String>,
+    /// Stage-2 name-flicker hit this frame (first contact,
+    /// `app/deadchannel/haunt`): the message whose author label is
+    /// corrupted, plus its burst seed.
+    pub name_flicker: Option<(Uuid, u64)>,
     pub translations: &'a HashMap<Uuid, TranslationDisplay>,
     pub translation_hidden: &'a HashSet<Uuid>,
     pub active_room_effects: &'a [ActiveChatRoomEffect],
@@ -1214,6 +1218,7 @@ pub fn draw_dashboard_chat_card(
                 drunk_levels: view.drunk_levels,
                 name_flair: view.name_flair,
                 peer_pomodoros: view.peer_pomodoros,
+                name_flicker: view.name_flicker,
                 translations: view.translations,
                 translation_hidden: view.translation_hidden,
             },
@@ -1306,6 +1311,7 @@ struct ChatRowsContext<'a> {
     /// Resolved 24h username-effect styles per author.
     name_flair: &'a HashMap<Uuid, ResolvedName>,
     peer_pomodoros: &'a HashMap<Uuid, String>,
+    name_flicker: Option<(Uuid, u64)>,
     translations: &'a HashMap<Uuid, TranslationDisplay>,
     translation_hidden: &'a HashSet<Uuid>,
 }
@@ -1434,6 +1440,7 @@ struct ChatRowsCacheKey {
     dividers: ChatDividers,
     current_user_id: Uuid,
     show_flag_fallback: bool,
+    name_flicker: Option<(Uuid, u64)>,
 }
 
 #[derive(Default)]
@@ -1466,6 +1473,7 @@ fn chat_rows_cache_key(ctx: &ChatRowsContext<'_>, width: usize) -> ChatRowsCache
         dividers: ctx.dividers,
         current_user_id: ctx.current_user_id,
         show_flag_fallback: ctx.show_flag_fallback,
+        name_flicker: ctx.name_flicker,
     }
 }
 
@@ -1641,7 +1649,9 @@ fn ensure_chat_rows_cache(
         // edited message under the one above it hid the marker completely.
         let is_continuation = prev_user_id == Some(msg.user_id)
             && !is_edited
-            && prev_created.is_some_and(|prev| (msg.created - prev).num_seconds().abs() < 120);
+            && prev_created.is_some_and(|prev| {
+                (msg.created - prev).num_seconds().abs() < super::state::MESSAGE_GROUP_WINDOW_SECS
+            });
         let mut stamp = format!(
             "[{}]",
             crate::app::common::primitives::format_relative_time(msg.created)
@@ -1659,6 +1669,15 @@ fn ensure_chat_rows_cache(
             short_user_id(msg.user_id)
         } else {
             format_username_with_country(msg.user_id, raw_author, ctx.countries)
+        };
+        // First contact, stage 2 (`app/deadchannel/haunt`): while a hit is
+        // live, this one message's author label renders with glyph-alphabet
+        // characters, then heals. The label, never the body.
+        let author = match ctx.name_flicker {
+            Some((flicker_id, burst_seed)) if flicker_id == msg.id => {
+                crate::app::deadchannel::haunt::ui::glitched_name(&author, burst_seed)
+            }
+            _ => author,
         };
         let is_bot = is_bot_author(raw_author);
         let is_friend = ctx.friend_user_ids.contains(&msg.user_id);
@@ -2903,6 +2922,10 @@ pub struct ChatRenderInput<'a> {
     /// Per-peer `/pomodoro` badges (countdown only, resolved once a second in
     /// `tick.rs`); painted as a presence badge after AFK.
     pub peer_pomodoros: &'a HashMap<Uuid, String>,
+    /// Stage-2 name-flicker hit this frame (first contact,
+    /// `app/deadchannel/haunt`): the message whose author label is
+    /// corrupted, plus its burst seed.
+    pub name_flicker: Option<(Uuid, u64)>,
     pub translations: &'a HashMap<Uuid, TranslationDisplay>,
     pub translation_hidden: &'a HashSet<Uuid>,
     pub news_composer: &'a TextArea<'static>,
@@ -3060,6 +3083,10 @@ pub struct EmbeddedRoomChatView<'a> {
     /// Per-peer `/pomodoro` badges (countdown only, resolved once a second in
     /// `tick.rs`); painted as a presence badge after AFK.
     pub peer_pomodoros: &'a HashMap<Uuid, String>,
+    /// Stage-2 name-flicker hit this frame (first contact,
+    /// `app/deadchannel/haunt`): the message whose author label is
+    /// corrupted, plus its burst seed.
+    pub name_flicker: Option<(Uuid, u64)>,
     pub translations: &'a HashMap<Uuid, TranslationDisplay>,
     pub translation_hidden: &'a HashSet<Uuid>,
     pub keep_composer_focused: bool,
@@ -3158,6 +3185,7 @@ pub fn draw_embedded_room_chat(
             drunk_levels: view.drunk_levels,
             name_flair: view.name_flair,
             peer_pomodoros: view.peer_pomodoros,
+            name_flicker: view.name_flicker,
             translations: view.translations,
             translation_hidden: view.translation_hidden,
         },
@@ -3627,6 +3655,20 @@ fn build_room_list_rows(view: &ChatRoomListView<'_>, rooms_area: Rect) -> RoomLi
         };
         push_row(feeds_line, Some(RoomSlot::Feeds), view.feeds_selected);
     }
+    // The haunted channel, once invited in: the last row of Core.
+    if let Some((room, _)) = chat_rooms.iter().find(|(r, _)| is_deadchannel_room(r)) {
+        let is_selected = room_selected(room.id);
+        push_row(
+            room_line(
+                room,
+                room_display_label(room, view.usernames, view.current_user_id),
+                is_selected,
+                view.room_jump_active.then(|| jump_keys.next()).flatten(),
+            ),
+            Some(RoomSlot::Room(room.id)),
+            is_selected,
+        );
+    }
 
     if view.cyberspace_linked {
         // Two rows, two badges: entries on `feeds`, their notification
@@ -3724,7 +3766,11 @@ fn build_room_list_rows(view: &ChatRoomListView<'_>, rooms_area: Rect) -> RoomLi
     let mut public_rooms: Vec<_> = chat_rooms
         .iter()
         .filter(|(r, _)| {
-            is_chat_list_room(r) && r.kind != "dm" && !r.permanent && r.visibility == "public"
+            is_chat_list_room(r)
+                && r.kind != "dm"
+                && !r.permanent
+                && r.visibility == "public"
+                && !is_deadchannel_room(r)
         })
         .collect();
     public_rooms.sort_by(|(a, _), (b, _)| a.slug.cmp(&b.slug));
@@ -4312,6 +4358,14 @@ fn build_cozy_room_rail_rows(view: &ChatRoomListView<'_>, width: u16) -> RoomLis
         }) {
             push_slot(RoomSlot::Room(room.id), &mut push_row);
         }
+        // The haunted channel, once invited in: the last room in Core.
+        if let Some((room, _)) = view
+            .chat_rooms
+            .iter()
+            .find(|(r, _)| is_deadchannel_room(r) && !favorite_ids.contains(&r.id))
+        {
+            push_slot(RoomSlot::Room(room.id), &mut push_row);
+        }
         // Discover ("+ browse rooms") is the last entry in Core.
         push_slot(RoomSlot::Discover, &mut push_row);
     }
@@ -4393,6 +4447,7 @@ fn build_cozy_room_rail_rows(view: &ChatRoomListView<'_>, width: u16) -> RoomLis
                 && r.kind != "dm"
                 && !core_order.contains(&r.slug.as_deref().unwrap_or(""))
                 && r.slug.as_deref() != Some("voice")
+                && !is_deadchannel_room(r)
                 && !favorite_ids.contains(&r.id)
         })
         .collect();
@@ -4992,6 +5047,7 @@ fn draw_selected_content(
                     drunk_levels: view.drunk_levels,
                     name_flair: view.name_flair,
                     peer_pomodoros: view.peer_pomodoros,
+                    name_flicker: view.name_flicker,
                     translations: view.translations,
                     translation_hidden: view.translation_hidden,
                 },

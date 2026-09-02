@@ -657,6 +657,14 @@ pub(crate) fn is_chat_list_room(room: &ChatRoom) -> bool {
     room.kind == "dm" || room.permanent || matches!(room.visibility.as_str(), "public" | "private")
 }
 
+/// The haunted channel (`app/deadchannel`, GAME.md): joined by invitation
+/// only, and once joined it sits at the bottom of Core, above Discover,
+/// never in Channels. The rail builders in `ui.rs` and
+/// `visual_order_for_rooms` all key off this.
+pub(crate) fn is_deadchannel_room(room: &ChatRoom) -> bool {
+    room.kind == late_core::models::chat_room::DEADCHANNEL_KIND
+}
+
 /// Payload handed from chat to the app layer (via `take_requested_open_sheet`)
 /// to open the character sheet modal. `editable` is true when the sheet
 /// belongs to the viewer.
@@ -939,6 +947,12 @@ pub struct ChatState {
     requested_golive: Option<GoLiveCommand>,
     requested_crown: Option<CrownCommand>,
     requested_pot: Option<PotCommand>,
+    /// Set by an admin's /haunt; consumed by `deadchannel::haunt::svc`
+    /// (which owns the whisper and the kill switch).
+    requested_haunt: Option<crate::app::deadchannel::haunt::state::HauntCommand>,
+    /// The just-landed echo of this session's own send, for the stage-2
+    /// name flicker; consumed by `deadchannel::haunt::svc` every tick.
+    own_message_landed: Option<Uuid>,
     /// Set by /watch @user; consumed by `App`.
     requested_watch: Option<String>,
     /// A stream room this session just opened; consumed by `App`, which
@@ -1251,6 +1265,8 @@ impl ChatState {
             requested_golive: None,
             requested_crown: None,
             requested_pot: None,
+            requested_haunt: None,
+            own_message_landed: None,
             requested_watch: None,
             opened_stream_room: None,
             requested_aquarium_command: None,
@@ -2004,6 +2020,16 @@ impl ChatState {
 
     pub(crate) fn take_requested_crown(&mut self) -> Option<CrownCommand> {
         self.requested_crown.take()
+    }
+
+    pub(crate) fn take_requested_haunt(
+        &mut self,
+    ) -> Option<crate::app::deadchannel::haunt::state::HauntCommand> {
+        self.requested_haunt.take()
+    }
+
+    pub(crate) fn take_own_message_landed(&mut self) -> Option<Uuid> {
+        self.own_message_landed.take()
     }
 
     pub(crate) fn take_requested_pot(&mut self) -> Option<PotCommand> {
@@ -3544,6 +3570,22 @@ impl ChatState {
                 return Some(Banner::error("Usage: /crown, or /crown take"));
             };
             self.requested_crown = Some(command);
+            return None;
+        }
+
+        // Admin-only on purpose, and not an error for anyone else: for a
+        // non-admin the line falls through and posts as plain text, exactly
+        // as if the command did not exist. First contact stays a mystery.
+        if self.is_admin
+            && let Some(parsed) = crate::app::deadchannel::haunt::state::parse_haunt_command(&body)
+        {
+            self.clear_composer_after_submit();
+            let Some(command) = parsed else {
+                return Some(Banner::error(
+                    "Usage: /haunt, or /haunt on|off|live on|live off|glitch|name|replay|invite|reset",
+                ));
+            };
+            self.requested_haunt = Some(command);
             return None;
         }
 
@@ -6358,6 +6400,21 @@ impl ChatState {
         // ends the silence actually exists.
         if message.user_id == self.user_id {
             self.clear_afk_line(room_id);
+            // First contact, stage 2 (`app/deadchannel/haunt`): the haunting
+            // rolls its dice on the landing echo of your own send. Recorded
+            // here for the same reason as the AFK clear: every submit path
+            // funnels into this one landing. Only a message that will render
+            // its own author header is a target: a grouped continuation (a
+            // fast follow-up to your own message) draws no label at all, so
+            // a hit there would spend itself invisibly.
+            let prev = self
+                .rooms
+                .iter()
+                .find(|(room, _)| room.id == room_id)
+                .and_then(|(_, messages)| messages.first());
+            if !groups_as_continuation(prev, &message) {
+                self.own_message_landed = Some(message.id);
+            }
         }
 
         let is_viewing_room = Some(room_id) == self.visible_room_id;
@@ -6891,6 +6948,14 @@ pub(crate) fn visual_order_for_rooms<U: UsernameResolver + ?Sized>(
     {
         order.push(RoomSlot::Room(room.id));
     }
+    // The haunted channel, for whoever was invited in: the last room in
+    // Core, under voice, above Discover. Mirrored by both rail builders.
+    if let Some((room, _)) = rooms.iter().find(|(r, _)| is_deadchannel_room(r))
+        && pushed_rooms.insert(room.id)
+        && !core_collapsed
+    {
+        order.push(RoomSlot::Room(room.id));
+    }
     if !core_collapsed {
         // Discover ("browse rooms") lives at the bottom of Core.
         order.push(RoomSlot::Discover);
@@ -6956,6 +7021,7 @@ pub(crate) fn visual_order_for_rooms<U: UsernameResolver + ?Sized>(
         if is_chat_list_room(room)
             && room.kind != "dm"
             && !core_order.contains(&room.slug.as_deref().unwrap_or(""))
+            && !is_deadchannel_room(room)
             && room.slug.as_deref() != Some("voice")
             && pushed_rooms.insert(room.id)
             && !channels_collapsed
@@ -8176,6 +8242,22 @@ fn format_cooldown(remaining: Duration) -> String {
     } else {
         format!("{} min", secs.div_ceil(60))
     }
+}
+
+/// The renderer groups consecutive messages from one author within this
+/// window under a single header (`ui.rs`, `is_continuation`).
+pub(crate) const MESSAGE_GROUP_WINDOW_SECS: i64 = 120;
+
+/// Whether `message`, landing at the head of the room's newest-first list,
+/// will render as a grouped continuation of `prev`: same author within the
+/// grouping window, so no author header row of its own. Mirrors the
+/// renderer's `is_continuation`; the edited check there is omitted because
+/// a just-landed message is never edited.
+fn groups_as_continuation(prev: Option<&ChatMessage>, message: &ChatMessage) -> bool {
+    prev.is_some_and(|prev| {
+        prev.user_id == message.user_id
+            && (message.created - prev.created).num_seconds().abs() < MESSAGE_GROUP_WINDOW_SECS
+    })
 }
 
 /// Given a message list containing `current`, return the id of the message

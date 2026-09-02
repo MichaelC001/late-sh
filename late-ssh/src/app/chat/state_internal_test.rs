@@ -763,6 +763,7 @@ fn visual_order_matches_cozy_rail_grouping() {
     let public_zeta = Uuid::from_u128(21);
     let private_beta = Uuid::from_u128(30);
     let game_table = Uuid::from_u128(40);
+    let deadchannel = Uuid::from_u128(50);
     let dm_bob = make_dm(bob, me);
     let dm_alice = make_dm(me, alice);
 
@@ -785,6 +786,15 @@ fn visual_order_matches_cozy_rail_grouping() {
         ),
         (dm_alice.clone(), Vec::new()),
         make_room(public_alpha, "topic", "public", false, Some("alpha")),
+        // Public and non-permanent like alpha, but its own kind: the
+        // haunted channel closes Core instead of sorting into Channels.
+        make_room(
+            deadchannel,
+            "deadchannel",
+            "public",
+            false,
+            Some("deadchannel"),
+        ),
     ];
 
     assert_eq!(
@@ -810,6 +820,7 @@ fn visual_order_matches_cozy_rail_grouping() {
             RoomSlot::Notifications,
             RoomSlot::News,
             RoomSlot::Feeds,
+            RoomSlot::Room(deadchannel),
             RoomSlot::Discover,
             RoomSlot::Room(public_zeta),
             RoomSlot::Room(private_beta),
@@ -1860,6 +1871,29 @@ fn make_reply_msg(id: Uuid, reply_to_message_id: Uuid) -> ChatMessage {
         reply_to_message_id: Some(reply_to_message_id),
         ..make_msg(id)
     }
+}
+
+#[test]
+fn a_fast_follow_up_groups_as_a_continuation() {
+    let prev = make_msg(Uuid::from_u128(10));
+
+    // Same author inside the window: no author header of its own.
+    let mut follow_up = make_msg(Uuid::from_u128(11));
+    follow_up.created = prev.created + chrono::Duration::seconds(MESSAGE_GROUP_WINDOW_SECS - 1);
+    assert!(groups_as_continuation(Some(&prev), &follow_up));
+
+    // Past the window the run breaks and the header comes back.
+    follow_up.created = prev.created + chrono::Duration::seconds(MESSAGE_GROUP_WINDOW_SECS);
+    assert!(!groups_as_continuation(Some(&prev), &follow_up));
+
+    // A different author always starts a run.
+    let mut other = make_msg(Uuid::from_u128(12));
+    other.user_id = Uuid::from_u128(7);
+    other.created = prev.created + chrono::Duration::seconds(1);
+    assert!(!groups_as_continuation(Some(&prev), &other));
+
+    // The first message of a room has nothing to group under.
+    assert!(!groups_as_continuation(None, &prev));
 }
 
 #[test]

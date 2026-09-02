@@ -179,6 +179,9 @@ async fn main() -> anyhow::Result<()> {
     .with_force_admin(config.force_admin)
     .with_translation_service(translation_service.clone());
     let _poll_finalizer_recovery_task = chat_service.start_poll_finalizer_recovery_task();
+    // Same reservation move as the `system` user below: creating the game's
+    // voice row at boot lets the unique username index hold the name.
+    chat_service.ensure_first_contact_voice_task();
     let _lounge_feed_task = late_ssh::app::activity::lounge::start_lounge_feed_task(
         db.clone(),
         chat_service.clone(),
@@ -301,6 +304,11 @@ async fn main() -> anyhow::Result<()> {
     // Gild markers cross replicas over Postgres, not over this process's
     // chat broadcast; see `ChatService::start_gild_listener_task`.
     let _chat_gild_listener_task = chat_service.start_gild_listener_task(config.db.clone());
+    // Process-wide switches (the haunt kill switch and fuse) cross replicas
+    // over Postgres; the listener seeds this replica on every (re)connect.
+    // See `app/flags/svc.rs`.
+    let app_flag_service = late_ssh::app::flags::svc::AppFlagService::new(db.clone());
+    let _app_flag_listener_task = app_flag_service.start_listener_task(config.db.clone());
     // The crown's glyph crosses replicas over Postgres, not over any
     // in-process broadcast; the listener also seeds this replica's holder on
     // every (re)connect. See `app/crown/svc.rs`.
@@ -425,6 +433,7 @@ async fn main() -> anyhow::Result<()> {
         ssh_attempt_limiter,
         ws_pair_limiter,
         is_draining: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        app_flags: app_flag_service.clone(),
     };
 
     let session_shutdown = CancellationToken::new();

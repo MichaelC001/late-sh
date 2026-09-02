@@ -8,7 +8,9 @@ use late_core::models::irc_token::IrcToken;
 use late_core::models::marketplace;
 use late_core::models::profile::{Profile, ProfileParams};
 use late_core::models::profile_award::{ProfileAward, list_profile_awards_for_user};
-use late_core::models::user::{User, sanitize_username_input};
+use late_core::models::user::{
+    FirstContactHitCaps, FirstContactHitClaim, User, sanitize_username_input,
+};
 use late_core::models::user_ssh_key::{KeyLayout, UserSshKey};
 use tokio_postgres::error::SqlState;
 use uuid::Uuid;
@@ -17,7 +19,7 @@ use late_core::MutexRecover;
 use late_core::db::Db;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::sync::{broadcast, watch};
+use tokio::sync::{broadcast, oneshot, watch};
 use tracing::{Instrument, info_span};
 
 use crate::ircd::registry::IrcRegistry;
@@ -337,6 +339,150 @@ impl ProfileService {
                 }
             }
             .instrument(info_span!("profile.clubhouse_tutorial_task", user_id = %user_id)),
+        );
+    }
+
+    /// Fire-and-forget: claim one capped delivery of the first-contact
+    /// splash whisper. A lost claim means another device played the held
+    /// door in the same window, or the row's gap had not passed; it is
+    /// logged, since each whisper is meant to be seen once, and there is
+    /// nothing to undo. A failure is only logged: worst case the whisper
+    /// plays once more next session.
+    pub fn claim_first_contact_whisper(
+        &self,
+        user_id: Uuid,
+        at: chrono::DateTime<chrono::Utc>,
+        gap: chrono::Duration,
+        cap: u32,
+    ) {
+        let service = self.clone();
+        tokio::spawn(
+            async move {
+                let result = async {
+                    let client = service.db.get().await?;
+                    User::claim_first_contact_whisper(&client, user_id, at, gap, cap).await
+                }
+                .await;
+                match result {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        tracing::warn!(user_id = %user_id, "first contact whisper played but the row refused the mark: double-play, gap, or cap");
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = ?e, "failed to persist first contact whisper stamp");
+                    }
+                }
+            }
+            .instrument(info_span!("profile.first_contact_whisper_task", user_id = %user_id)),
+        );
+    }
+
+    /// Claim one capped stage-1 clock-glitch burst on the row. The answer
+    /// (won with the new count, capped with the row's count, or the error)
+    /// comes back on the returned channel; the haunting's tick drains it.
+    /// Errors are the receiver's to log, once.
+    pub fn claim_first_contact_glitch_burst(
+        &self,
+        user_id: Uuid,
+        today: chrono::NaiveDate,
+        caps: FirstContactHitCaps,
+    ) -> oneshot::Receiver<Result<FirstContactHitClaim>> {
+        let (tx, rx) = oneshot::channel();
+        let service = self.clone();
+        tokio::spawn(
+            async move {
+                let result = async {
+                    let client = service.db.get().await?;
+                    User::claim_first_contact_glitch_burst(&client, user_id, today, caps).await
+                }
+                .await;
+                let _ = tx.send(result);
+            }
+            .instrument(info_span!("profile.first_contact_glitch_claim_task", user_id = %user_id)),
+        );
+        rx
+    }
+
+    /// Claim one capped stage-2 name-flicker hit on the row. Same contract
+    /// as [`ProfileService::claim_first_contact_glitch_burst`].
+    pub fn claim_first_contact_name_hit(
+        &self,
+        user_id: Uuid,
+        today: chrono::NaiveDate,
+        caps: FirstContactHitCaps,
+    ) -> oneshot::Receiver<Result<FirstContactHitClaim>> {
+        let (tx, rx) = oneshot::channel();
+        let service = self.clone();
+        tokio::spawn(
+            async move {
+                let result = async {
+                    let client = service.db.get().await?;
+                    User::claim_first_contact_name_hit(&client, user_id, today, caps).await
+                }
+                .await;
+                let _ = tx.send(result);
+            }
+            .instrument(info_span!("profile.first_contact_name_claim_task", user_id = %user_id)),
+        );
+        rx
+    }
+
+    /// Fire-and-forget: count one forced (`/haunt glitch`) stage-1 burst,
+    /// uncapped. Natural bursts go through the claim above instead. A lost
+    /// write costs one uncounted burst.
+    pub fn record_first_contact_glitch_hit(&self, user_id: Uuid) {
+        let service = self.clone();
+        tokio::spawn(
+            async move {
+                let result = async {
+                    let client = service.db.get().await?;
+                    User::record_first_contact_glitch_hit(&client, user_id).await
+                }
+                .await;
+                if let Err(e) = result {
+                    tracing::warn!(error = ?e, "failed to persist first contact glitch hit");
+                }
+            }
+            .instrument(info_span!("profile.first_contact_glitch_hit_task", user_id = %user_id)),
+        );
+    }
+
+    /// Fire-and-forget: count one forced (`/haunt name`) stage-2 hit,
+    /// uncapped. Natural hits go through the claim above instead. A lost
+    /// write costs one uncounted flicker.
+    pub fn record_first_contact_name_hit(&self, user_id: Uuid) {
+        let service = self.clone();
+        tokio::spawn(
+            async move {
+                let result = async {
+                    let client = service.db.get().await?;
+                    User::record_first_contact_name_hit(&client, user_id).await
+                }
+                .await;
+                if let Err(e) = result {
+                    tracing::warn!(error = ?e, "failed to persist first contact name hit");
+                }
+            }
+            .instrument(info_span!("profile.first_contact_name_hit_task", user_id = %user_id)),
+        );
+    }
+
+    /// Fire-and-forget: wipe every first-contact mark (the admin
+    /// `/haunt reset` test hook).
+    pub fn reset_first_contact(&self, user_id: Uuid) {
+        let service = self.clone();
+        tokio::spawn(
+            async move {
+                let result = async {
+                    let client = service.db.get().await?;
+                    User::reset_first_contact(&client, user_id).await
+                }
+                .await;
+                if let Err(e) = result {
+                    tracing::warn!(error = ?e, "failed to reset first contact marks");
+                }
+            }
+            .instrument(info_span!("profile.first_contact_reset_task", user_id = %user_id)),
         );
     }
 

@@ -3,7 +3,15 @@
 ## Metadata
 - Domain: late.sh SSH chat, synthetic chat entries, and dashboard/room chat surfaces
 - Primary audience: LLM agents working in `late-ssh/src/app/chat`
-- Last updated: 2026-08-30 (round drinks stack: the one-open-credit index is
+- Last updated: 2026-08-31 (first-contact seams: the admin-only `/haunt`
+  command in §8 (parsed only when `is_admin`, so a non-admin's `/haunt`
+  posts as plain text), the `own_message_landed` slot `push_message`
+  records for the stage-2 name flicker, `name_flicker` threaded through
+  the message view structs into the rows-cache key, and
+  `ChatService::send_first_contact_invitation_task` (the stage-4 ghost DM
+  behind a conditional settings claim). Domain contract:
+  `late-ssh/src/app/deadchannel/CONTEXT.md`.) Previously
+  2026-08-30 (round drinks stack: the one-open-credit index is
   gone (migration 168), replaced by a `MAX_OPEN_CREDITS` (3) cap counted in
   the grant under an advisory lock, so a patron away for three rounds is owed
   three drinks and each buyer pays for the one they bought. A pour spends the
@@ -239,7 +247,7 @@ Notifications:
 
 Visual order is defined in `state.rs::visual_order_for_rooms` and mirrored by cozy room-rail rendering in `ui.rs`. The base navigation order is:
 1. Favorite real rooms in `users.settings.favorite_room_ids` order.
-2. Core permanent rooms plus synthetic updates: `lounge`, `announcements`, `suggestions`, `bugs`, Notifications/Mentions, News, RSS when available, the permanent `#voice` room (matched by slug, directly above Discover), and Discover / `+ browse rooms` last. Collapsing Core hides these synthetic update entries too (Discover included). A `#voice` room that is not permanent shows nowhere: Core requires `permanent` and Channels excludes slug `voice`, so promote it with `/create-room voice`.
+2. Core permanent rooms plus synthetic updates: `lounge`, `announcements`, `suggestions`, `bugs`, Notifications/Mentions, News, RSS when available, the permanent `#voice` room (matched by slug, directly above Discover), the haunted `#deadchannel` once this user was invited in (matched by `kind='deadchannel'` via `is_deadchannel_room`, the last room in Core and excluded from Channels and the compact list's Public group), and Discover / `+ browse rooms` last. Collapsing Core hides these synthetic update entries too (Discover included). A `#voice` room that is not permanent shows nowhere: Core requires `permanent` and Channels excludes slug `voice`, so promote it with `/create-room voice`.
 2b. The `stream` section (`RoomSection::Stream`, shortcut `s`), directly under Core and above Cyberspace/Channels: one `▶ {user}-live · title · N watching` row per registered "watch me" stream, fed by `ChatState::live_streams` (copied from the stream registry watch in `App::tick_stream`). The section exists only while somebody is streaming. Stream rooms are `kind='game'` so they can never leak into Channels; opening one the user never joined triggers the lazy public game-room join from `select_room_slot`. The stream header block (title, watcher count, watch-URL nudge), the `▶LIVE` author presence badge, and the ON AIR voice-strip state ride the same copy; the domain contract is `late-ssh/src/app/stream/CONTEXT.md`.
 3. Unread DMs, under an `unread dms` header. At the bottom of the rail DMs were going unnoticed, so any DM with unread messages is promoted here, sorted the same way as the DMs section below. Three rules keep it stable: favorited DMs stay in Favorites (they are already in `pushed_rooms` when the group is built), an ignored peer's DM is promoted nowhere, and the group ignores the DMs collapse toggle, which makes collapsing DMs a way to fold the read ones away without losing the ones waiting on a reply. The header is plain text like the `bumped` strip: no collapse toggle, no `RoomSection` variant, no section shortcut.
 4. Other non-DM chat-list rooms/channels, excluding favorites.
@@ -376,6 +384,18 @@ User commands:
 - `/upload <url>` downloads a public image URL server-side, reuploads it to configured public file storage, and inserts the resulting URL into the composer for the user to send.
 
 Admin commands:
+- `/haunt [on|off|live on|live off|glitch|name|replay|invite|reset]` controls the
+  first-contact haunting. Parsed in `submit_composer` **only when
+  `is_admin`** (enum + parser live in `deadchannel/haunt/state.rs`): for
+  everyone else, moderators included even though the ladder now runs
+  for them, the line posts as plain text, so the command does not
+  observably exist (no usage banner, no autocomplete entry, no help
+  line - the mystery is the feature). Drained by
+  `deadchannel::haunt::svc::tick`. Chat's other haunting seams: the
+  `own_message_landed` slot `push_message` records for the stage-2 name
+  flicker, `name_flicker` in the rows-cache key, and
+  `ChatService::send_first_contact_invitation_task`. The domain contract
+  is `late-ssh/src/app/deadchannel/CONTEXT.md`.
 - `/create-room #room` creates a permanent auto-join room and bulk-adds existing users. It is idempotent on rooms that are already permanent, and it promotes an existing non-permanent public room to permanent + auto-join (`ChatRoom::ensure_permanent` UPDATEs the row, then the caller bulk-adds users) — this is how a user-created `/public #voice` room becomes the permanent `#voice` core room. Because promotion bulk-adds every user to a room nobody can leave, `/create-room` is admin-only and a mistyped slug will promote whatever public room matches it.
 - `/delete-room #room` deletes a permanent room.
 - `/fill-room #room` bulk-adds all users to an existing public room and flips `auto_join=true`; private rooms cannot be filled.

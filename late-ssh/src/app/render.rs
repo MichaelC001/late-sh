@@ -278,6 +278,9 @@ struct DrawContext<'a> {
     show_splash: bool,
     splash_ticks: usize,
     splash_hint: &'a str,
+    /// One frame of first-contact whisper theater over the splash, `None`
+    /// unless the door is held this frame. See `app/deadchannel`.
+    whisper: Option<crate::app::deadchannel::haunt::ui::WhisperFrame>,
     listen_url: &'a str,
     room_search_modal_open: bool,
     room_search_modal_state: &'a room_search_modal::state::RoomSearchModalState,
@@ -460,7 +463,16 @@ impl App {
         let paired_client = self.paired_client_state();
         let paired_cli_supports_voice = self.paired_cli_supports_voice();
         let banner = self.active_banner().cloned();
-        let sidebar_clock = sidebar_clock_text(self.profile_state.profile().timezone.as_deref());
+        // First contact, stage 1 (`app/deadchannel/haunt`): a live glitch
+        // burst swaps a clock character or two for the glyph alphabet.
+        let sidebar_clock = crate::app::deadchannel::haunt::ui::apply_clock_glitch(
+            &self.haunt,
+            self.marquee_tick,
+            sidebar_clock_text(self.profile_state.profile().timezone.as_deref()),
+        );
+        // Stage 2's live hit, threaded into every chat message surface.
+        let name_flicker =
+            crate::app::deadchannel::haunt::ui::name_flicker_for(&self.haunt, self.marquee_tick);
         // The username directory snapshot is refreshed on the ~1s tick
         // cadence (tick.rs), where its pointer-compare also bumps the row
         // cache epoch; renders read the stored Arc only.
@@ -597,6 +609,7 @@ impl App {
             drunk_levels: &self.drunk_levels,
             name_flair: &self.name_flair,
             peer_pomodoros: &self.peer_pomodoros,
+            name_flicker,
             translations: &self.chat.translations,
             translation_hidden: &self.chat.translation_hidden,
             active_room_effects: dashboard_room_effects,
@@ -753,6 +766,7 @@ impl App {
             drunk_levels: &self.drunk_levels,
             name_flair: &self.name_flair,
             peer_pomodoros: &self.peer_pomodoros,
+            name_flicker,
             translations: &self.chat.translations,
             translation_hidden: &self.chat.translation_hidden,
             news_composer: self.chat.news.composer(),
@@ -837,6 +851,7 @@ impl App {
                     drunk_levels: &self.drunk_levels,
                     name_flair: &self.name_flair,
                     peer_pomodoros: &self.peer_pomodoros,
+                    name_flicker,
                     translations: &self.chat.translations,
                     translation_hidden: &self.chat.translation_hidden,
                     keep_composer_focused: self.profile_state.profile().keep_composer_focused,
@@ -900,6 +915,7 @@ impl App {
                     drunk_levels: &self.drunk_levels,
                     name_flair: &self.name_flair,
                     peer_pomodoros: &self.peer_pomodoros,
+                    name_flicker,
                     translations: &self.chat.translations,
                     translation_hidden: &self.chat.translation_hidden,
                     keep_composer_focused: self.profile_state.profile().keep_composer_focused,
@@ -1137,6 +1153,11 @@ impl App {
                         show_splash: self.show_splash,
                         splash_ticks: self.splash_ticks,
                         splash_hint: &self.splash_hint,
+                        whisper: crate::app::deadchannel::haunt::ui::whisper_frame_for(
+                            &self.haunt,
+                            self.splash_ticks,
+                            &self.splash_hint,
+                        ),
                         listen_url: &listen_url,
                         room_search_modal_open: self.room_search_modal_state.is_open(),
                         room_search_modal_state: &self.room_search_modal_state,
@@ -1293,14 +1314,31 @@ impl App {
             let splash_bottom = layout[1].bottom();
             let gap = area.bottom().saturating_sub(splash_bottom);
             let hint_y = splash_bottom + (gap * 3 / 4);
-            if hint_y < area.bottom() {
+            // While the whisper holds the door the hint may be mid-dissolve
+            // (or gone); otherwise it draws as-is.
+            let hint_text = match &ctx.whisper {
+                Some(whisper) => whisper.hint.as_deref(),
+                None => Some(ctx.splash_hint),
+            };
+            if let Some(hint_text) = hint_text
+                && hint_y < area.bottom()
+            {
                 let hint_area = Rect::new(area.x, hint_y, area.width, 1);
                 let hint = ratatui::text::Line::from(ratatui::text::Span::styled(
-                    ctx.splash_hint,
+                    hint_text.to_string(),
                     Style::default().fg(theme::TEXT_DIM()),
                 ));
                 let hint_paragraph = ratatui::widgets::Paragraph::new(hint).centered();
                 frame.render_widget(hint_paragraph, hint_area);
+            }
+            if let Some(whisper) = &ctx.whisper {
+                crate::app::deadchannel::haunt::ui::draw_splash_whisper(
+                    frame,
+                    area,
+                    splash_bottom,
+                    whisper,
+                    ctx.splash_ticks,
+                );
             }
             return;
         }

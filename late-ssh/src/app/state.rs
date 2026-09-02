@@ -355,6 +355,16 @@ pub struct SessionConfig {
     pub scratchpad_registry: Option<crate::app::scratchpad::registry::SharedScratchpadRegistry>,
     /// True once this user finished (or skipped) the clubhouse tutorial.
     pub clubhouse_tutorial_done: bool,
+    /// This user's persisted first-contact marks (`app/deadchannel/haunt`).
+    pub(crate) first_contact: crate::app::deadchannel::haunt::state::FirstContactMarks,
+    /// The first-contact eligibility gate as evaluated at bootstrap.
+    pub(crate) first_contact_gate: crate::app::deadchannel::haunt::state::FirstContactGate,
+    /// Process-wide switches (`app/flags`), read at arming and on every
+    /// haunting tick so flipping the kill switch off drops live theater.
+    pub app_flags_rx: tokio::sync::watch::Receiver<Option<late_core::models::app_flag::AppFlags>>,
+    /// The flag service, for `/haunt on|off|live`. `None` on headless/test
+    /// paths, which turns those commands into a banner.
+    pub app_flags: Option<crate::app::flags::svc::AppFlagService>,
     /// Whether the aquarium tray was open when the user last toggled it.
     pub show_aquarium_tray: bool,
     /// Fingerprint of the SSH key this session authenticated with: the only
@@ -588,6 +598,12 @@ pub struct App {
     pub(crate) is_moderator: bool,
     pub(crate) artboard_banned: bool,
     pub(crate) artboard_ban_expires_at: Option<DateTime<Utc>>,
+    /// First contact, the haunting (`app/deadchannel/haunt`): every
+    /// stage's machine and the flags that gate them, in one slot.
+    /// `haunt::svc` owns all reads and writes.
+    pub(crate) haunt: crate::app::deadchannel::haunt::state::HauntState,
+    /// Process-wide switches, for the `/haunt` flag commands.
+    pub(crate) app_flags: Option<crate::app::flags::svc::AppFlagService>,
 
     /// Chat
     pub(crate) chat: chat::state::ChatState,
@@ -947,6 +963,7 @@ impl App {
 
     pub fn skip_splash_for_tests(&mut self) {
         self.show_splash = false;
+        self.haunt.clear_whisper();
         self.show_settings = false;
         self.show_quit_confirm = false;
         self.show_hub_modal = false;
@@ -1305,6 +1322,13 @@ impl App {
         } else {
             Screen::Clubhouse
         };
+        let haunt = crate::app::deadchannel::haunt::svc::arm(
+            config.permissions.can_moderate(),
+            config.app_flags_rx.clone(),
+            config.user_id,
+            config.first_contact,
+            config.first_contact_gate,
+        );
         let mut app = Self {
             running: true,
             size: (cols, rows),
@@ -1426,6 +1450,8 @@ impl App {
             is_moderator: config.permissions.is_moderator(),
             artboard_banned: config.artboard_banned,
             artboard_ban_expires_at: config.artboard_ban_expires_at,
+            haunt,
+            app_flags: config.app_flags.clone(),
             chat: chat::state::ChatState::new(
                 chat::state::ChatServices {
                     chat: config.chat_service,

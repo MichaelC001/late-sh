@@ -1,6 +1,6 @@
 # late.sh Scale Notes
 
-Last updated: 2026-08-18, second entry (7-day production health check, read-only. The 2026-07-26 DB fixes are now **verified in prod**, not projected: every pre-fix query shape is idle and total live DB load is about 1.9% of one core, so the chat poll is no longer the binding constraint on the 1000-user target. The largest remaining DB item is `list_discover_public_topic_rooms`, which **regressed to 771 ms mean** and turns out to be a stale-visibility-map problem rather than a query-shape problem. New sections: "Live Production Baseline (2026-08-18)" and "Observability Gaps". Previously 2026-08-18, first entry: added Pain Point 8: stream egress is the first cost that scales with *viewers* rather than sessions, the go-live publish ceiling is now pinned in code, and the OBS/WHIP path is still uncapped by construction. Previously 2026-08-06: SCALE.md is now the single home for performance findings: absorbed root CONTEXT.md's §8.5 input-lag notes into Pain Point 1 and the discover-room CNPG CPU-saturation observation into DB Hot Queries; root context keeps only current-state contracts and routes perf here. Next infra step is unchanged: add a second cluster node and move everything except `service-ssh` off `server-1`)
+Last updated: 2026-09-02 (new section "Small Debts (fix as touched)": nitpicks that are wrong at 10x and free to fix in passing, seeded from the first-contact PR review, plus a measured plan for thinning the four TUI root files (`app/{input,state,render,tick}.rs`, 11.5k lines, half domain logic that drifted up) into their domains one PR at a time. Same day, earlier: the app-side half of horizontal scaling started: root CONTEXT.md §0 now carries a multi-replica rule for all new work, `app_flags` + `app/flags/svc.rs` is the first shared primitive (process-wide switches as rows behind a LISTEN/NOTIFY-fed watch), and the first-contact haunting is the first feature built replica-clean end to end. Pain Point 2 and Next Work item 8 now split the job into the transport half (session ownership, pair-WS routing) and the app half (the per-feature ownership migration, tracked in root CONTEXT.md §7). Previously 2026-08-18, second entry: 7-day production health check, read-only. The 2026-07-26 DB fixes are now **verified in prod**, not projected: every pre-fix query shape is idle and total live DB load is about 1.9% of one core, so the chat poll is no longer the binding constraint on the 1000-user target. The largest remaining DB item is `list_discover_public_topic_rooms`, which **regressed to 771 ms mean** and turns out to be a stale-visibility-map problem rather than a query-shape problem. New sections: "Live Production Baseline (2026-08-18)" and "Observability Gaps". Previously 2026-08-18, first entry: added Pain Point 8: stream egress is the first cost that scales with *viewers* rather than sessions, the go-live publish ceiling is now pinned in code, and the OBS/WHIP path is still uncapped by construction. Previously 2026-08-06: SCALE.md is now the single home for performance findings: absorbed root CONTEXT.md's §8.5 input-lag notes into Pain Point 1 and the discover-room CNPG CPU-saturation observation into DB Hot Queries; root context keeps only current-state contracts and routes perf here. Next infra step is unchanged: add a second cluster node and move everything except `service-ssh` off `server-1`)
 
 This document records the current production capacity posture, what was discovered during the HN-spike investigations (June 2026 and the 2026-07-22 OOM, see CONTEXT.md §10.5), the DB query findings, the shipped render-cost program, and the roadmap toward roughly 1000 concurrent users.
 
@@ -135,6 +135,21 @@ The pair-WS surface itself was hardened 2026-07-22 (per-token cap of 8 sockets, 
 For horizontal scaling, one SSH session must stay on the same pod for its lifetime. That does not mean one pod per user. It means each pod owns many sessions, and pair traffic routes to the session owner.
 
 Target shape for 1000 users: a handful of SSH pods after the render-cost program, not 1000 pods. How many depends on the prod re-measurement above.
+
+**The app half of the problem (started 2026-09-02).** Session ownership and pair-WS routing are the transport half; the list above is the app half, and it only shrinks if features stop adding to it. Two things now hold that line:
+
+- **The rule.** Root CONTEXT.md §0 "Multi-replica rule": every new feature is designed as if several `late-ssh` processes were already running. Truth lives in Postgres, once-only actions are conditional `UPDATE ... WHERE` claims or advisory locks, cross-session fan-out is `LISTEN/NOTIFY`, background work dedupes through the DB, switches are rows. Presence is the one named exception and may not grow.
+- **The primitive.** `app_flags` (migration 171, `late-core/src/models/app_flag.rs`, `late-ssh/src/app/flags/svc.rs`): process-wide on/off switches as rows, a trigger notify, one listener per replica re-reading the table into a shared `watch`. The haunt's kill switch and fuse are its first tenants; every remaining in-memory `AtomicBool` that someone wants to flip at runtime moves here as it is touched (a variant, a seed row, a field).
+
+The first feature built under the rule is the first-contact haunting (`late-ssh/src/app/deadchannel/`): switches as rows, every daily and lifetime cap a claim on the user row, the once-ever stamps claims, the AI bio screen claimed per bio text. It is the template for the migration of the list above.
+
+What each remaining item needs is not the same, which is why "move it to flags" is the wrong instinct for most of them (the per-row plan lives in root CONTEXT.md §7 "Multi-replica readiness"):
+
+- session registry, paired client registry: stay pod-local by design under sticky ownership (the transport half, item 8 below)
+- active user presence, clubhouse lobby, scratchpad pairings, stream registry: a shared presence store (Redis) or an explicit "pod-local, dies with the pod" decision per structure; the round's buyer roster and the clubhouse headcount are the two places a wrong answer is user-visible
+- ghost bots (@bot, @graybeard, @bartender, the door announcers): single-leader election so two replicas never answer the same mention
+- translation daily call cap and single-flight set: a shared counter
+- leaderboard refresh loops: already DB-backed, duplicate work only
 
 ### 3. Connect storms hit DB and service startup paths
 
@@ -629,6 +644,52 @@ Headline: **roughly 7x headroom on the binding constraint** (render/tick CPU) ag
 
 Sustained CPU throttling worth noting, all in the monitoring stack rather than the app path: `vmagent` 28.6% of periods throttled on average, `postgres-1` 6.8%, `victoriametrics` 4.3%, `otel-collector` 3.3%.
 
+## Small Debts (fix as touched)
+
+Started 2026-09-02. Nitpicks found while reviewing, none of them a problem at today's load (about 40 concurrent sessions, 16k user rows), each cheap to fix in passing when the file is already open. Add to this list rather than to a Pain Point when the finding is "this will be wrong at 10x, not now". Remove the row when it lands.
+
+| Where | What | Fix when touched |
+|---|---|---|
+| `late-core/src/models/user.rs`, `settings` jsonb | The first-contact haunting keeps ten keys on the user row (`first_contact_*`). jsonb has no in-place update, so every claim rewrites the row; harmless at a few claims per user per day, and the keys only appear once a claim wins. What actually grows on that row is the id arrays (`ignored_user_ids`, `friend_user_ids`, `favorite_room_ids`, `favorite_theme_ids`), not these scalars. | When a second funnel wants its own keys, move both into a `first_contact(user_id primary key, ...)` table with typed columns and the same conditional `UPDATE ... WHERE` claims. Leave `settings` for settings. |
+| `late-ssh/src/app/flags/svc.rs` and every `listen_once` copy (crown, pot, gild, shop, dailies, chips) | `handle_notification` awaits `refresh()` before polling the next message, so a burst of N notifies is N sequential re-reads on that replica. Self-healing (each read fetches current state) but the replica lags for the length of the burst. | Drain everything queued on the connection, dedupe by key or user id, then refresh once per distinct target. One function per listener, no new infrastructure. |
+| Any listener for a stream-shaped table (chat messages, feeds, news, notifications) built during the Pain Point 2 app-half migration | The flags listener re-reads the whole table on every notify because the table is a handful of rows. That shape does not transfer to tables that grow. | Carry the row id in the payload as a hint, fetch rows with id greater than the last one seen (UUID v7 orders by time), and run the same query after a reconnect. The payload stays untrusted; the table stays the truth. |
+| `late-core/src/models/marketplace.rs` (9 call sites), `quest.rs` (2), `crown.rs`, `pot.rs`, `chat_message_gild.rs` | App-side `SELECT pg_notify(...)` after the write. Migration 128 already records why this is fragile: a new write path forgets the notify and nobody notices until a replica is stale. `app_flags` and chips use a trigger instead. | Move each channel's notify into an `AFTER INSERT OR UPDATE` trigger as the model is touched, delete the app-side call, keep the channel name constant in the model. |
+| `late-ssh/src/app/deadchannel/haunt/svc.rs`, splash whisper | Two devices of one user on the held door in the same window both play the whisper; only one mark lands. Already in root CONTEXT.md §7. | Claim before play instead of after, at the cost of the door opening a round trip later. Only worth it if someone notices. |
+
+### Root-file thinning (measured 2026-09-02)
+
+The four root files of the TUI (`late-ssh/src/app/{input,state,render,tick}.rs`) are 11.5k lines together, and the GUIDE rule for them is "hold a domain's state, delegate to it, done". Measured against that rule they are half glue and half domain logic that drifted up. Not a scaling problem; a "every feature touches these files" problem, which is what makes them the merge-conflict and review-cost hot spot. Sizes:
+
+| File | Lines | Biggest function | What the excess is |
+|---|---|---|---|
+| `app/input.rs` | 4,200 | `handle_parsed_input_inner` 512, `handle_dedicated_screen_input` 337, `dispatch_escape` 288 | 237 direct `app.chat.` touches; whole domain handlers living here |
+| `app/state.rs` | 3,545 | `App::new` 634, `App` struct 210 fields (lines 432-882) | 22 door-game enter/leave/launch fns, 12 voice fns, stream/on-air consent logic |
+| `app/render.rs` | 2,617 | `render` 916, `draw` 697, `app_frame_title` 323, `push_quit_confirm_sayonara_placement` 220 | per-screen title logic, quit-confirm placement (a domain with its own `ui.rs`) |
+| `app/tick.rs` | 1,142 | `tick` 1,015 | image-upload result handling, daily-match room join, door-game idle reaps, all inline |
+
+The target shape already exists in the tree and is the thing to copy: `app/deadchannel/haunt` is one line in `tick.rs` (`haunt::svc::tick(self)`), one arm in input, one call in render, and everything else lives in the domain. Most domains already have `input.rs` / `ui.rs` / `svc.rs` (chat, artboard, clubhouse, directory, leaderboard, every modal); the drift is code that never moved into them, not missing structure. Moves, each self-contained and safe to do in passing when the feature is touched:
+
+| Move | From | To | Size |
+|---|---|---|---|
+| Door-game enter/leave/launch, idle reaps, "return to hub on exit" | `state.rs` (22 fns), `tick.rs` (lines ~540-620), `input.rs` `handle_games_hub_input` + `launch_games_hub_selection` (256 lines) | `app/door/hub/{state,input,svc}.rs`, one `door::svc::tick(app)` | ~600 lines |
+| Voice join/leave/mute/deafen, on-air consent, `voice_toggle_intent`, `handle_voice_join_result` | `state.rs` (12 fns) | `app/voice/{state,svc}.rs` (`voice/state.rs` is 54 lines today; the logic is at the root) | ~300 lines |
+| Image upload result, inline image polls, mod outputs, sheet save, requested-profile-open, debounced username click | `tick.rs` lines ~171-224 | `chat::svc::tick(app)` returning a `ChatTick { banner, screen_switch, open_profile, open_sheet }` | ~120 lines |
+| Daily-match room join on board load, lobby sync | `tick.rs` lines ~419-445 | `lobby::daily::svc::tick(app)` | ~30 lines |
+| `handle_chat_scroll_click`, `handle_chat_composer_click`, `chat_room_list_view`, `start_slash_command_composer` | `input.rs` (4 fns, ~280 lines) | `app/chat/input.rs`, which already exists | ~280 lines |
+| `handle_icon_picker_input`, `apply_icon_selection` | `input.rs` (~140 lines) | `app/icon_picker/input.rs` (domain has no `input.rs` yet) | ~140 lines |
+| `handle_directory_catalog_input` | `input.rs` (66 lines) | `app/directory/input.rs`, which already exists | ~70 lines |
+| `handle_tour_gate` | `input.rs` (32 lines) | wherever the tour state lives (clubhouse tutorial) | ~30 lines |
+| `push_quit_confirm_sayonara_placement` | `render.rs` (220 lines) | `app/quit_confirm/ui.rs`, which already exists | ~220 lines |
+| `app_frame_title` per-screen branches, `status_hud_title` | `render.rs` (480 lines) | a `title()` per domain `ui.rs`, root keeps the `match screen` | ~400 lines |
+| `App::new` field seeding | `state.rs` (634 lines) | each domain's `State::new(config)`; root becomes a list of constructor calls | ~400 lines |
+
+Rules for the moves, so they do not become a rewrite:
+
+- One domain per PR, tests move with the code (`input_flow_test.rs` and `tick_test.rs` cover much of this; the moved test goes beside the moved file).
+- The root keeps: the `Screen` match, the tick order comment block (the 1Hz and animation edges are shared clocks, not domain logic), and the field. Anything that reads a domain's internals to decide something moves.
+- The 210-field `App` struct shrinks only by grouping, not by removal: `app.darkroom_state`, `app.greendragon_state`, `app.rebels_state`, ... become `app.doors: DoorStates`, one field per family, which is also what makes `App::new` collapse.
+- No new abstraction. A domain `svc::tick(app: &mut App) -> bool` that reaches into `app` is the contract; do not introduce traits for it.
+
 ## Immediate Next Work
 
 **Re-ordered 2026-08-18** after the health check. The four 2026-07-26 DB fixes are verified and their follow-ups have dropped down the list; what rose to the top is a two-week-stale visibility map and a flapping telemetry collector, neither of which was on the list at all. Current order of payoff:
@@ -705,6 +766,8 @@ Minimum viable design:
 - On session end, remove token ownership
 
 Do not scale `service-ssh` randomly before this exists.
+
+The app half runs in parallel and is the longer job: work the root CONTEXT.md §7 "Multi-replica readiness" table row by row, in the order the transport design needs them (presence first, since sticky sessions alone do not make the headcount or a round's roster right; ghost single-leader second, since duplicate bot replies are the first thing users would notice; the translation cap last). New features never add rows to that table (CONTEXT.md §0 rule); switches go to `app_flags` as they are touched (Pain Point 2).
 
 ### 9. Add PgBouncer
 

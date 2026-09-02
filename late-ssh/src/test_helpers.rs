@@ -294,6 +294,7 @@ pub fn test_app_state(db: Db, config: Config) -> State {
         clubhouse_lobby: crate::app::clubhouse::lobby::SharedLobby::with_seed(7),
         mention_ladders: crate::app::ai::ladder::MentionLadders::new(),
         scratchpad_registry: crate::app::scratchpad::registry::SharedScratchpadRegistry::new(),
+        app_flags: crate::app::flags::svc::AppFlagService::new(db.clone()),
         afk_users,
         username_directory,
         flair_directory: crate::app::common::username_effect::new_directory(),
@@ -629,6 +630,12 @@ fn make_app_with_chat_service_and_permissions(
         files: None,
         scratchpad_registry: world.scratchpad_registry,
         clubhouse_tutorial_done: true,
+        // Everything already spent: no first-contact stage can fire inside
+        // a test app unless a test arms one on purpose.
+        first_contact: crate::app::deadchannel::haunt::state::FirstContactMarks::spent_for_tests(),
+        first_contact_gate: crate::app::deadchannel::haunt::state::FirstContactGate::closed(),
+        app_flags_rx: test_app_flags_rx(),
+        app_flags: None,
         show_aquarium_tray: false,
         // No SSH key: test apps follow the account default and persist no
         // per-device layout, which is also what ghost bot sessions do.
@@ -852,6 +859,12 @@ pub fn make_app_with_paired_client(
         files: None,
         scratchpad_registry: None,
         clubhouse_tutorial_done: true,
+        // Everything already spent: no first-contact stage can fire inside
+        // a test app unless a test arms one on purpose.
+        first_contact: crate::app::deadchannel::haunt::state::FirstContactMarks::spent_for_tests(),
+        first_contact_gate: crate::app::deadchannel::haunt::state::FirstContactGate::closed(),
+        app_flags_rx: test_app_flags_rx(),
+        app_flags: None,
         show_aquarium_tray: false,
         // No SSH key: test apps follow the account default and persist no
         // per-device layout, which is also what ghost bot sessions do.
@@ -1007,4 +1020,16 @@ pub fn strip_ansi(input: &str) -> String {
         }
     }
     out
+}
+
+/// The switches a test app runs under: kill switch on (so an armed whisper
+/// or a forced burst plays), fuse unlit. The sender is dropped on purpose;
+/// a `watch` receiver keeps serving the last value.
+pub fn test_app_flags_rx()
+-> tokio::sync::watch::Receiver<Option<late_core::models::app_flag::AppFlags>> {
+    let (_tx, rx) = tokio::sync::watch::channel(Some(late_core::models::app_flag::AppFlags {
+        haunt_enabled: true,
+        haunt_live: false,
+    }));
+    rx
 }

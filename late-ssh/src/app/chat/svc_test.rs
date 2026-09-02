@@ -4987,3 +4987,192 @@ mod gild {
             .room_id
     }
 }
+
+#[tokio::test]
+async fn first_contact_invitation_sends_one_dm_and_claims_once() {
+    use crate::app::deadchannel::haunt::state::{VOICE_FINGERPRINT, VOICE_USERNAME};
+
+    let test_db = new_test_db().await;
+    let service = ChatService::new(
+        test_db.db.clone(),
+        NotificationService::new(test_db.db.clone()),
+    );
+    let target = create_test_user(&test_db.db, "first-contact-target").await;
+
+    // Two racing requests (two devices noticing the due date): the claim
+    // lets exactly one DM through.
+    service.send_first_contact_invitation_task(target.id);
+    service.send_first_contact_invitation_task(target.id);
+
+    let client = test_db.db.get().await.expect("db client");
+    crate::test_helpers::wait_until(
+        || async {
+            let client = test_db.db.get().await.expect("db client");
+            User::find_by_fingerprint(&client, VOICE_FINGERPRINT)
+                .await
+                .expect("find voice")
+                .is_some()
+        },
+        "voice ghost user created",
+    )
+    .await;
+    let voice = User::find_by_fingerprint(&client, VOICE_FINGERPRINT)
+        .await
+        .expect("find voice")
+        .expect("voice exists");
+    assert_eq!(voice.username, VOICE_USERNAME);
+
+    crate::test_helpers::wait_until(
+        || async {
+            let client = test_db.db.get().await.expect("db client");
+            ChatRoom::get_dm(&client, voice.id, target.id)
+                .await
+                .expect("find dm")
+                .is_some()
+        },
+        "invitation dm room created",
+    )
+    .await;
+    let room = ChatRoom::get_dm(&client, voice.id, target.id)
+        .await
+        .expect("find dm")
+        .expect("dm exists");
+
+    crate::test_helpers::wait_until(
+        || async {
+            let client = test_db.db.get().await.expect("db client");
+            let messages = ChatMessage::list_recent(&client, room.id, 10)
+                .await
+                .expect("list dm messages");
+            !messages.is_empty()
+        },
+        "invitation message delivered",
+    )
+    .await;
+    // Give the racing duplicate every chance to (wrongly) land too.
+    sleep(Duration::from_millis(300)).await;
+    let messages = ChatMessage::list_recent(&client, room.id, 10)
+        .await
+        .expect("list dm messages");
+    assert_eq!(messages.len(), 1, "the claim must allow exactly one DM");
+    assert_eq!(messages[0].user_id, voice.id);
+    assert!(messages[0].body.ends_with("/join #deadchannel"));
+
+    // The claim stamp survives on the target's settings.
+    let target_row = User::find_by_username(&client, &target.username)
+        .await
+        .expect("find target")
+        .expect("target exists");
+    assert!(
+        late_core::models::user::extract_first_contact_invited_at(&target_row.settings).is_some()
+    );
+}
+
+#[tokio::test]
+async fn deadchannel_join_requires_the_invitation() {
+    let test_db = new_test_db().await;
+    let service = ChatService::new(
+        test_db.db.clone(),
+        NotificationService::new(test_db.db.clone()),
+    );
+    let mut events = service.subscribe_events();
+    let client = test_db.db.get().await.expect("db client");
+    let user = create_test_user(&test_db.db, "dc-hopeful").await;
+
+    // Uninvited, the door and the wall are indistinguishable: the same
+    // static line the reserved slug gives, and no room seeded.
+    service.open_public_room_task(user.id, "deadchannel".to_string());
+    match timeout(Duration::from_secs(2), events.recv())
+        .await
+        .expect("event timeout")
+        .expect("event")
+    {
+        ChatEvent::RoomFailed { user_id, message } => {
+            assert_eq!(user_id, user.id);
+            assert_eq!(message, "only static on that channel");
+        }
+        other => panic!("expected RoomFailed, got {other:?}"),
+    }
+
+    // The invitation stamp is the key.
+    User::claim_first_contact_invitation(&client, user.id, chrono::Utc::now())
+        .await
+        .expect("stamp invitation");
+    service.open_public_room_task(user.id, "DeadChannel".to_string());
+    let room_id = match timeout(Duration::from_secs(2), events.recv())
+        .await
+        .expect("event timeout")
+        .expect("event")
+    {
+        ChatEvent::RoomJoined {
+            user_id, room_id, ..
+        } => {
+            assert_eq!(user_id, user.id);
+            room_id
+        }
+        other => panic!("expected RoomJoined, got {other:?}"),
+    };
+    assert!(
+        ChatRoomMember::is_member(&client, room_id, user.id)
+            .await
+            .expect("membership check")
+    );
+}
+
+#[tokio::test]
+async fn first_contact_voice_ensure_is_idempotent_and_claims_the_name() {
+    use crate::app::deadchannel::haunt::state::VOICE_USERNAME;
+
+    let test_db = new_test_db().await;
+    let service = ChatService::new(
+        test_db.db.clone(),
+        NotificationService::new(test_db.db.clone()),
+    );
+
+    // The startup ensure creates the row; from then on the unique username
+    // index holds the name (the `system` reservation move).
+    let first = service
+        .ensure_first_contact_voice()
+        .await
+        .expect("first ensure");
+    assert_eq!(first.username, VOICE_USERNAME);
+    let second = service
+        .ensure_first_contact_voice()
+        .await
+        .expect("second ensure");
+    assert_eq!(second.id, first.id);
+}
+
+#[tokio::test]
+async fn first_contact_invitation_claim_survives_a_failed_send() {
+    use crate::app::deadchannel::haunt::state::VOICE_USERNAME;
+
+    let test_db = new_test_db().await;
+    let service = ChatService::new(
+        test_db.db.clone(),
+        NotificationService::new(test_db.db.clone()),
+    );
+    // The `system` squat of 2026-07-12, aimed at the voice: a real account
+    // holds the username (its own fingerprint, not the voice's), so
+    // ensuring the ghost user fails every time.
+    let _squatter = create_test_user(&test_db.db, VOICE_USERNAME).await;
+    let target = create_test_user(&test_db.db, "fc-claim-target").await;
+
+    service.send_first_contact_invitation_task(target.id);
+
+    // The failure is silent from out here; give the task time to run its
+    // course (a negative assertion, like the racing-duplicate check above).
+    sleep(Duration::from_millis(400)).await;
+
+    // The once-ever claim must not be burned by a DM that never sent: the
+    // stamp stays absent so a later session retries the invitation.
+    let client = test_db.db.get().await.expect("db client");
+    let target_row = User::find_by_username(&client, &target.username)
+        .await
+        .expect("find target")
+        .expect("target exists");
+    assert!(
+        late_core::models::user::extract_first_contact_invited_at(&target_row.settings).is_none(),
+        "a failed invitation must leave the claim untaken"
+    );
+}

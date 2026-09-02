@@ -2865,6 +2865,167 @@ impl ChatService {
         );
     }
 
+    /// Ensure the game's first voice exists (GAME.md, First contact stage
+    /// 4). Runs at startup like the `system` user: the first deploy creates
+    /// the row, and the case-insensitive unique username index reserves the
+    /// name from then on. The invitation task calls it again, so a lost
+    /// startup race or a squatted username self-heals the moment the squat
+    /// clears. Unlike `system`, the voice never auto-joins public rooms: it
+    /// only ever speaks in its one DM.
+    pub(crate) async fn ensure_first_contact_voice(&self) -> anyhow::Result<User> {
+        use crate::app::deadchannel::haunt::state::{VOICE_FINGERPRINT, VOICE_USERNAME};
+        let client = self.db.get().await?;
+        let voice = match User::find_by_fingerprint(&client, VOICE_FINGERPRINT).await? {
+            Some(existing) => existing,
+            None => {
+                let created = User::create(
+                    &client,
+                    late_core::models::user::UserParams {
+                        fingerprint: VOICE_FINGERPRINT.to_string(),
+                        username: VOICE_USERNAME.to_string(),
+                        settings: serde_json::json!({ "bot": true }),
+                    },
+                )
+                .await;
+                match created {
+                    Ok(created) => {
+                        late_core::models::user_ssh_key::UserSshKey::ensure(
+                            &client,
+                            created.id,
+                            VOICE_FINGERPRINT,
+                        )
+                        .await?;
+                        created
+                    }
+                    // Two callers racing the first ensure: the loser's
+                    // create collides on the unique indexes, and the
+                    // winner's row is there to find. Anything else (a
+                    // squatted username) finds nothing and propagates the
+                    // original failure.
+                    Err(create_error) => User::find_by_fingerprint(&client, VOICE_FINGERPRINT)
+                        .await?
+                        .ok_or(create_error)?,
+                }
+            }
+        };
+        if let Some(directory) = &self.username_directory {
+            crate::usernames::upsert(directory, voice.id, VOICE_USERNAME);
+        }
+        Ok(voice)
+    }
+
+    /// Fire-and-forget startup ensure for the voice (main.rs, beside the
+    /// lounge feed's `system` ensure). Failure is only logged: the
+    /// invitation task retries the ensure itself, so a bad boot costs
+    /// nothing but the early name reservation.
+    pub fn ensure_first_contact_voice_task(&self) {
+        let service = self.clone();
+        tokio::spawn(
+            async move {
+                if let Err(error) = service.ensure_first_contact_voice().await {
+                    tracing::warn!(?error, "first contact voice not ensured at startup");
+                }
+            }
+            .instrument(info_span!("chat.ensure_first_contact_voice_task")),
+        );
+    }
+
+    /// First contact, stage 4 (`app/deadchannel/haunt`): the one
+    /// invitation DM from the game's first voice. Ensures the voice's
+    /// ghost user (fixed fingerprint, @bartender's shape, but never
+    /// auto-joined into public rooms: the voice lives in the dark), opens
+    /// the DM, claims the once-ever right to invite this user (a
+    /// conditional settings stamp, so two devices noticing the due date at
+    /// once send one DM), then sends the plea through the normal send
+    /// path. It persists on purpose: an invitation that vanishes cannot
+    /// be followed three days later.
+    pub fn send_first_contact_invitation_task(&self, target_user_id: Uuid) {
+        use crate::app::deadchannel::haunt::state::INVITATION_PLEA;
+        let service = self.clone();
+        tokio::spawn(
+            async move {
+                let result: anyhow::Result<bool> = async {
+                    // The voice and the DM are ensured BEFORE the once-ever
+                    // claim is taken: a failure here (say, a real account
+                    // squatting the username, the `system` squat of
+                    // 2026-07-12 aimed at the voice) must leave the claim
+                    // untaken so a later session retries. The claim guards
+                    // only the send.
+                    let voice = service.ensure_first_contact_voice().await?;
+                    let client = service.db.get().await?;
+                    let room =
+                        ChatRoom::get_or_create_dm(&client, voice.id, target_user_id).await?;
+                    ChatRoomMember::join(&client, room.id, voice.id).await?;
+                    ChatRoomMember::join(&client, room.id, target_user_id).await?;
+                    VoiceChannel::upsert_for_target(&client, TARGET_CHAT_ROOM, room.id, "dm", true)
+                        .await?;
+                    if !User::claim_first_contact_invitation(
+                        &client,
+                        target_user_id,
+                        chrono::Utc::now(),
+                    )
+                    .await?
+                    {
+                        return Ok(false);
+                    }
+                    drop(client);
+                    let sent = service
+                        .send_message(SendMessageParams {
+                            user_id: voice.id,
+                            room_id: room.id,
+                            room_slug: None,
+                            body: INVITATION_PLEA.to_string(),
+                            reply_to_message_id: None,
+                            reply_to_user_id: None,
+                            is_admin: false,
+                        })
+                        .await;
+                    match sent {
+                        Ok(_) => Ok(true),
+                        Err(send_error) => {
+                            // Give the claim back so a later session retries.
+                            // Losing the release too leaves a burned claim,
+                            // which is worth its own line.
+                            let released: anyhow::Result<()> = async {
+                                let client = service.db.get().await?;
+                                User::release_first_contact_invitation(&client, target_user_id)
+                                    .await
+                            }
+                            .await;
+                            if let Err(release_error) = released {
+                                tracing::error!(
+                                    error = ?release_error,
+                                    user_id = %target_user_id,
+                                    "failed to release a burned first contact claim"
+                                );
+                            }
+                            Err(send_error)
+                        }
+                    }
+                }
+                .await;
+                match result {
+                    Ok(true) => {
+                        tracing::info!(user_id = %target_user_id, "first contact invitation sent");
+                    }
+                    // Another session claimed it first: nothing to do.
+                    Ok(false) => {}
+                    Err(e) => {
+                        late_core::error_span!(
+                            "first_contact_invitation_failed",
+                            error = ?e,
+                            "failed to send first contact invitation"
+                        );
+                    }
+                }
+            }
+            .instrument(info_span!(
+                "chat.send_first_contact_invitation_task",
+                user_id = %target_user_id,
+            )),
+        );
+    }
+
     pub fn send_message_with_reply_task(&self, task: SendMessageTask) {
         let SendMessageTask {
             user_id,
@@ -4502,6 +4663,15 @@ impl ChatService {
     }
 
     async fn open_public_room(&self, user_id: Uuid, slug: &str) -> Result<Uuid> {
+        // The one gated join in the app (GAME.md, First contact stage 4):
+        // the invitation is the key, because an open door would let people
+        // skip the eligibility funnel the haunting exists to drive.
+        if slug
+            .trim()
+            .eq_ignore_ascii_case(late_core::models::chat_room::DEADCHANNEL_SLUG)
+        {
+            return self.join_deadchannel_room(user_id).await;
+        }
         let client = self.db.get().await?;
         // Public rooms are hosted, not owned: only mods edit their topic and
         // rules. Whether this call opens a brand-new room decides whether the
@@ -4528,6 +4698,25 @@ impl ChatService {
             // logging, never worth telling them their room failed to open.
             tracing::error!(?error, slug = %slug, room_id = %room.id, "failed to announce new public room");
         }
+        Ok(room.id)
+    }
+
+    /// `/join #deadchannel`, the invitation's only instruction (GAME.md,
+    /// First contact stage 4). Without the stamp the caller gets the exact
+    /// static line the reserved topic slug always gives, so from outside
+    /// the door and the wall are indistinguishable; with it the haunted
+    /// channel opens, seeded on the first invited entry.
+    async fn join_deadchannel_room(&self, user_id: Uuid) -> Result<Uuid> {
+        let client = self.db.get().await?;
+        let user = User::get(&client, user_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("user not found"))?;
+        if late_core::models::user::extract_first_contact_invited_at(&user.settings).is_none() {
+            anyhow::bail!("only static on that channel");
+        }
+        let room = ChatRoom::get_or_create_deadchannel_room(&client).await?;
+        ChatRoomMember::join(&client, room.id, user_id).await?;
+        tracing::info!(user_id = %user_id, room_id = %room.id, "deadchannel joined by invitation");
         Ok(room.id)
     }
 
