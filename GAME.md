@@ -300,8 +300,10 @@ a conditional claim on the user row). Stage 1 is universal behind the
 non-staff users yet (staff: admins and moderators, the mods meeting it
 cold as the first playtest); stages 2-4 sit behind connected time, touched
 settings, and an AI-screened bio with placeholder thresholds (7 days of
-online time, 2 keys, 100 characters, the AI screen doing the real judging above that floor). Copy, the voice's name, and the thresholds still face
-design review before the fuse is lit.
+online time, 2 keys, 100 characters; the length is only the floor under
+which no screen is spent, the AI screen does the judging). Copy, the
+voice's name, and the thresholds still face design review before the
+fuse is lit.
 
 - **The game is never announced; it arrives.** Onboarding as haunting: the
   bridge fiction says the city is behind the screen and chat is the leak,
@@ -360,7 +362,9 @@ design review before the fuse is lit.
      skips a rung), rare (order of one in dozens of sends, capped once
      per UTC day, **three total hits per person**, the third arming the
      door; with the daily cap, stages 1 and 2 each spread over two or
-     three days, so the full ladder is roughly a week of slow burn),
+     three days, the two doors sit a day or more apart, and the DM
+     waits two days after the second, so the full ladder is roughly a
+     week and a half of slow burn),
      render-layer only, no DB beyond the per-user arming counter,
      kill-switch. Later variety (your name
      in the sidebar, the composer placeholder) rides the same
@@ -424,13 +428,16 @@ design review before the fuse is lit.
      lounge/language/topic), so a new kind is invisible to all of them
      by construction, exactly how game rooms already hide, and without
      inheriting the game-room join path or `game_kind` semantics. The
-     channel is never discoverable, only spoken of.
+     channel is never discoverable, only spoken of; once you are in, it
+     sits at the bottom of Core on the rail, under `#voice`, a fixture
+     next to the lounge rather than one channel among many.
 - **The eligibility gate is a whisper campaign.** Stages 2-4 target users
   with a filled bio, touched settings, and real tenure (thresholds at
   design review; built 2026-09-02 with placeholders, and the bio leg is
   an AI screen, "does this read as a person describing themselves",
   cached per bio text so it costs one call per rewrite, never per
-  login): the static chooses the invested. Stage 1 is universal
+  login, and only spent once the free legs, tenure and settings,
+  already pass): the static chooses the invested. Stage 1 is universal
   on purpose (ambient, harmless, and the "did anyone else see that?"
   gossip works better when anyone might have). The gate is evaluated at
   session init (three cheap reads where the user row already loads) and
@@ -614,14 +621,16 @@ Sequencing, each phase testing something before paying for the next:
   after the public flip), and the exact name of the "hide the static"
   setting.
 - **First-contact tuning.** The eligibility thresholds (built as
-  placeholders: 200 bio characters, 2 of a closed list of 11 deliberately
-  set keys, 7 days of lifetime connected time from the online-time
-  leaderboard's table rather than account age, since an account that
-  signed up and left is not invested; people will paste a generated bio to
-  clear the screen and that is fine, the gate measures investment, not
-  authorship), and the whisper copy pool: the voiced lines need the same
-  variety discipline as feed templates, since a repeated whisper is a
-  bug report, not a haunting.
+  placeholders: 100 bio characters as the floor under which no screen is
+  spent, lowered from 200 on 2026-09-02 when a real mod's honest bio came
+  in at 199, the AI screen doing the judging above it; 2 of a closed
+  list of 11 deliberately set keys; 7 days of lifetime connected time
+  from the online-time leaderboard's table rather than account age,
+  since an account that signed up and left is not invested; people will
+  paste a generated bio to clear the screen and that is fine, the gate
+  measures investment, not authorship), and the two whisper pools: the
+  voiced lines need the same variety discipline as feed templates, since
+  a repeated whisper is a bug report, not a haunting.
 - **The voice never answers.** The invitation opens a real DM, and the
   natural human reply to a plea is to answer it; nothing listens on the
   voice's side. Decide deliberately at design review: a scripted
