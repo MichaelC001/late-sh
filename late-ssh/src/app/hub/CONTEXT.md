@@ -86,7 +86,7 @@ Current user-facing chip amounts:
 - Bonsai watering pays 200 chips once per day when the daily care row changes from unwatered to watered.
 - Quest completions pay their template-defined chip reward automatically once per active assignment.
 - Asterion escapes pay 4000 chips once per UTC day through `game_payout_claims`.
-- Lateania boss achievements pay through `game_payout_claims` behind two gates (SHOP.md Phase 6, migration 158): 10,000 chips for the Archdemon Mal'gareth and the King Who Was Promised Nothing, 20,000 for Yssgar and Kaethyr Ascendant, each once per `mud_characters.id` and at most once every 7 days per account.
+- Lateania boss achievements pay through `game_payout_claims` behind two gates (migration 158): 10,000 chips for the Archdemon Mal'gareth and the King Who Was Promised Nothing, 20,000 for Yssgar and Kaethyr Ascendant, each once per `mud_characters.id` and at most once every 7 days per account.
 - Chess decisive wins pay 500 chips through `game_payout_claims` with a 60-minute per-player cooldown.
 - ssHattrick decisive wins pay 300 chips through `game_payout_claims` with a 15-minute per-player cooldown.
 - Tron wins pay 50/75/100 chips for 2/3/4 round-start riders through `game_payout_claims` with a 5-minute per-player cooldown.
@@ -191,4 +191,4 @@ Future Events work (the tab is deleted; these hold for whenever events return):
 - Shop has implemented categories for Chat, Badges, Flags, Companions, Aquarium, and Ultimates (that order); keep this context in sync when adding another category or changing unlock gates. The Ultimates tab sells two unrelated things (burn milestones, then the two spells), so `matches_item` admits both kinds and the action label tells them apart before offering to cast anything.
 - Leaderboard refresh is polling-based, so Activity events can appear before the Leaderboards page catches up: a score set at minute 0 shows up on the board within 5 minutes, not at once. Sessions seed from the published snapshot at construction and a connect refreshes a stale one, so the boards are never *empty*, just up to one interval behind. Quest and Shop snapshots refresh on session init, local mutations, and Postgres notifications; the leaderboard has no equivalent notify path.
 - The Leaderboards page has no scrolling inside a board's standings beyond the around-you tail; a board deeper than the pane clips.
-- DCSS has its board triple via the log pipe (Phase 1 of `devdocs/PLAN-ROGUELIKE-BOARDS.md`); NetHack and Brogue still have none — their phases (xlogfile ingestion + scrape removal, victory-log patch) are next in that plan.
+- DCSS, NetHack, and Brogue each have their board triple via the log pipe (`app/leaderboard/CONTEXT.md`, the log pipe section, owns the contract).
