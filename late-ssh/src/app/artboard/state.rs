@@ -1262,7 +1262,28 @@ impl State {
         self.floating_source_bounds = None;
         self.active_brush = Some(Brush::Glyph(glyph.ch));
         self.suppress_swatch_preview = false;
+        // The sampler is the eyedropper too: the glyph's colour becomes the
+        // paint colour, so Esc and typing carry it on.
+        if let Some(fg) = self.snapshot.canvas.fg(glyph.pos) {
+            self.paint_color = Some(fg);
+        }
         true
+    }
+
+    /// Alt+K: the colour under the cursor becomes the paint colour. A blank
+    /// or uncoloured cell has none to give, and says so.
+    pub fn sample_color_at_cursor(&mut self) -> bool {
+        match self.snapshot.canvas.fg(self.editor.cursor) {
+            Some(fg) => {
+                self.paint_color = Some(fg);
+                self.suppress_swatch_preview = false;
+                true
+            }
+            None => {
+                self.private_notice = Some("No color under the cursor.".to_string());
+                false
+            }
+        }
     }
 
     fn drain_archive_results(&mut self) -> bool {

@@ -192,6 +192,12 @@ fn handle_color_picker_event(
         ParsedInput::ShiftArrow(b'D') => color_picker(state).adjust(-COARSE_STEP),
         ParsedInput::Home => color_picker(state).jump(Edge::Min),
         ParsedInput::End => color_picker(state).jump(Edge::Max),
+        // The eyedropper feeds the working colour while the picker is up.
+        ParsedInput::AltK => {
+            if let Some(fg) = state.snapshot.canvas.fg(state.cursor()) {
+                color_picker(state).set_color(fg);
+            }
+        }
         ParsedInput::Mouse(mouse) => {
             if matches!(mouse.kind, MouseEventKind::Down)
                 && matches!(mouse.button, Some(MouseButton::Left))
@@ -446,6 +452,10 @@ pub(crate) fn handle_event(
         ),
         ParsedInput::AltArrow(key) => {
             jump_to_edge(state, screen_size, *key);
+            InputAction::Handled
+        }
+        ParsedInput::AltK => {
+            state.sample_color_at_cursor();
             InputAction::Handled
         }
         ParsedInput::CtrlShiftArrow(key) => handle_app_key(

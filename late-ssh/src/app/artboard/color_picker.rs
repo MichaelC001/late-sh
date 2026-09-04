@@ -130,6 +130,13 @@ impl ColorPicker {
         }
     }
 
+    /// A whole colour at once (the eyedropper).
+    pub fn set_color(&mut self, color: RgbColor) {
+        self.color = color;
+        self.hex.clear();
+        self.sync_preset_cursor();
+    }
+
     pub fn set_channel(&mut self, channel: Channel, value: u8) {
         match channel {
             Channel::Red => self.color.r = value,

@@ -134,6 +134,8 @@ pub enum ParsedInput {
     AltS,
     AltA,
     AltC,
+    /// Alt+K samples the Artboard colour under the cursor.
+    AltK,
     Paste(Vec<u8>),
     PageUp,
     PageDown,
@@ -528,6 +530,7 @@ impl Perform for VtCollector {
                 b'a' | b'A' => self.events.push(ParsedInput::AltA),
                 b's' | b'S' => self.events.push(ParsedInput::AltS),
                 b'c' | b'C' => self.events.push(ParsedInput::AltC),
+                b'k' | b'K' => self.events.push(ParsedInput::AltK),
                 _ => {}
             }
         }
@@ -1028,7 +1031,7 @@ fn handle_parsed_input_inner(app: &mut App, event: ParsedInput) {
                 chat::input::handle_post_submit_requests(app, from_dashboard);
             }
         }
-        ParsedInput::AltA | ParsedInput::AltC => {}
+        ParsedInput::AltA | ParsedInput::AltC | ParsedInput::AltK => {}
         // Mouse events feed global hit tests first, then vertical wheel
         // fallback for screens that scroll outside richer local handlers.
         ParsedInput::Mouse(mouse) => {

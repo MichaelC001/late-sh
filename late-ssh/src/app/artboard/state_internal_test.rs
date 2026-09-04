@@ -134,6 +134,39 @@ fn color_picker_closed_without_enter_keeps_the_paint_color() {
 }
 
 #[test]
+fn double_click_sampling_takes_the_glyphs_color() {
+    let mut state = test_state();
+    state.select_palette_color(3);
+    state.type_char('A', (80, 24));
+    state.select_palette_color(7);
+
+    assert!(state.activate_temp_glyph_brush_at(Pos { x: 0, y: 0 }));
+    assert_eq!(state.active_paint_color(), PAINT_PALETTE[3]);
+    assert_eq!(state.brush_mode(), BrushMode::Glyph('A'));
+}
+
+#[test]
+fn alt_k_samples_the_color_under_the_cursor_or_says_there_is_none() {
+    let mut state = test_state();
+    state.select_palette_color(3);
+    state.type_char('A', (80, 24));
+    state.select_palette_color(7);
+
+    // The cursor moved on to a blank cell: nothing to take.
+    assert!(!state.sample_color_at_cursor());
+    assert_eq!(state.active_paint_color(), PAINT_PALETTE[7]);
+    assert_eq!(
+        state.private_notice.as_deref(),
+        Some("No color under the cursor.")
+    );
+
+    state.move_left((80, 24));
+    assert!(state.sample_color_at_cursor());
+    assert_eq!(state.active_paint_color(), PAINT_PALETTE[3]);
+    assert!(state.is_in_normal_brush_mode());
+}
+
+#[test]
 fn paint_color_cycle_wraps() {
     let mut state = test_state();
     state.cycle_paint_color(-2);

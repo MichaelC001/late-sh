@@ -95,7 +95,7 @@ Local state:
   - Mouse hit testing routes swatch/info overlays before canvas pointer dispatch.
   - Double-clicking a canvas glyph arms a temporary glyph brush.
   - Glyph picker owns input while open; so does the colour picker (`Ctrl+K`: arrows walk rows and nudge, Shift+arrows by 16, hex digits type the hex field, Enter applies, Esc discards, a click on a bar or a preset sets it).
-  - A left click on a palette cell in the info block selects that preset (`palette_hit`), in edit and view mode alike.
+  - A left click on a palette cell in the info block selects that preset (`palette_hit`), in edit and view mode alike. `Alt+K` (`ParsedInput::AltK`, parsed in `app/input.rs` next to the other Alt chords) is the eyedropper: `State::sample_color_at_cursor`.
 
 - `late-ssh/src/app/artboard/page.rs`
   - Page-level integration with `crate::app::state::App`.
@@ -224,6 +224,7 @@ Keyboard reference:
 | Applaud a piece | `v` | In a gallery list or full frame; `v` again withdraws |
 | Draw / erase active mode | printable chars, `Space`, `Backspace`, `Delete` | Plain typing edits the shared canvas |
 | Paint color | `Ctrl+U`, `Ctrl+Y` | Steps the 16 presets; separate from peer color; a custom colour steps back onto the presets |
+| Eyedropper | `Alt+K` | The colour under the cursor becomes the paint colour, in view and edit mode; inside the picker it sets the working colour; a blank cell says so in the notice row |
 | Paint color picker | `Ctrl+K` | Modal: R/G/B bars, hex field, presets; `↑↓` row, `←→` ±1, `Shift+←→` ±16, `Home`/`End`, hex digits type, `Enter` applies, `Esc` or `Ctrl+K` discards; opens from view mode too |
 | Select | `Shift+arrows`, mouse drag | Local selection only |
 | Shape ops | `Ctrl+T`, `Ctrl+B`, `Ctrl+Space` | Flip selection corner, draw border, smart-fill |
@@ -243,7 +244,7 @@ Mouse-specific extras:
 - In the colour picker, click a channel bar to set it or a preset to take it.
 - Click swatch pin icon to pin/unpin a swatch.
 - `Ctrl+click` a swatch body clears that swatch slot.
-- Double-click a non-space canvas glyph samples it into a temporary one-glyph brush.
+- Double-click a non-space canvas glyph samples it into a temporary one-glyph brush and takes its colour as the paint colour.
 - Mouse wheel over the info overlay is swallowed so it does not pan the board underneath.
 
 ## Rendering Notes
@@ -289,6 +290,7 @@ Inline module tests:
 - Active artboard bans block editing through `App::activate_artboard_interaction` and show an error banner while the ban is active; viewing and archive browsing remain available.
 - One archive fetch is in flight per session; `wanted` is the only thing the cursor writes, and `request_wanted_archive` is the only reader.
 - Swatch slot `0` is the primary clipboard slot and is not pinnable.
+- Swatches and floating brushes store glyphs only (`dartboard_editor::Clipboard`); stamping paints in the current paint colour. The eyedropper reads colour from the canvas, never from a swatch.
 - Local paint palette is separate from the server-assigned peer color.
 - Connection rejection lives on `DartboardSnapshot.connect_rejected`, not only on events.
 

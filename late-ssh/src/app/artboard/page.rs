@@ -160,6 +160,10 @@ pub(crate) fn handle_event(app: &mut App, event: &ParsedInput) -> bool {
             state.move_end(size);
             true
         }
+        ParsedInput::AltK => {
+            state.sample_color_at_cursor();
+            true
+        }
         ParsedInput::AltArrow(key) => match key {
             b'A' => {
                 state.pan_viewport_by(size, 0, -VIEW_MODE_ALT_PAN_STEP);
