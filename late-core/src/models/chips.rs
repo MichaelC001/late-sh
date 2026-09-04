@@ -119,6 +119,12 @@ chip_moves!(
     /// what caps the reward at one per URL per user, and it has to outlive
     /// the article being deleted (see [`crate::models::article::Article::create_shared`]).
     NewsShared,
+    /// The Artboard gallery's monthly prize: last month's top three by
+    /// their best piece's applause, paid once when the `artboard` profile
+    /// award row is written (`profile_award.rs`). Minted rather than moved;
+    /// `source_ref` is the award row id, which is what makes a re-run of
+    /// the snapshot unable to pay twice.
+    ArtboardPrize,
     /// Queueing a YouTube track, from the booth, a pasted URL, or the history
     /// list. One flat credit, minted rather than moved, for the first few
     /// tracks a person queues each UTC day and nothing after that. The track
@@ -196,6 +202,7 @@ impl ChipMove {
             Self::PotTicket => "pot_ticket",
             Self::PotWon => "pot_won",
             Self::NewsShared => "news_shared",
+            Self::ArtboardPrize => "artboard_prize",
             Self::SongQueued => "song_queued",
             Self::RoundPurchase => "round_purchase",
             Self::DrinkPurchase => "drink_purchase",
@@ -245,6 +252,7 @@ impl ChipMove {
             Self::CrownTaken => "crown_reigns",
             Self::PotTicket | Self::PotWon => "pots",
             Self::NewsShared => "articles",
+            Self::ArtboardPrize => "profile_awards",
             Self::SongQueued => "media_queue_items",
             Self::RoundPurchase => "drink_rounds",
             Self::DrinkPurchase => "bartender",
@@ -285,6 +293,7 @@ impl ChipMove {
             | Self::GildReceived
             | Self::PotWon
             | Self::NewsShared
+            | Self::ArtboardPrize
             | Self::SongQueued
             | Self::QuestReward
             | Self::DailyQuestStreakReward
@@ -342,6 +351,11 @@ impl ChipMove {
             // A round is the same vanity burn as the crown, one rung more
             // generous: buying the bar a drink must not cost the buyer their
             // place on the earners board.
+            // The gallery prize counts, unlike the pot: it is paid for
+            // work other people chose to applaud, the way a door milestone
+            // is paid for a run, not drawn from a hat. At 10,000 it sits
+            // between the door pairs (20,000 / 50,000), so it does not buy
+            // the next month's Top Chips on its own.
             Self::FloorRestore
             | Self::ShopPurchase
             | Self::GildReceived
@@ -356,6 +370,7 @@ impl ChipMove {
             | Self::GiftReceived
             | Self::DrinkPurchase
             | Self::NewsShared
+            | Self::ArtboardPrize
             | Self::SongQueued
             | Self::QuestReward
             | Self::DailyQuestStreakReward

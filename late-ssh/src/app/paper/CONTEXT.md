@@ -2,7 +2,7 @@
 
 ## Metadata
 - Domain: @graybeard's daily paper: one edition per UTC day, printed once per public room and read by every login.
-- Last updated: 2026-09-03 (first version: room columns, Elsewhere, What we were reading, the flagged Outside page, the login pop and `/paper`).
+- Last updated: 2026-09-04 (the modal's lines carry `PaperInk` and `ui.rs` picks the colours in the draw, so the paper stops printing in whichever session last rendered on this thread; ON THE WALL: yesterday's most applauded Artboard gallery piece, read at open time with no claim (`ArtboardPiece::most_applauded_hung_on`), printed as plain glyphs under the Outside page; `PaperOutcome::Ready` carries the optional `PaperWall`.)
 - Status: Active
 
 ## What it is
@@ -14,8 +14,8 @@ A newspaper, not a per-reader summary. `/summary` is per viewer because its wind
 | File | Role |
 |---|---|
 | `svc.rs` | `PaperService`: the sweeper (the press) and the open requests (the newsstand); `tick(app)`: the session-side orchestration (login pop, `/paper`, flag writes). The three system prompts live here. |
-| `state.rs` | `PaperState` (per session), `PaperModal`, `PaperCommand` + parser, and `lay_out`: the pure function from an edition's rows plus this reader's rail order to the modal's lines. |
-| `ui.rs` | The centered modal, announcements-shaped. |
+| `state.rs` | `PaperState` (per session), `PaperModal`, `PaperCommand` + parser, `PaperInk`/`PaperSpan`/`PaperLine` (the ink vocabulary), and `lay_out`: the pure function from an edition's rows plus this reader's rail order to the modal's lines. Reads no palette. |
+| `ui.rs` | The centered modal, announcements-shaped; `ink_style` maps `PaperInk` onto the theme, exhaustively, inside the draw. |
 | `input.rs` | Keys while the modal is up: `j/k`/arrows/PgUp/PgDn scroll, `Esc`/`q`/`Enter` close. |
 | `late-core/src/models/paper.rs` | Every read and write of `paper_room_editions` and `paper_sections` (migration 173). |
 
@@ -33,7 +33,7 @@ A newspaper, not a per-reader summary. `/summary` is per viewer because its wind
 
 - `request(user_id, trigger)` loads today's rows, and only today's. `Login`: if the edition has any `ready` page, `User::claim_paper_shown` stamps `users.settings.paper_shown_on = edition`; a lost claim (other device, other replica) sends nothing. `Command` (`/paper`) always answers and costs nothing.
 - The session arms `login_pop_pending` for everyone with the `paper_at_login` tweak on (Ctrl+O Tweaks → Startup → "Daily paper at login", default on), newcomers included: for them the paper is the answer to "is anyone here?" and, since a new account is only in the auto-join rooms, mostly an Elsewhere list with `/join` hints. `tick` fires it only once the opening sequence is over: splash down, announcements dismissed, and the clubhouse tour settled (`clubhouse::state::State::tutorial_settled`, which treats an armed-but-not-started tour as unsettled so the modal never lands over the walkthrough's key capture).
-- Layout (`lay_out`): byline, YOUR ROOMS in rail order (favorites first, from `ChatState::visual_order`), ELSEWHERE ON LATE.SH (public rooms you are not in, bumped rooms first, top `PAPER_ELSEWHERE_LIMIT` = 3, with a `/join` hint on topic rooms only, since `/join #<code>` would open a new topic room rather than the language room), WHAT WE WERE READING, OUTSIDE, then a footer naming quiet rooms, rooms still at the press, and rooms that missed it (`failed` at the cap). Nothing in the layout is per reader beyond ordering and membership.
+- Layout (`lay_out`): byline, YOUR ROOMS in rail order (favorites first, from `ChatState::visual_order`), ELSEWHERE ON LATE.SH (public rooms you are not in, bumped rooms first, top `PAPER_ELSEWHERE_LIMIT` = 3, with a `/join` hint on topic rooms only, since `/join #<code>` would open a new topic room rather than the language room), WHAT WE WERE READING, OUTSIDE, ON THE WALL (yesterday's most applauded gallery piece as plain text, loaded in `open` with no claim since it is a row already, and dropped, not fatal, if it fails to decode), then a footer naming quiet rooms, rooms still at the press, and rooms that missed it (`failed` at the cap). Nothing in the layout is per reader beyond ordering and membership.
 - The modal sits directly under the login announcements in input and render order; a ready paper waits in `pending_modal` while they are up.
 - `/paper` shows an "at the press…" modal until the rows land; `Esc` on it drops the request (`awaiting` cleared), so a late answer never pops over something else.
 
@@ -43,10 +43,21 @@ A newspaper, not a per-reader summary. `/summary` is per viewer because its wind
 
 ## Tests
 
-`state_test.rs` (whole-modal layout assertion, command parsing), `svc_test.rs` (window math, column tidying, the newsstand's claim path against a real DB, the login pop and `/paper` driven through a full `App`), `late-core/src/models/paper_test.rs` (claims, reclaim, finish, sections, candidates), `user_test.rs` (the shown stamp).
+`state_test.rs` (whole-modal layout assertion, command parsing), `ui_test.rs` (the modal drawn under one theme after being built under another), `svc_test.rs` (window math, column tidying, the newsstand's claim path against a real DB, the login pop and `/paper` driven through a full `App`), `late-core/src/models/paper_test.rs` (claims, reclaim, finish, sections, candidates), `user_test.rs` (the shown stamp).
 
 ## Gotchas
 
 - The reading and outside prompts inherit `GRAYBEARD_PERSONA` from `app/ai/ghost.rs`, whose chat rules say never to name people; the column rules are appended after it and explicitly override that, because a paper that names nobody is useless.
 - A room made private after its page printed keeps the row and loses the reader: `PaperEdition::load` joins on `visibility = 'public'`.
 - The grounded path is prompt-enforced only (see `AiService::generate_json_with_search`); `tidy_column` is what makes the Outside reply safe to render.
+- **Lines carry ink, never colour.** `theme`'s palette lives in a thread
+  local that `App::render` sets from the reader's profile, but the modal is
+  built during `tick`, which runs earlier in the same step
+  (`ssh.rs::render_once`: input, then `tick`, then `render`) and on whatever
+  tokio worker thread the session woke on. `lay_out` reading the palette
+  meant the paper printed in whichever session last rendered on that thread,
+  so `/paper` came up a different colour almost every time. `lay_out` now
+  emits `PaperInk` and `ui.rs` resolves it in the draw. Anything else that
+  builds styled spans off the render pass has the same bug: the chat
+  `/members` overlay had it too, and carries the same cure
+  (`common/overlay.rs::OverlayInk`).

@@ -88,7 +88,7 @@ pub fn handle_byte(state: &mut State, screen_size: (u16, u16), byte: u8) -> Inpu
 
 fn handle_help_byte(state: &mut State, byte: u8) -> InputAction {
     match byte {
-        0x1B | b'q' | b'Q' | b'?' => state.close_help(),
+        0x1B | b'q' | b'Q' => state.close_help(),
         b'\t' => state.select_next_help_tab(),
         b'j' | b'J' => state.scroll_help(1),
         b'k' | b'K' => state.scroll_help(-1),
@@ -383,9 +383,7 @@ fn handle_help_event(
     event: &ParsedInput,
 ) -> InputAction {
     match event {
-        ParsedInput::Char('q' | 'Q' | '?') | ParsedInput::Byte(0x1B | b'q' | b'Q' | b'?') => {
-            state.close_help()
-        }
+        ParsedInput::Char('q' | 'Q') | ParsedInput::Byte(0x1B | b'q' | b'Q') => state.close_help(),
         ParsedInput::BackTab => state.select_prev_help_tab(),
         ParsedInput::Home => state.reset_help_scroll(),
         ParsedInput::PageUp => state.scroll_help(-5),
@@ -523,7 +521,7 @@ fn handle_shared_pointer(state: &mut State, mouse: &MouseEvent) -> InputAction {
     }
 }
 
-fn app_pointer_event_from_mouse(mouse: &MouseEvent) -> Option<AppPointerEvent> {
+pub(crate) fn app_pointer_event_from_mouse(mouse: &MouseEvent) -> Option<AppPointerEvent> {
     let column = mouse.x.checked_sub(1)?;
     let row = mouse.y.checked_sub(1)?;
     let kind = match mouse.kind {

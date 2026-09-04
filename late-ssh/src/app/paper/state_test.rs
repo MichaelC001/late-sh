@@ -6,7 +6,9 @@ use late_core::models::paper::{
 };
 use uuid::Uuid;
 
-use super::{PAPER_ELSEWHERE_LIMIT, PaperCommand, PaperLayout, lay_out, parse_paper_command};
+use super::{
+    PAPER_ELSEWHERE_LIMIT, PaperCommand, PaperLayout, PaperLine, lay_out, parse_paper_command,
+};
 
 fn page(
     id: u128,
@@ -33,13 +35,12 @@ fn page(
     }
 }
 
-fn plain(lines: &[ratatui::text::Line<'static>]) -> Vec<String> {
+fn plain(lines: &[PaperLine]) -> Vec<String> {
     lines
         .iter()
         .map(|line| {
-            line.spans
-                .iter()
-                .map(|span| span.content.as_ref())
+            line.iter()
+                .map(|span| span.text.as_str())
                 .collect::<String>()
         })
         .collect()
@@ -98,6 +99,7 @@ fn the_paper_follows_the_rail_then_elsewhere_then_the_back_pages() {
     let bumped = vec!["dnd".to_string()];
 
     let lines = plain(&lay_out(PaperLayout {
+        wall: None,
         edition: &edition,
         rail_order: &rail_order,
         member_room_ids: &member_room_ids,
@@ -152,6 +154,7 @@ fn a_member_room_missing_from_the_rail_still_gets_its_column() {
     };
     let member_room_ids: HashSet<Uuid> = [Uuid::from_u128(1)].into_iter().collect();
     let lines = plain(&lay_out(PaperLayout {
+        wall: None,
         edition: &edition,
         rail_order: &[],
         member_room_ids: &member_room_ids,

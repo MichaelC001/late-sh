@@ -3,7 +3,7 @@
 ## Metadata
 - Domain: late.sh SSH chat, synthetic chat entries, and dashboard/room chat surfaces
 - Primary audience: LLM agents working in `late-ssh/src/app/chat`
-- Last updated: 2026-08-31 (first-contact seams: the admin-only `/haunt`
+- Last updated: 2026-09-04 (the `/members` overlay carries `OverlayInk` instead of baked colours, so it stops painting in whichever session last rendered on this thread; every deadchannel log line now carries `username`; first-contact seams: the admin-only `/haunt`
   command in §8 (parsed only when `is_admin`, so a non-admin's `/haunt`
   posts as plain text), the `own_message_landed` slot `push_message`
   records for the stage-2 name flicker, `name_flicker` threaded through
@@ -90,7 +90,7 @@ Chat-owned moderation commands also use `room_ban.rs`,
 ## 3. Ownership Split
 
 - `svc.rs` is the async boundary between TUI state, DB models, mention notifications, and broadcast/watch channels.
-- `state.rs` owns local chat data, room/message selection, composer state, reply/edit/reaction state, overlays, synthetic-entry substates, unread/read tracking, and cache inputs.
+- `state.rs` owns local chat data, room/message selection, composer state, reply/edit/reaction state, overlays, synthetic-entry substates, unread/read tracking, and cache inputs. It reads no palette: anything it builds for the screen carries ink, and `ui.rs` (or `common/overlay.rs`) picks the colour in the draw.
 - `input.rs` maps Home chat keys to state/service actions. `handle_message_action_in_room` is shared by Home chat and the embedded game-chat panes.
 - `ui.rs` renders Home room rail/chat center surfaces and owns `ChatRowsCache`.
 - `ui_text.rs` centralizes wrapping for normal messages, the small Markdown subset, reply quotes, `---NEWS---` cards, and reaction footers.
@@ -320,6 +320,8 @@ The main composer is a `ratatui_textarea::TextArea<'static>`.
 
 `/members` renders a styled overlay with online members first, offline members second, each group sorted alphabetically. Preserve the fixed status-cell shape so overlay rows do not jump as online state changes.
 
+The rows carry `OverlayInk` (`common/overlay.rs`), never colours. The overlay is built in `drain_events`, which runs during the session tick, and `theme`'s palette lives in a thread local that `App::render` sets afterwards, on whatever worker thread the session woke on: styling the spans here painted the member list in whichever session last rendered on that thread. `draw_overlay` resolves ink inside the draw. `app/paper` had the same bug and the same cure.
+
 Directory page 5 uses the Work/Profiles and Showcase/Projects substates from chat. Its local `directory::state` search mode is independent of Home room search: `s` opens a case-insensitive substring search on Profiles or Projects, arrows move the filtered selection, `Enter` selects the underlying Work/Showcase item, and `Esc` exits search.
 
 Starting compose in a room:
@@ -423,6 +425,8 @@ Moderation modal commands:
 - `view <@user|#room|bans|slows|audit|artboard|help> [pagenumber]`
 - `artboard curate <live|YYYY-MM-DD> [reason...]`
 - `artboard restore [YYYY-MM-DD] [reason...]`
+- `artboard remove <piece-id-prefix> [reason...]` (takes a gallery piece down; the first 13 characters of the id are printed on the key line of the piece's full-frame view, 8+ are needed, must match one piece)
+- `artboard gallery <on|off>` (admin; the `artboard_gallery_enabled` switch)
 - `room-voice <#room> <on|off>`
 - `kick <server|voice|#room> @name [reason...]`
 - `ban <server|#room|artboard|audio> @name [duration] [reason...]`
