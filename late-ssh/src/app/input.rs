@@ -3712,11 +3712,13 @@ fn handle_global_key(app: &mut App, ctx: InputContext, byte: u8) -> bool {
         return true;
     }
 
-    // The paired-client hotkeys (`m` mute, `+`/`-` volume, `v` the music
-    // prefix) stay off the Artboard entirely, the way the voice chords do:
-    // the page spends those letters itself (`v` applauds a piece), and each
-    // one is a printable that a piece title may want.
-    let paired_client_keys = ctx.screen != Screen::Artboard;
+    // The Artboard owns its letters. The paired-client hotkeys (`m` mute,
+    // `+`/`-` volume, `v` the music prefix) and `w` (Bonsai Care) stay off
+    // that page entirely, the way the voice chords do: the page spends
+    // those letters itself (`v` applauds a piece), and every one of them is
+    // a printable that a piece title may want. Only quit, the page
+    // switches, and the guide stay global there.
+    let global_letter_keys = ctx.screen != Screen::Artboard;
 
     match byte {
         b'q' | b'Q' => {
@@ -3731,7 +3733,7 @@ fn handle_global_key(app: &mut App, ctx: InputContext, byte: u8) -> bool {
             trigger_global_quit(app);
             true
         }
-        b'm' | b'M' if paired_client_keys => {
+        b'm' | b'M' if global_letter_keys => {
             let label = app
                 .paired_client_state()
                 .map(|state| match state.client_kind {
@@ -3750,7 +3752,7 @@ fn handle_global_key(app: &mut App, ctx: InputContext, byte: u8) -> bool {
             }
             true
         }
-        b'+' | b'=' if paired_client_keys => {
+        b'+' | b'=' if global_letter_keys => {
             let label = app
                 .paired_client_state()
                 .map(|state| match state.client_kind {
@@ -3769,7 +3771,7 @@ fn handle_global_key(app: &mut App, ctx: InputContext, byte: u8) -> bool {
             }
             true
         }
-        b'-' | b'_' if paired_client_keys => {
+        b'-' | b'_' if global_letter_keys => {
             let label = app
                 .paired_client_state()
                 .map(|state| match state.client_kind {
@@ -3789,7 +3791,7 @@ fn handle_global_key(app: &mut App, ctx: InputContext, byte: u8) -> bool {
             true
         }
         b'v' | b'V'
-            if paired_client_keys
+            if global_letter_keys
                 && !ctx.chat_composing
                 && !ctx.feeds_processing
                 && !ctx.news_composing
@@ -3840,7 +3842,8 @@ fn handle_global_key(app: &mut App, ctx: InputContext, byte: u8) -> bool {
             true
         }
         b'w' | b'W'
-            if !ctx.chat_composing
+            if global_letter_keys
+                && !ctx.chat_composing
                 && !ctx.feeds_processing
                 && !ctx.news_composing
                 && !ctx.showcase_composing

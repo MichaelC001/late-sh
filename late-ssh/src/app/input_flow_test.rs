@@ -2512,12 +2512,17 @@ async fn artboard_gallery_hangs_a_framed_piece_from_the_rail() {
         "`v` on the Artboard belongs to the gallery"
     );
 
-    // The paired-client hotkeys are off the whole page, drawing or not.
+    // The letter hotkeys are off the whole page, typing or not.
     app.banner = None;
     app.handle_input(b"m");
     assert!(
         app.banner.is_none(),
         "`m` must not reach the paired-client mute from the Artboard"
+    );
+    app.handle_input(b"w");
+    assert!(
+        !app.show_bonsai_modal && !app.show_bonsai_v2_modal,
+        "`w` must not open Bonsai Care from the Artboard"
     );
 
     // Back out: list to rail. Esc on the rail is not the page's, so the

@@ -1163,7 +1163,7 @@ fn overview_lines() -> Vec<String> {
         "  v then x          cycle audio source: Icecast → YouTube → Radio",
         "  v then s          skip-vote the current YouTube track",
         "  v then 1..5       select stream/station in the active source",
-        "  m, + / -, and the v music prefix are off on the Artboard: that page",
+        "  w, m, + / - and the v music prefix are off on the Artboard: that page",
         "  spends those letters itself (v applauds a gallery piece)",
         "",
         "Home",

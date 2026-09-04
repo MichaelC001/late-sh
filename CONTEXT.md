@@ -3,7 +3,7 @@
 ## Metadata
 - Domain: late.sh - Command-Line Clubhouse for Computer People
 - Primary audience: LLM agents working on this codebase, human contributors
-- Last updated: 2026-09-05 (Artboard keys: the paired-client hotkeys (`m` mute, `+`/`-` volume, the `v` music prefix) are off the Artboard page entirely, like the voice chords, so `v` reaches the gallery as the applause key; while the hang flow captures typing (framing, or a piece title) no global single-key hotkey and no reserved chord fires, so a title can contain `m`, `v`, `w`, `+`, `-` and digits. `app/input.rs::artboard_owns_keys`, `late-ssh/src/app/artboard/CONTEXT.md` §Input Model.)
+- Last updated: 2026-09-05 (Artboard keys: the paired-client hotkeys (`m` mute, `+`/`-` volume, the `v` music prefix) and `w` (Bonsai Care) are off the Artboard page entirely, like the voice chords, so `v` reaches the gallery as the applause key and only `q` / the page switches / `?` stay global there; while the hang flow captures typing (framing, or a piece title) no global single-key hotkey and no reserved chord fires, so a title can contain `m`, `v`, `w`, `+`, `-` and digits. `app/input.rs::artboard_owns_keys`, `late-ssh/src/app/artboard/CONTEXT.md` §Input Model.)
 - Status: Active
 - Stability note: Sections marked `[STABLE]` should change rarely. Sections marked `[VOLATILE]` are expected to change often.
 
