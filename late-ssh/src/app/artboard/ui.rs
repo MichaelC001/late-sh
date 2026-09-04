@@ -12,6 +12,7 @@ use ratatui::{
 
 use crate::app::common::theme;
 
+use super::color_picker::{Channel, ColorPicker, HEX_LEN, PickerRow};
 use super::data::lines_for;
 use super::gallery::{
     state::{Focus as GalleryFocus, HangFlow},
@@ -30,6 +31,14 @@ const SWATCH_NOTICE_CLEARANCE: u16 = 1;
 const PIN_UNPINNED: char = '📌';
 const PIN_PINNED: char = '📍';
 const PRIMARY_SWATCH_LABEL: [char; 2] = ['C', 'B'];
+const INFO_LABEL_WIDTH: u16 = 11;
+/// The two palette rows in the info block sit right under Mode and Color.
+const INFO_PALETTE_FIRST_ROW: u16 = 2;
+const COLOR_PICKER_WIDTH: u16 = 54;
+const COLOR_PICKER_HEIGHT: u16 = 9;
+const COLOR_PICKER_LABEL_WIDTH: u16 = 9;
+const COLOR_PICKER_BAR_WIDTH: u16 = 24;
+const COLOR_PICKER_PRESET_WIDTH: u16 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SwatchHit {
@@ -90,6 +99,9 @@ pub fn draw_game(frame: &mut Frame, area: Rect, state: &State, interacting: bool
         && let Some(catalog) = state.glyph_catalog()
     {
         crate::app::icon_picker::picker::render(frame, area, state.glyph_picker_state(), catalog);
+    }
+    if let Some(picker) = state.color_picker() {
+        draw_color_picker(frame, area, picker);
     }
 }
 
@@ -184,6 +196,7 @@ fn artboard_info_lines(state: &State, interacting: bool) -> Vec<Line<'static>> {
         rgb(state.active_paint_color()),
     ));
     lines.extend(color_palette_lines(state));
+    lines.push(palette_keys_line());
     lines.push(info_label_value("Cursor", cursor_value, cursor_color));
     lines.push(info_label_value(
         "Mouse",
@@ -274,28 +287,40 @@ fn section_label(text: &str) -> Line<'static> {
 }
 
 fn color_palette_lines(state: &State) -> [Line<'static>; 2] {
-    let active_idx = state.active_paint_color_index();
+    let active_idx = state.active_paint_palette_index();
     [
         color_palette_line("Palette", 0, PAINT_PALETTE.len() / 2, active_idx),
         color_palette_line("", PAINT_PALETTE.len() / 2, PAINT_PALETTE.len(), active_idx),
     ]
 }
 
+/// The palette's keys, right under its cells: everyone asks.
+fn palette_keys_line() -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!("{:<width$}", "Keys", width = INFO_LABEL_WIDTH as usize),
+            Style::default().fg(theme::TEXT_DIM()),
+        ),
+        Span::styled("^U ^Y", Style::default().fg(theme::AMBER_DIM())),
+        Span::styled(" ", Style::default()),
+        Span::styled("^K", Style::default().fg(theme::AMBER_DIM())),
+    ])
+}
+
 fn color_palette_line(
     label: &'static str,
     start: usize,
     end: usize,
-    active_idx: usize,
+    active_idx: Option<usize>,
 ) -> Line<'static> {
-    const LABEL_WIDTH: usize = 11;
     let mut spans = vec![Span::styled(
-        format!("{:<width$}", label, width = LABEL_WIDTH),
+        format!("{:<width$}", label, width = INFO_LABEL_WIDTH as usize),
         Style::default().fg(theme::TEXT_DIM()),
     )];
     for (idx, color) in PAINT_PALETTE[start..end].iter().copied().enumerate() {
         let palette_idx = start + idx;
         let style = Style::default().bg(rgb(color));
-        let span = if palette_idx == active_idx {
+        let span = if Some(palette_idx) == active_idx {
             Span::styled(
                 "•",
                 theme::punch_through(rgb(color)).add_modifier(Modifier::BOLD),
@@ -952,7 +977,10 @@ fn artboard_game_area_for_screen(screen_size: (u16, u16), rail_visible: bool) ->
     }
 }
 
-fn artboard_info_area_for_screen(screen_size: (u16, u16), state: &State) -> Option<Rect> {
+pub(crate) fn artboard_info_area_for_screen(
+    screen_size: (u16, u16),
+    state: &State,
+) -> Option<Rect> {
     let info_lines = artboard_info_lines(state, false);
     let layout = artboard_layout(artboard_game_area_for_screen(
         screen_size,
@@ -1043,6 +1071,281 @@ pub(crate) fn info_hit(screen_size: (u16, u16), state: &State, sgr_x: u16, sgr_y
         return false;
     };
     rect_contains(info_area, col, row)
+}
+
+/// The preset under a click on the info block's two palette rows.
+pub(crate) fn palette_hit(
+    screen_size: (u16, u16),
+    state: &State,
+    sgr_x: u16,
+    sgr_y: u16,
+) -> Option<usize> {
+    let info_area = artboard_info_area_for_screen(screen_size, state)?;
+    let inner = Block::default().borders(Borders::ALL).inner(info_area);
+    let col = sgr_x.checked_sub(1)?;
+    let row = sgr_y.checked_sub(1)?;
+    if !rect_contains(inner, col, row) {
+        return None;
+    }
+    let palette_row = row.checked_sub(inner.y + INFO_PALETTE_FIRST_ROW)?;
+    let cell = col.checked_sub(inner.x + INFO_LABEL_WIDTH)?;
+    let per_row = (PAINT_PALETTE.len() / 2) as u16;
+    if palette_row >= 2 || cell >= per_row {
+        return None;
+    }
+    Some((palette_row * per_row + cell) as usize)
+}
+
+// ----- the colour picker -----
+
+struct ColorPickerLayout {
+    preview: Rect,
+    channels: [Rect; 3],
+    hex: Rect,
+    presets: Rect,
+    keys: Rect,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ColorPickerHit {
+    /// A click on a channel's bar, at the value that column stands for.
+    Channel(Channel, u8),
+    Preset(usize),
+}
+
+fn color_picker_popup(area: Rect) -> Rect {
+    let width = COLOR_PICKER_WIDTH.min(area.width);
+    let height = COLOR_PICKER_HEIGHT.min(area.height);
+    Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    )
+}
+
+fn color_picker_layout(popup: Rect) -> Option<ColorPickerLayout> {
+    let inner = Block::default()
+        .borders(Borders::ALL)
+        .inner(popup)
+        .inner(Margin::new(1, 0));
+    if inner.height < 7 || inner.width < COLOR_PICKER_LABEL_WIDTH + COLOR_PICKER_BAR_WIDTH + 4 {
+        return None;
+    }
+    let rows = Layout::vertical([
+        Constraint::Length(1), // preview + hex of the working colour
+        Constraint::Length(1), // R
+        Constraint::Length(1), // G
+        Constraint::Length(1), // B
+        Constraint::Length(1), // hex field
+        Constraint::Length(1), // presets
+        Constraint::Length(1), // keys
+    ])
+    .split(inner);
+    Some(ColorPickerLayout {
+        preview: rows[0],
+        channels: [rows[1], rows[2], rows[3]],
+        hex: rows[4],
+        presets: rows[5],
+        keys: rows[6],
+    })
+}
+
+fn channel_bar_rect(row: Rect) -> Rect {
+    Rect::new(
+        row.x + COLOR_PICKER_LABEL_WIDTH,
+        row.y,
+        COLOR_PICKER_BAR_WIDTH.min(row.width.saturating_sub(COLOR_PICKER_LABEL_WIDTH)),
+        1,
+    )
+}
+
+fn preset_rect(row: Rect, index: usize) -> Rect {
+    Rect::new(
+        row.x + COLOR_PICKER_LABEL_WIDTH + index as u16 * COLOR_PICKER_PRESET_WIDTH,
+        row.y,
+        COLOR_PICKER_PRESET_WIDTH,
+        1,
+    )
+}
+
+/// How many of the bar's columns a channel value fills.
+fn channel_fill(value: u8, bar_width: u16) -> u16 {
+    ((value as u32 * bar_width as u32 + 127) / 255) as u16
+}
+
+/// The channel value a click on the bar's `column` (0-based) stands for.
+fn channel_value_at(column: u16, bar_width: u16) -> u8 {
+    let last = bar_width.saturating_sub(1).max(1) as u32;
+    ((column.min(bar_width - 1) as u32 * 255 + last / 2) / last) as u8
+}
+
+pub(crate) fn color_picker_hit(
+    screen_size: (u16, u16),
+    state: &State,
+    sgr_x: u16,
+    sgr_y: u16,
+) -> Option<ColorPickerHit> {
+    state.color_picker()?;
+    let col = sgr_x.checked_sub(1)?;
+    let row = sgr_y.checked_sub(1)?;
+    // The overlay is drawn over the whole page area, rail included.
+    let area = artboard_game_area_for_screen(screen_size, false);
+    let layout = color_picker_layout(color_picker_popup(area))?;
+    for (channel, channel_row) in [Channel::Red, Channel::Green, Channel::Blue]
+        .into_iter()
+        .zip(layout.channels)
+    {
+        let bar = channel_bar_rect(channel_row);
+        if rect_contains(bar, col, row) {
+            return Some(ColorPickerHit::Channel(
+                channel,
+                channel_value_at(col - bar.x, bar.width),
+            ));
+        }
+    }
+    (0..PAINT_PALETTE.len())
+        .find(|index| rect_contains(preset_rect(layout.presets, *index), col, row))
+        .map(ColorPickerHit::Preset)
+}
+
+fn draw_color_picker(frame: &mut Frame, area: Rect, picker: &ColorPicker) {
+    let popup = color_picker_popup(area);
+    frame.render_widget(Clear, popup);
+    let block = Block::default()
+        .title(" Paint color ")
+        .title_style(
+            Style::default()
+                .fg(theme::AMBER_GLOW())
+                .add_modifier(Modifier::BOLD),
+        )
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme::BORDER_ACTIVE()));
+    frame.render_widget(block, popup);
+    let Some(layout) = color_picker_layout(popup) else {
+        return;
+    };
+
+    let label = |text: &str, focused: bool| {
+        let style = if focused {
+            Style::default()
+                .fg(theme::AMBER())
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme::TEXT_DIM())
+        };
+        Span::styled(
+            format!(
+                "{:<width$}",
+                text,
+                width = COLOR_PICKER_LABEL_WIDTH as usize
+            ),
+            style,
+        )
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            label("", false),
+            Span::styled("   ", Style::default().bg(rgb(picker.color))),
+            Span::styled(
+                format!("  #{}", super::color_picker::hex_of(picker.color)),
+                Style::default()
+                    .fg(rgb(picker.color))
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ])),
+        layout.preview,
+    );
+
+    for (channel, channel_row) in [Channel::Red, Channel::Green, Channel::Blue]
+        .into_iter()
+        .zip(layout.channels)
+    {
+        let (name, tint) = match channel {
+            Channel::Red => ("Red", ratatui::style::Color::Rgb(255, 96, 96)),
+            Channel::Green => ("Green", ratatui::style::Color::Rgb(96, 224, 96)),
+            Channel::Blue => ("Blue", ratatui::style::Color::Rgb(96, 160, 255)),
+        };
+        let focused = picker.row == PickerRow::Channel(channel);
+        let value = picker.channel_value(channel);
+        let bar = channel_bar_rect(channel_row);
+        let filled = channel_fill(value, bar.width) as usize;
+        let empty = bar.width as usize - filled;
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                label(name, focused),
+                Span::styled("█".repeat(filled), Style::default().fg(tint)),
+                Span::styled("░".repeat(empty), Style::default().fg(theme::TEXT_FAINT())),
+                Span::styled(
+                    format!(" {value:>3}"),
+                    Style::default().fg(if focused {
+                        theme::TEXT_BRIGHT()
+                    } else {
+                        theme::TEXT()
+                    }),
+                ),
+            ])),
+            channel_row,
+        );
+    }
+
+    let hex_focused = picker.row == PickerRow::Hex;
+    let hex_text = picker.hex_text();
+    let mut hex_spans = vec![
+        label("Hex", hex_focused),
+        Span::styled("#", Style::default().fg(theme::TEXT_DIM())),
+        Span::styled(
+            hex_text.clone(),
+            Style::default()
+                .fg(theme::TEXT_BRIGHT())
+                .add_modifier(Modifier::BOLD),
+        ),
+    ];
+    if hex_focused {
+        hex_spans.push(Span::styled(
+            "_".repeat(HEX_LEN - hex_text.len()),
+            Style::default().fg(theme::TEXT_FAINT()),
+        ));
+        hex_spans.push(Span::styled("█", Style::default().fg(theme::AMBER())));
+    }
+    frame.render_widget(Paragraph::new(Line::from(hex_spans)), layout.hex);
+
+    let presets_focused = picker.row == PickerRow::Presets;
+    let mut preset_spans = vec![label("Presets", presets_focused)];
+    for (index, color) in PAINT_PALETTE.iter().copied().enumerate() {
+        let on_it = color == picker.color;
+        let cursor = presets_focused && index == picker.preset;
+        let text = match (on_it, cursor) {
+            (true, _) => "•",
+            (false, true) => "◦",
+            (false, false) => " ",
+        };
+        preset_spans.push(Span::styled(
+            format!("{text:<width$}", width = COLOR_PICKER_PRESET_WIDTH as usize),
+            if on_it || cursor {
+                theme::punch_through(rgb(color)).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().bg(rgb(color))
+            },
+        ));
+    }
+    frame.render_widget(Paragraph::new(Line::from(preset_spans)), layout.presets);
+
+    let keys = Line::from(vec![
+        Span::styled("↑↓", Style::default().fg(theme::AMBER_DIM())),
+        Span::styled(" row  ", Style::default().fg(theme::TEXT_DIM())),
+        Span::styled("←→", Style::default().fg(theme::AMBER_DIM())),
+        Span::styled(" ±1  ", Style::default().fg(theme::TEXT_DIM())),
+        Span::styled("⇧←→", Style::default().fg(theme::AMBER_DIM())),
+        Span::styled(" ±16  ", Style::default().fg(theme::TEXT_DIM())),
+        Span::styled("0-9 a-f", Style::default().fg(theme::AMBER_DIM())),
+        Span::styled(" hex  ", Style::default().fg(theme::TEXT_DIM())),
+        Span::styled("⏎", Style::default().fg(theme::AMBER_DIM())),
+        Span::styled(" apply  ", Style::default().fg(theme::TEXT_DIM())),
+        Span::styled("Esc", Style::default().fg(theme::AMBER_DIM())),
+    ]);
+    frame.render_widget(Paragraph::new(keys), layout.keys);
 }
 
 fn draw_help(frame: &mut Frame, area: Rect, state: &State) {

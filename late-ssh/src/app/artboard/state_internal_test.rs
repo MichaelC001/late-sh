@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::artboard::color_picker::Channel;
 use crate::app::artboard::gallery::svc::GalleryService;
 use crate::app::artboard::provenance::ArtboardProvenance;
 use crate::app::artboard::svc::{ArtboardSnapshotService, DartboardService, DartboardSnapshot};
@@ -90,6 +91,46 @@ fn paint_color_cycles_and_typed_glyphs_use_selection() {
         state.snapshot.canvas.fg(Pos { x: 0, y: 0 }),
         Some(PAINT_PALETTE[2])
     );
+}
+
+#[test]
+fn color_picker_applies_on_enter_and_typed_glyphs_use_it() {
+    let mut state = test_state();
+    state.open_color_picker();
+    assert_eq!(
+        state.color_picker().map(|picker| picker.color),
+        Some(PAINT_PALETTE[1])
+    );
+    for ch in "123456".chars() {
+        state.color_picker_mut().unwrap().type_hex(ch);
+    }
+    state.apply_color_picker();
+    assert!(!state.is_color_picker_open());
+    assert_eq!(state.active_paint_color(), RgbColor::new(0x12, 0x34, 0x56));
+    assert_eq!(state.active_paint_palette_index(), None);
+
+    state.type_char('C', (80, 24));
+    assert_eq!(
+        state.snapshot.canvas.fg(Pos { x: 0, y: 0 }),
+        Some(RgbColor::new(0x12, 0x34, 0x56))
+    );
+
+    // Cycling from a custom colour lands on the presets again.
+    state.cycle_paint_color(1);
+    assert_eq!(state.active_paint_palette_index(), Some(2));
+}
+
+#[test]
+fn color_picker_closed_without_enter_keeps_the_paint_color() {
+    let mut state = test_state();
+    state.select_palette_color(4);
+    state.open_color_picker();
+    state
+        .color_picker_mut()
+        .unwrap()
+        .set_channel(Channel::Red, 0);
+    state.close_color_picker();
+    assert_eq!(state.active_paint_color(), PAINT_PALETTE[4]);
 }
 
 #[test]

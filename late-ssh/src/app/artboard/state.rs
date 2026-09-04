@@ -19,6 +19,7 @@ use tokio::sync::{
 };
 use uuid::Uuid;
 
+use super::color_picker::ColorPicker;
 use super::gallery::{
     frame::frame_piece,
     state::{Focus as GalleryFocus, GalleryState, HangFlow, RailRow},
@@ -61,7 +62,9 @@ pub struct State {
     pub(crate) editor: EditorSession,
     active_brush: Option<Brush>,
     drag_brush: Option<Brush>,
-    paint_color_index: Option<usize>,
+    /// The local paint colour; `None` paints in the peer colour.
+    paint_color: Option<RgbColor>,
+    color_picker: Option<ColorPicker>,
     floating_source_selection: Option<EditorSelection>,
     floating_source_bounds: Option<Bounds>,
     suppress_swatch_preview: bool,
@@ -104,7 +107,8 @@ impl State {
             editor: EditorSession::default(),
             active_brush: None,
             drag_brush: None,
-            paint_color_index: None,
+            paint_color: None,
+            color_picker: None,
             floating_source_selection: None,
             floating_source_bounds: None,
             suppress_swatch_preview: false,
@@ -700,17 +704,58 @@ impl State {
         self.active_user_color()
     }
 
+    /// The preset the paint colour sits on, or the cycle's starting point
+    /// when it is a custom or peer colour outside the presets.
     pub fn active_paint_color_index(&self) -> usize {
-        self.paint_color_index
-            .or_else(|| palette_index(self.active_user_color()))
-            .unwrap_or(1)
+        palette_index(self.active_user_color()).unwrap_or(1)
+    }
+
+    /// The preset the paint colour sits on; `None` for a custom colour.
+    pub fn active_paint_palette_index(&self) -> Option<usize> {
+        palette_index(self.active_user_color())
     }
 
     pub fn cycle_paint_color(&mut self, delta: isize) {
         let len = PAINT_PALETTE.len() as isize;
         let current = self.active_paint_color_index() as isize;
         let next = (current + delta).rem_euclid(len) as usize;
-        self.paint_color_index = Some(next);
+        self.select_palette_color(next);
+    }
+
+    pub fn select_palette_color(&mut self, index: usize) {
+        self.paint_color = Some(PAINT_PALETTE[index]);
+        self.suppress_swatch_preview = false;
+    }
+
+    pub fn is_color_picker_open(&self) -> bool {
+        self.color_picker.is_some()
+    }
+
+    pub fn color_picker(&self) -> Option<&ColorPicker> {
+        self.color_picker.as_ref()
+    }
+
+    pub fn color_picker_mut(&mut self) -> Option<&mut ColorPicker> {
+        self.color_picker.as_mut()
+    }
+
+    /// Open the picker on the current paint colour. The colour is local,
+    /// so an archive view may pick one too.
+    pub fn open_color_picker(&mut self) {
+        self.last_canvas_click = None;
+        self.color_picker = Some(ColorPicker::open(self.active_user_color()));
+    }
+
+    pub fn close_color_picker(&mut self) {
+        self.color_picker = None;
+    }
+
+    /// Enter in the picker: the working colour becomes the paint colour.
+    pub fn apply_color_picker(&mut self) {
+        let Some(picker) = self.color_picker.take() else {
+            return;
+        };
+        self.paint_color = Some(picker.color);
         self.suppress_swatch_preview = false;
     }
 
@@ -849,6 +894,7 @@ impl State {
     pub fn open_archive_list(&mut self, kind: ArtboardSnapshotKind) {
         self.close_help();
         self.close_glyph_picker();
+        self.close_color_picker();
         self.clear_local_state();
         self.gallery.rail_select(RailRow::Archive(kind));
         self.gallery.focus_archive();
@@ -994,7 +1040,10 @@ impl State {
     /// True when Esc has an Artboard overlay to close before it can mean
     /// anything global.
     pub fn claims_escape(&self) -> bool {
-        self.help_open || self.glyph_picker_open || self.gallery.claims_escape()
+        self.help_open
+            || self.glyph_picker_open
+            || self.color_picker.is_some()
+            || self.gallery.claims_escape()
     }
 
     /// Start framing a piece on the live board. Every overlay closes and
@@ -1002,6 +1051,7 @@ impl State {
     pub fn begin_framing(&mut self) {
         self.close_help();
         self.close_glyph_picker();
+        self.close_color_picker();
         self.clear_local_state();
         self.gallery.begin_framing();
     }
@@ -1282,8 +1332,7 @@ impl State {
     }
 
     fn active_user_color(&self) -> RgbColor {
-        self.paint_color_index
-            .and_then(|idx| PAINT_PALETTE.get(idx).copied())
+        self.paint_color
             .or(self.snapshot.your_color)
             .unwrap_or(PAINT_PALETTE[1])
     }

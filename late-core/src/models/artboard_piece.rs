@@ -21,7 +21,7 @@ use uuid::Uuid;
 pub const PIECE_MIN_GLYPHS: usize = 40;
 /// Largest frame, in cells. Every piece fits a terminal, which is what makes
 /// the splash, the paper, and the profile able to show one without cropping.
-pub const PIECE_MAX_WIDTH: usize = 100;
+pub const PIECE_MAX_WIDTH: usize = 120;
 pub const PIECE_MAX_HEIGHT: usize = 40;
 /// The share of a frame's glyphs the hanger must have painted, per cell
 /// provenance. Below it the frame is somebody else's work, or a collage.

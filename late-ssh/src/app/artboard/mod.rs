@@ -1,3 +1,4 @@
+pub mod color_picker;
 pub mod data;
 pub mod gallery;
 pub mod input;

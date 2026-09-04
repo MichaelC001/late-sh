@@ -73,6 +73,7 @@ fn drawing_lines() -> Vec<String> {
         "  Backspace          erase left and move back",
         "  Delete             erase at the cursor",
         "  Ctrl+U / Ctrl+Y    previous / next paint color",
+        "  Ctrl+K             color picker: channels, hex, presets",
         "",
         "Selection",
         "  Shift+arrows       start or extend selection",

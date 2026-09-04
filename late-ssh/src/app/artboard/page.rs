@@ -4,7 +4,7 @@ use crate::app::{
 };
 
 use super::gallery::input::GalleryAction;
-use super::ui::{info_hit, swatch_hit};
+use super::ui::{info_hit, palette_hit, swatch_hit};
 
 const VIEW_MODE_ALT_PAN_STEP: isize = 4;
 
@@ -15,7 +15,7 @@ pub(crate) fn handle_key(app: &mut App, byte: u8) -> bool {
         return false;
     };
 
-    if state.is_help_open() || state.is_glyph_picker_open() {
+    if state.is_help_open() || state.is_glyph_picker_open() || state.is_color_picker_open() {
         let action = super::input::handle_byte(state, size, byte);
         return handle_action(app, action);
     }
@@ -59,7 +59,9 @@ pub(crate) fn handle_key(app: &mut App, byte: u8) -> bool {
             let action = super::input::handle_byte(state, size, byte);
             handle_action(app, action)
         }
-        0x15 | 0x19 => {
+        // Ctrl+U / Ctrl+Y cycle the paint colour, Ctrl+K opens the picker:
+        // the colour is local, so it can be chosen before drawing starts.
+        0x15 | 0x19 | 0x0B => {
             let action = super::input::handle_byte(state, size, byte);
             handle_action(app, action)
         }
@@ -74,7 +76,11 @@ pub(crate) fn handle_arrow(app: &mut App, key: u8) -> bool {
         return false;
     };
 
-    if is_interacting || state.is_help_open() || state.is_glyph_picker_open() {
+    if is_interacting
+        || state.is_help_open()
+        || state.is_glyph_picker_open()
+        || state.is_color_picker_open()
+    {
         return super::input::handle_arrow(state, size, key);
     }
 
@@ -116,7 +122,11 @@ pub(crate) fn handle_event(app: &mut App, event: &ParsedInput) -> bool {
         return false;
     };
 
-    if is_interacting || state.is_help_open() || state.is_glyph_picker_open() {
+    if is_interacting
+        || state.is_help_open()
+        || state.is_glyph_picker_open()
+        || state.is_color_picker_open()
+    {
         let action = super::input::handle_event(state, size, event);
         return handle_action(app, action);
     }
@@ -189,6 +199,10 @@ pub(crate) fn handle_event(app: &mut App, event: &ParsedInput) -> bool {
                 && !mouse.modifiers.ctrl
                 && !state.is_archive_view_active() =>
         {
+            if let Some(index) = palette_hit(size, state, mouse.x, mouse.y) {
+                state.select_palette_color(index);
+                return true;
+            }
             if swatch_hit(size, state, mouse.x, mouse.y).is_some()
                 || info_hit(size, state, mouse.x, mouse.y)
             {

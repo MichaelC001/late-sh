@@ -3911,6 +3911,7 @@ fn artboard_rail_takes_tab(app: &App, screen: Screen) -> bool {
     app.dartboard_state.as_ref().is_some_and(|state| {
         !state.is_help_open()
             && !state.is_glyph_picker_open()
+            && !state.is_color_picker_open()
             && matches!(
                 state.gallery().focus(),
                 crate::app::artboard::gallery::state::Focus::List
@@ -3930,6 +3931,7 @@ fn artboard_blocks_global_page_switch(app: &App, screen: Screen) -> bool {
     app.artboard_interacting
         || state.is_help_open()
         || state.is_glyph_picker_open()
+        || state.is_color_picker_open()
         || state.gallery().captures_typing()
 }
 
