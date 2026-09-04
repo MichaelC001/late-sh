@@ -192,7 +192,7 @@ Moderation: `/mod artboard remove <id-prefix> [reason]` (`RESTORE_ARTBOARD` cap;
 
 Telemetry: `record_gallery_hang(GalleryHangResult)` (hung / daily_cap / duplicate / failed) and `record_gallery_applause(GalleryApplauseResult)` (applauded / withdrawn / own_piece / not_found / failed), both from `gallery/svc.rs`; failures log through `late_core::error_span!`.
 
-Tests: `gallery/frame_test.rs` (crop, credits, hash, the three local rails), `gallery/state_test.rs` (rail rows and focus, the hang flow's title rule), `late-core/src/models/artboard_piece_test.rs` (applause rules, daily cap and duplicate in SQL, mod lookup and removal), `late-core/src/models/profile_award_test.rs::the_gallery_award_ranks_best_pieces_and_pays_once`, `app/input_flow_test.rs::artboard_gallery_hangs_a_framed_piece_from_the_rail` (paint, rail, frame by drag, name, hang, back out), `moderation/command_test.rs::parses_artboard_gallery_commands`.
+Tests: `gallery/frame_test.rs` (crop, credits, hash, the three local rails), `gallery/state_test.rs` (rail rows and focus, the hang flow's title rule), `late-core/src/models/artboard_piece_test.rs` (applause rules, daily cap and duplicate in SQL, mod lookup and removal), `late-core/src/models/profile_award_test.rs::the_gallery_award_ranks_best_pieces_and_pays_once`, `app/input_flow_test.rs::artboard_gallery_hangs_a_framed_piece_from_the_rail` (paint, rail, frame by drag, a title made of global hotkeys, hang, `v` applause reaching the gallery, `m` not reaching the paired client, back out), `moderation/command_test.rs::parses_artboard_gallery_commands`.
 
 Not done: the web `/gallery` page does not list pieces.
 
@@ -207,6 +207,8 @@ Artboard has two main interaction modes plus archive viewing:
 Important routing:
 - `Esc` closes transient Artboard overlays first, then clears floating brush / sampled brush / selection in active mode, then returns to view mode. `q` also closes the Artboard help guide, a full-frame piece, and an archive list before global quit handling can run.
 - Active Artboard editing blocks global quit.
+- The paired-client hotkeys (`m` mute, `+`/`-` volume, the `v` music prefix) are off this page entirely, the way the voice chords already are: the page spends those letters itself and `v` is the gallery's applause key (`paired_client_keys` in `app/input.rs`).
+- While the hang flow captures typing (framing, or a title in the confirm modal) no global single-key hotkey and no reserved chord (`Ctrl+O`, `Ctrl+G`, `Ctrl+L`) fires: `app/input.rs::artboard_owns_keys` gates both `handle_global_key` and `handle_reserved_global_chord`, so every printable key reaches the title.
 - View mode does not claim global page switching unless help/glyph picker/active interaction is open.
 - Archive views cannot enter active mode and edit paths refuse to submit changes.
 
@@ -221,7 +223,7 @@ Keyboard reference:
 | The rail | landing, `Esc` from the board | `j/k` or arrows move, `Enter` opens (Board, a listing, an archive list, hang), `Esc` from a pane or the board back to the rail, `Tab` from a pane back to the rail; the rail folds while the board has the keys |
 | Archives | rail rows `Daily` / `Monthly` / `Curated` | The rail becomes the key list; `j/k`, arrows, wheel, `PgUp`/`PgDn`, `Home`/`End` move and the board shows the key under the cursor; `Enter` to the board, `Esc` back to the rail (archive stays up), Board row returns live |
 | Hang a piece | rail row `Hang a piece` | Shift+arrows or left drag frame the board, `Enter` names it, `Enter` hangs, `Esc` cancels |
-| Applaud a piece | `v` | In a gallery list or full frame; `v` again withdraws |
+| Applaud a piece | `v` | In a gallery list or full frame; `v` again withdraws. `v` is not the music prefix on this page |
 | Draw / erase active mode | printable chars, `Space`, `Backspace`, `Delete` | Plain typing edits the shared canvas |
 | Paint color | `Ctrl+U`, `Ctrl+Y` | Steps the 16 presets; separate from peer color; a custom colour steps back onto the presets |
 | Eyedropper | `Alt+K` | The colour under the cursor becomes the paint colour, in view and edit mode; inside the picker it sets the working colour; a blank cell says so in the notice row |
@@ -303,5 +305,5 @@ Inline module tests:
 - Archive lists are keys only and one canvas loads at a time, so retention can grow without the page paying for it; the per-session cache is bounded (`ARCHIVE_CACHE_SIZE`).
 - UI hit testing depends on exact layout math shared by `ui.rs`, `input.rs`, and `page.rs`.
 - SGR mouse coordinates are 1-based at the parser boundary; Artboard hit tests assume normalized coordinates from app input.
-- Global input integration can regress if `artboard_blocks_global_page_switch` stops considering active/help/glyph/colour picker states, or the gallery's `captures_typing` (a title being typed, a frame being drawn).
+- Global input integration can regress if `artboard_blocks_global_page_switch` stops considering active/help/glyph/colour picker states, or the gallery's `captures_typing` (a title being typed, a frame being drawn). `handle_global_key` runs before `dispatch_screen_key`, so any new single-key global is stolen from the board and from a piece title unless it is gated the same way.
 - The rail shifts the board 21 columns right while it is up; anything that computes a board cell from a screen point must go through `canvas_area_for_state` with the last draw's rail visibility, never `canvas_area_for_screen`.

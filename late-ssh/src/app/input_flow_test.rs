@@ -2474,17 +2474,50 @@ async fn artboard_gallery_hangs_a_framed_piece_from_the_rail() {
     wait_for_render_contains(&mut app, "Hang it in the").await;
     wait_for_render_contains(&mut app, "100% yours").await;
 
-    // No title, no hang.
+    // No title, no hang. The title takes every printable key: `m`, `v`,
+    // `w`, `+`, `-`, and the digits are global hotkeys everywhere else and
+    // must not be read as one while a title is being typed.
     app.handle_input(b"\r");
     wait_for_render_contains(&mut app, "Give it a title").await;
-    app.handle_input(b"sunset");
+    app.handle_input(b"warm view +1 -2");
+    let frame = render_plain(&mut app);
+    assert!(
+        frame.contains("warm view +1 -2"),
+        "every key typed belongs to the title; frame={frame:?}"
+    );
+    assert!(
+        !app.music_prefix_armed,
+        "`v` in a title must not arm the music prefix"
+    );
+    assert!(
+        !app.show_bonsai_modal && !app.show_bonsai_v2_modal,
+        "`w` in a title must not open the bonsai modal"
+    );
     app.handle_input(b"\r");
     wait_for_render_contains(&mut app, "now hangs").await;
-    wait_for_render_contains(&mut app, "sunset").await;
+    wait_for_render_contains(&mut app, "warm view +1 -2").await;
     let frame = render_plain(&mut app);
     assert!(
         frame.contains("Mine"),
         "the hung piece should open under Mine; frame={frame:?}"
+    );
+
+    // `v` on a listing is the gallery's applause key, not the music prefix.
+    // The preview pane only draws once the listing holds the piece.
+    wait_for_render_contains(&mut app, "by @artboard-gallery-it").await;
+    app.handle_input(b"v");
+    wait_for_render_contains(&mut app, "cannot applaud your own piece").await;
+    assert!(
+        !app.music_prefix_armed,
+        "`v` on the Artboard belongs to the gallery"
+    );
+
+    // The paired-client hotkeys are off the whole page, drawing or not.
+    app.banner = None;
+    app.handle_input(b"m");
+    assert!(
+        app.banner.is_none(),
+        "`m` must not reach the paired-client mute from the Artboard"
     );
 
     // Back out: list to rail. Esc on the rail is not the page's, so the
