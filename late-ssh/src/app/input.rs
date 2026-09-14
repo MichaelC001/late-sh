@@ -593,11 +593,11 @@ pub fn handle(app: &mut App, data: &[u8]) {
                 _ => {}
             }
         }
-        // First contact: an armed whisper holds the door, so input goes to
-        // the machine instead of skipping (`app/deadchannel/haunt`).
+        // First contact: an armed whisper holds the door, so input is
+        // swallowed instead of skipping (`app/deadchannel/haunt`).
         if !saw_terminal_reply
             && !data.is_empty()
-            && crate::app::deadchannel::haunt::svc::note_splash_input(app)
+            && crate::app::deadchannel::haunt::svc::swallows_splash_input(app)
         {
             return;
         }
