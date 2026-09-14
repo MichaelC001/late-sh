@@ -293,7 +293,11 @@ async fn run_ws_pairing(config: &Config, token: String, audio: &AudioRuntime) {
     let icecast_stream_url = audio.icecast_stream_url.clone();
     // Copy scalar state before entering the long-lived pair loop.
     let sample_rate = audio.sample_rate;
-    let mut webview = WebviewPlaybackController::new(api_base_url.clone(), token.clone());
+    let mut webview = WebviewPlaybackController::new(
+        api_base_url.clone(),
+        token.clone(),
+        audio.analyzer_tx.clone(),
+    );
     let mut voice = voice::VoiceRuntimeState::default();
     let (mut desktop_media, mut desktop_commands) =
         mpris::DesktopMedia::new(mpris::AudioControls {
@@ -323,6 +327,9 @@ async fn run_ws_pairing(config: &Config, token: String, audio: &AudioRuntime) {
             }
             Ok(ws) => {
                 let established = Instant::now();
+                // Subscribed per session so a reconnect starts from live
+                // frames instead of flushing a backlog from the outage.
+                let mut viz_frames = audio.analyzer_tx.subscribe();
                 let session = run_pair_session(
                     ws,
                     &client,
@@ -332,6 +339,7 @@ async fn run_ws_pairing(config: &Config, token: String, audio: &AudioRuntime) {
                         voice: &mut voice,
                         desktop_media: &mut desktop_media,
                         desktop_commands: &mut desktop_commands,
+                        viz_frames: &mut viz_frames,
                     },
                 )
                 .await;
