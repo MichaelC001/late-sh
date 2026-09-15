@@ -3367,18 +3367,6 @@ fn room_panel(
             Style::default().fg(theme::TEXT_DIM()),
         )));
     }
-    // Mounted: say what carries you and how far each step goes.
-    if let Some(riding) = &view.riding {
-        lines.push(Line::from(vec![
-            Span::styled(
-                "  \u{265e} riding ".to_string(),
-                Style::default()
-                    .fg(theme::AMBER())
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(riding.clone(), Style::default().fg(theme::AMBER_GLOW())),
-        ]));
-    }
     // A personal waypoint, if one is set: a reminder it's there to warp to.
     if view.waypoint_set {
         lines.push(Line::from(Span::styled(
@@ -5711,7 +5699,6 @@ fn footer_hints(view: &PlayerView) -> Vec<Line<'static>> {
     }
     lines.push(hint("m", "world atlas"));
     lines.push(hint("!", "leaderboard"));
-    lines.push(hint("G", "mount / dismount"));
     lines.push(hint("Esc", "leave (press twice)"));
     lines
 }

@@ -1015,9 +1015,6 @@ pub struct PlayerView {
     pub nearby_players: Vec<RoomId>,
     /// The live-map RPG view preference, persisted with the character.
     pub rpg_mode: bool,
-    /// What you're riding right now (Wildbound mounts), with its stride,
-    /// e.g. "Moonlit Unicorn (stride 4)". None on foot.
-    pub riding: Option<String>,
     /// Whether a personal waypoint is set (see `set_waypoint`/`warp_to_waypoint`).
     pub waypoint_set: bool,
     pub occupants: Vec<OccupantView>,
@@ -1163,7 +1160,6 @@ impl PlayerView {
             nearby_foes: Vec::new(),
             nearby_players: Vec::new(),
             rpg_mode: true,
-            riding: None,
             waypoint_set: false,
             occupants: Vec::new(),
             following: None,
@@ -2025,10 +2021,6 @@ impl LateaniaService {
         self.mutate(user_id, move |s| s.cycle_appearance(user_id, field, delta));
     }
 
-    pub fn toggle_mount_task(&self, user_id: Uuid) {
-        self.mutate(user_id, move |s| s.toggle_mount(user_id));
-    }
-
     pub fn move_task(&self, user_id: Uuid, dir: Dir) {
         self.mutate_preserving_frontier_warning(user_id, move |s| s.move_player(user_id, dir));
     }
@@ -2572,8 +2564,6 @@ struct PlayerState {
     /// When this player last spoke on a zone/world scope, for the anti-spam
     /// broadcast cooldown. Session-only.
     last_broadcast: Option<Instant>,
-    /// Riding the companion (Wildbound mounts). Session-only.
-    mounted: bool,
     /// A coated weapon: the coat's school, damage per tick, and strikes
     /// remaining. The poison vials and the four alchemy oils share this one
     /// slot, so applying any coat replaces the last. Each landed melee hit
@@ -3838,7 +3828,6 @@ impl WorldState {
             taming_xp: 0,
             rpg_mode: true,
             last_broadcast: None,
-            mounted: false,
             weapon_coat: None,
             escort: None,
             frontier_descent_pending: false,
@@ -4539,114 +4528,6 @@ impl WorldState {
         self.describe_room_context(user_id, arrival);
         self.apply_critter_perks(user_id);
         self.move_followers(user_id, from, dest, dir);
-        self.continue_ride(user_id, dir);
-    }
-
-    /// Wildbound mounts: while riding, one keypress strides several rooms.
-    /// After a successful step, keep walking the same direction until the
-    /// mount's stride is spent, the way runs out, a fight starts, or a
-    /// gateway asks for its own confirmation (its early-return handles that).
-    fn continue_ride(&mut self, user_id: Uuid, dir: Dir) {
-        let Some(player) = self.players.get(&user_id) else {
-            return;
-        };
-        if !player.mounted || player.in_combat() {
-            return;
-        }
-        let stride = player
-            .pet
-            .as_ref()
-            .and_then(|pet| super::taming::mount_stride(pet.species.key))
-            .unwrap_or(1);
-        if stride <= 1 {
-            return;
-        }
-        for _ in 1..stride {
-            let Some(player) = self.players.get(&user_id) else {
-                return;
-            };
-            if player.in_combat() || player.respawn_at.is_some() {
-                return;
-            }
-            let has_way = self
-                .world
-                .room(player.room)
-                .is_some_and(|room| room.exits.contains_key(&dir));
-            if !has_way {
-                return;
-            }
-            // Temporarily dismount for the inner step so it doesn't recurse
-            // into its own ride-continuation; remount after.
-            if let Some(p) = self.players.get_mut(&user_id) {
-                p.mounted = false;
-            }
-            let before = self.players.get(&user_id).map(|p| p.room);
-            self.move_player(user_id, dir);
-            if let Some(p) = self.players.get_mut(&user_id) {
-                p.mounted = true;
-            }
-            // A gateway prompt or gate refusal leaves the room unchanged - stop.
-            if self.players.get(&user_id).map(|p| p.room) == before {
-                return;
-            }
-        }
-    }
-
-    /// Swing up onto the companion's back (or down off it). Needs a tamed
-    /// beast that can actually be ridden, and both feet out of combat.
-    fn toggle_mount(&mut self, user_id: Uuid) {
-        let Some(player) = self.players.get(&user_id) else {
-            return;
-        };
-        if player.in_combat() {
-            self.log_to(
-                user_id,
-                LogKind::Combat,
-                "Not in the middle of a fight - flee (z) first.".to_string(),
-            );
-            return;
-        }
-        if player.mounted {
-            let name = player
-                .pet
-                .as_ref()
-                .map(|p| p.species.name)
-                .unwrap_or("your mount");
-            if let Some(p) = self.players.get_mut(&user_id) {
-                p.mounted = false;
-            }
-            self.log_to(user_id, LogKind::Normal, format!("You dismount {name}."));
-            return;
-        }
-        let Some(pet) = player.pet.as_ref() else {
-            self.log_to(
-                user_id,
-                LogKind::System,
-                "You have no companion to ride - tame one of the great beasts of Broceliande."
-                    .to_string(),
-            );
-            return;
-        };
-        let Some(stride) = super::taming::mount_stride(pet.species.key) else {
-            self.log_to(
-                user_id,
-                LogKind::System,
-                format!(
-                    "{} is no riding beast. The rideable kind roam the deep Greenwood.",
-                    pet.species.name
-                ),
-            );
-            return;
-        };
-        let name = pet.species.name;
-        if let Some(p) = self.players.get_mut(&user_id) {
-            p.mounted = true;
-        }
-        self.log_to(
-            user_id,
-            LogKind::Normal,
-            format!("You swing up onto {name}'s back - each step now carries you {stride} rooms."),
-        );
     }
 
     fn is_frontier_gateway(&self, from: RoomId, dest: RoomId) -> bool {
@@ -6248,16 +6129,6 @@ impl WorldState {
             .get(&mob_id)
             .map(|m| m.spawn.name.to_string())
             .unwrap_or_default();
-        if self.players.get(&user_id).is_some_and(|p| p.mounted) {
-            if let Some(p) = self.players.get_mut(&user_id) {
-                p.mounted = false;
-            }
-            self.log_to(
-                user_id,
-                LogKind::Combat,
-                "You slide from the saddle - this is foot work.".to_string(),
-            );
-        }
         // Taking a mob target breaks off any duel. `target` and `pvp_target`
         // are mutually exclusive by contract - `damage_target` and the `Stun`
         // arm both resolve pvp first, so a player holding two targets at once
@@ -6343,9 +6214,6 @@ impl WorldState {
             return;
         }
         if let Some(p) = self.players.get_mut(&user_id) {
-            if p.mounted {
-                p.mounted = false;
-            }
             p.pvp_target = Some(target_id);
             p.target = None;
             p.opening_strike = p.class == Some(Class::Rogue);
@@ -9256,20 +9124,24 @@ impl WorldState {
         let Some(species) = pet_species_by_key(species_key) else {
             return;
         };
-        if p.gold < species.price {
+        // Wild beasts are tamed, never sold.
+        let Some(price) = species.price() else {
+            return;
+        };
+        if p.gold < price {
             self.log_to(
                 user_id,
                 LogKind::System,
                 format!(
-                    "The {} costs {} gold - more than you carry.",
-                    species.name, species.price
+                    "The {} costs {price} gold - more than you carry.",
+                    species.name
                 ),
             );
             return;
         }
         let released = p.pet.map(|old| old.species.name);
         if let Some(p) = self.players.get_mut(&user_id) {
-            p.gold -= species.price;
+            p.gold -= price;
             p.pet = Some(Pet::new(species, 0));
         }
         if let Some(old) = released {
@@ -9634,7 +9506,7 @@ impl WorldState {
         let cha_pct = player.scores.tame_pct();
         let level = skill_level_for_xp(taming_xp);
         // Under-level: refused outright, with a clear reason.
-        if level < species.tame_level {
+        if level < species.tame_level() {
             self.log_to(
                 user_id,
                 LogKind::System,
@@ -9642,7 +9514,7 @@ impl WorldState {
                     "The {} is beyond your skill - taming it needs {} level {} (yours is {level}).",
                     species.name,
                     TamingSkill::label(),
-                    species.tame_level,
+                    species.tame_level(),
                 ),
             );
             return;
@@ -10324,16 +10196,17 @@ impl WorldState {
                 feed_cost: PET_FEED_COST,
                 entries: super::pets::PET_SPECIES
                     .iter()
-                    .filter(|s| !s.is_tameable())
-                    .map(|s| StableEntryView {
-                        key: s.key.to_string(),
-                        name: s.name.to_string(),
-                        glyph: s.glyph.to_string(),
-                        price: s.price,
-                        hp: s.base_hp,
-                        attack: s.base_attack,
-                        desc: s.desc.to_string(),
-                        affordable: player.gold >= s.price,
+                    .filter_map(|s| {
+                        s.price().map(|price| StableEntryView {
+                            key: s.key.to_string(),
+                            name: s.name.to_string(),
+                            glyph: s.glyph.to_string(),
+                            price,
+                            hp: s.base_hp,
+                            attack: s.base_attack,
+                            desc: s.desc.to_string(),
+                            affordable: player.gold >= price,
+                        })
                     })
                     .collect(),
             });
@@ -10360,8 +10233,8 @@ impl WorldState {
                             } else {
                                 tame_chance(player.taming_xp, sp, player.scores.tame_pct())
                             };
-                            let reason = if taming_level < sp.tame_level {
-                                format!("needs Taming {}", sp.tame_level)
+                            let reason = if taming_level < sp.tame_level() {
+                                format!("needs Taming {}", sp.tame_level())
                             } else if spooked {
                                 "spooked".to_string()
                             } else {
@@ -10371,7 +10244,7 @@ impl WorldState {
                                 idx: i,
                                 name: sp.name.to_string(),
                                 glyph: sp.glyph.to_string(),
-                                req_level: sp.tame_level,
+                                req_level: sp.tame_level(),
                                 odds,
                                 reason,
                                 desc: sp.desc.to_string(),
@@ -10580,14 +10453,6 @@ impl WorldState {
                     nearby_foes,
                     nearby_players,
                     rpg_mode: player.rpg_mode,
-                    riding: if player.mounted {
-                        player.pet.as_ref().and_then(|pet| {
-                            super::taming::mount_stride(pet.species.key)
-                                .map(|st| format!("{} (stride {st})", pet.species.name))
-                        })
-                    } else {
-                        None
-                    },
                     waypoint_set: player.waypoint.is_some(),
                     occupants,
                     following: player.following,
