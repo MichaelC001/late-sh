@@ -66,7 +66,7 @@ pub fn inbox_rows(
     dms.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
 
     let mut mentions: Vec<&NotificationView> = mentions.iter().collect();
-    mentions.sort_by(|left, right| right.created.cmp(&left.created));
+    mentions.sort_by_key(|mention| std::cmp::Reverse(mention.created));
 
     dms.into_iter()
         .map(|(unread, peer, room_id)| InboxRow::Dm {
@@ -119,7 +119,7 @@ pub fn headlines(articles: &[ArticleFeedItem], entries: &[RssEntryView]) -> Vec<
             });
         }
     }
-    rows.sort_by(|left, right| right.at.cmp(&left.at));
+    rows.sort_by_key(|row| std::cmp::Reverse(row.at));
     rows
 }
 

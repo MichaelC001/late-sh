@@ -96,15 +96,7 @@ fn the_inbox_lists_unread_dms_by_count_then_mentions_newest_first() {
         at(1),
         Some(at(2)),
     );
-    let fresh = mention(
-        viewer,
-        (bob, "bob"),
-        with_bob.id,
-        None,
-        "ping",
-        at(5),
-        None,
-    );
+    let fresh = mention(viewer, (bob, "bob"), with_bob.id, None, "ping", at(5), None);
     let rooms = vec![
         (with_alice.clone(), Vec::new()),
         (with_bob.clone(), Vec::new()),
@@ -197,7 +189,12 @@ fn headlines_merge_news_and_rss_newest_first_and_a_shared_entry_lists_once() {
         rss("https://a.example/one", "Big news", "a feed", Some(at(9))),
         // No title and no publish date: the link and the fetch time.
         rss("https://b.example/two", "", "b feed", None),
-        rss("https://c.example/three", "Old\n  story", "c feed", Some(at(2))),
+        rss(
+            "https://c.example/three",
+            "Old\n  story",
+            "c feed",
+            Some(at(2)),
+        ),
     ];
 
     assert_eq!(

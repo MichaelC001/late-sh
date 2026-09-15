@@ -183,7 +183,9 @@ fn handle_headlines(app: &mut App, byte: u8) -> bool {
         }
         b'\r' | b'\n' => {
             let rows = headline_rows(app);
-            if let Some(row) = rows.get(app.zen.headlines_selected.min(rows.len().saturating_sub(1))) {
+            if let Some(row) =
+                rows.get(app.zen.headlines_selected.min(rows.len().saturating_sub(1)))
+            {
                 app.pending_clipboard = Some(row.url.clone());
                 app.banner = Some(Banner::success("Link copied to clipboard!"));
             }
@@ -194,10 +196,7 @@ fn handle_headlines(app: &mut App, byte: u8) -> bool {
 }
 
 fn headline_rows(app: &App) -> Vec<super::rows::Headline> {
-    super::rows::headlines(
-        app.chat.news.all_articles(),
-        app.chat.feeds.all_entries(),
-    )
+    super::rows::headlines(app.chat.news.all_articles(), app.chat.feeds.all_entries())
 }
 
 /// Rice: arrows, Tab, and Shift+Tab move focus and the layout keys edit

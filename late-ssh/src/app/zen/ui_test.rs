@@ -2,10 +2,10 @@ use super::{
     Care, Chore, PulseView, care_bar_spans, draw_headlines_tile, draw_music_tile, draw_pulse_tile,
     hint_line_fitting, station_text,
 };
-use crate::app::zen::rows::Headline;
 use crate::app::audio::viz::EqState;
 use crate::app::common::{primitives::hint_line, theme};
 use crate::app::hub::aquarium::state::CareBar;
+use crate::app::zen::rows::Headline;
 use late_core::models::aquarium_care::CARE_DAYS;
 use ratatui::{Terminal, backend::TestBackend, layout::Rect};
 
@@ -36,7 +36,10 @@ fn the_music_tile_pins_track_and_station_to_its_last_two_rows() {
     assert!(rows[8].contains("youtube"), "{rows:#?}");
     // Every row above the text belongs to the visualizer.
     for row in &rows[..7] {
-        assert!(!row.contains("Ambition") && !row.contains("youtube"), "{rows:#?}");
+        assert!(
+            !row.contains("Ambition") && !row.contains("youtube"),
+            "{rows:#?}"
+        );
     }
     let bar_cells = rows[..7]
         .iter()
@@ -105,7 +108,11 @@ fn pulse_draws_every_row_even_at_zero_and_colors_each_chore() {
         .expect("draw");
     let buffer = terminal.backend().buffer();
     let first_row: String = (0..wide).map(|x| buffer[(x, 0)].symbol()).collect();
-    assert_eq!(first_row.find("online"), Some(14), "the block starts centered");
+    assert_eq!(
+        first_row.find("online"),
+        Some(14),
+        "the block starts centered"
+    );
     assert_eq!(
         first_row.trim_end().len(),
         46,

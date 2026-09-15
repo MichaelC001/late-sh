@@ -80,7 +80,9 @@ async fn petting_pays_an_owner_once_a_day() {
     let today = chrono::Utc::now().date_naive();
 
     assert_eq!(
-        svc.pet_on(user.id, today).await.expect("pet without the unlock"),
+        svc.pet_on(user.id, today)
+            .await
+            .expect("pet without the unlock"),
         PetOutcome::NoPet
     );
     assert!(rx.try_recv().is_err(), "a pet nobody bought pays nothing");

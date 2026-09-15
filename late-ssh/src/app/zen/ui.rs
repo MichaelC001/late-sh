@@ -143,7 +143,8 @@ pub(crate) fn draw_rice(
             | TileKind::Pet
             | TileKind::Music
             | TileKind::Clock
-            | TileKind::Visualizer            | TileKind::Lobby
+            | TileKind::Visualizer
+            | TileKind::Lobby
             | TileKind::Activity
             | TileKind::Friends
             | TileKind::Pulse
@@ -160,7 +161,8 @@ pub(crate) fn draw_rice(
                 | TileKind::Pet
                 | TileKind::Music
                 | TileKind::Clock
-                | TileKind::Visualizer                | TileKind::Lobby
+                | TileKind::Visualizer
+                | TileKind::Lobby
                 | TileKind::Activity
                 | TileKind::Friends
                 | TileKind::Pulse
@@ -182,7 +184,8 @@ pub(crate) fn draw_rice(
             | TileKind::Pet
             | TileKind::Music
             | TileKind::Clock
-            | TileKind::Visualizer            | TileKind::Lobby
+            | TileKind::Visualizer
+            | TileKind::Lobby
             | TileKind::Activity
             | TileKind::Friends
             | TileKind::Pulse
@@ -242,9 +245,13 @@ pub(crate) fn draw_rice(
                     care: view.care,
                 },
             ),
-            TileKind::Inbox => {
-                draw_inbox_tile(frame, pad_right(inner), &view.inbox, zen.inbox_selected, focused)
-            }
+            TileKind::Inbox => draw_inbox_tile(
+                frame,
+                pad_right(inner),
+                &view.inbox,
+                zen.inbox_selected,
+                focused,
+            ),
             TileKind::Headlines => draw_headlines_tile(
                 frame,
                 pad_right(inner),
@@ -365,7 +372,8 @@ fn tile_keys(kind: TileKind, view: &ZenView<'_>) -> &'static [(&'static str, &'s
         TileKind::Inbox => &[("jk", "pick"), ("enter", "open")],
         TileKind::Headlines => &[("jk", "pick"), ("enter", "copy")],
         TileKind::Clock
-        | TileKind::Visualizer        | TileKind::Activity
+        | TileKind::Visualizer
+        | TileKind::Activity
         | TileKind::Friends
         | TileKind::Pulse => &[],
         TileKind::Blank => &[],
@@ -736,9 +744,11 @@ fn draw_music_tile(
         Span::styled(track.to_string(), Style::default().fg(theme::TEXT_BRIGHT())),
     ])
     .centered();
-    let station =
-        Line::from(Span::styled(station.to_string(), Style::default().fg(theme::TEXT_DIM())))
-            .centered();
+    let station = Line::from(Span::styled(
+        station.to_string(),
+        Style::default().fg(theme::TEXT_DIM()),
+    ))
+    .centered();
     frame.render_widget(
         Paragraph::new(vec![track, station]),
         Rect::new(area.x, area.y + eq_rows, area.width, text_rows),
@@ -838,7 +848,11 @@ fn draw_activity_tile(
     friends: &[ActiveFriend],
 ) {
     if entries.is_empty() {
-        draw_centered_note(frame, area, &["quiet for now", "wins, joins, and crowns land here"]);
+        draw_centered_note(
+            frame,
+            area,
+            &["quiet for now", "wins, joins, and crowns land here"],
+        );
         return;
     }
     let width = area.width as usize;
@@ -999,13 +1013,19 @@ fn draw_pulse_tile(frame: &mut Frame, area: Rect, pulse: &PulseView) {
         Span::styled(name, Style::default().fg(color))
     };
     let rows: [(&str, Vec<Span<'static>>); 5] = [
-        ("online", vec![Span::styled(pulse.online.to_string(), bright)]),
+        (
+            "online",
+            vec![Span::styled(pulse.online.to_string(), bright)],
+        ),
         ("chips", vec![Span::styled(thousands(pulse.chips), bright)]),
         (
             "mentions",
             vec![Span::styled(pulse.mentions.to_string(), mentions_style)],
         ),
-        ("friends", vec![Span::styled(pulse.friends.to_string(), bright)]),
+        (
+            "friends",
+            vec![Span::styled(pulse.friends.to_string(), bright)],
+        ),
         (
             "care",
             vec![
@@ -1084,7 +1104,11 @@ fn draw_inbox_tile(
     focused: bool,
 ) {
     if rows.is_empty() {
-        draw_centered_note(frame, area, &["all caught up", "mentions and unread DMs land here"]);
+        draw_centered_note(
+            frame,
+            area,
+            &["all caught up", "mentions and unread DMs land here"],
+        );
         return;
     }
     let width = area.width as usize;
@@ -1170,7 +1194,11 @@ fn draw_headlines_tile(
     focused: bool,
 ) {
     if rows.is_empty() {
-        draw_centered_note(frame, area, &["no headlines yet", "News and your RSS feeds land here"]);
+        draw_centered_note(
+            frame,
+            area,
+            &["no headlines yet", "News and your RSS feeds land here"],
+        );
         return;
     }
     let width = area.width as usize;
@@ -1230,8 +1258,13 @@ fn stamped_row(spans: Vec<Span<'static>>, stamp: String, width: usize) -> Line<'
         used += text.width();
         out.push(Span::styled(text, span.style));
     }
-    out.push(Span::raw(" ".repeat(width.saturating_sub(used + stamp_width))));
-    out.push(Span::styled(stamp, Style::default().fg(theme::TEXT_FAINT())));
+    out.push(Span::raw(
+        " ".repeat(width.saturating_sub(used + stamp_width)),
+    ));
+    out.push(Span::styled(
+        stamp,
+        Style::default().fg(theme::TEXT_FAINT()),
+    ));
     Line::from(out)
 }
 
