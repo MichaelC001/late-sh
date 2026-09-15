@@ -8,6 +8,7 @@
 
 use uuid::Uuid;
 
+use super::rows::InboxRow;
 use super::state::{Dir, KindPick, MAX_TILES, TileKind};
 use crate::app::{common::primitives::Banner, input::ParsedInput, state::App};
 
@@ -41,6 +42,12 @@ fn handle_common(app: &mut App, event: &ParsedInput) -> bool {
     let Some(byte) = event_byte(event) else {
         return false;
     };
+    if app.zen.focused_kind() == Some(TileKind::Inbox) && handle_inbox(app, byte) {
+        return true;
+    }
+    if app.zen.focused_kind() == Some(TileKind::Headlines) && handle_headlines(app, byte) {
+        return true;
+    }
     let chat_focused = app.zen.focused_kind() == Some(TileKind::Chat);
     // The focused chat tile's message keys, the way the house table routes
     // them to its embedded chat: `i`, `j` `k`, Ctrl+D/U, and the reaction
@@ -85,6 +92,112 @@ fn handle_common(app: &mut App, event: &ParsedInput) -> bool {
         }
         _ => false,
     }
+}
+
+/// The focused Inbox tile: `j` `k` walk its rows, Enter opens the row.
+fn handle_inbox(app: &mut App, byte: u8) -> bool {
+    match byte {
+        b'j' | b'J' => {
+            let last = inbox_rows(app).len().saturating_sub(1);
+            app.zen.inbox_selected = (app.zen.inbox_selected + 1).min(last);
+            true
+        }
+        b'k' | b'K' => {
+            app.zen.inbox_selected = app.zen.inbox_selected.saturating_sub(1);
+            true
+        }
+        b'\r' | b'\n' => {
+            open_inbox_row(app);
+            true
+        }
+        _ => false,
+    }
+}
+
+fn inbox_rows(app: &App) -> Vec<InboxRow> {
+    super::rows::inbox_rows(
+        app.user_id,
+        &app.chat.rooms,
+        &app.chat.unread_counts,
+        app.chat.usernames(),
+        app.chat.ignored_user_ids(),
+        app.chat.notifications.all_items(),
+    )
+}
+
+/// Open the selected Inbox row in the page's first chat tile and move the
+/// focus there, so `i` answers at once: a DM binds the tile to its room, a
+/// mention binds it to the mention's room and selects the message the way
+/// a `Ctrl+/` message jump does. A mention in a room the account never
+/// joined has no tile to land in and reads in the history modal instead.
+fn open_inbox_row(app: &mut App) {
+    let rows = inbox_rows(app);
+    let Some(row) = rows.get(app.zen.inbox_selected.min(rows.len().saturating_sub(1))) else {
+        return;
+    };
+    let (room_id, message_id) = match row {
+        InboxRow::Dm { room_id, .. } => (*room_id, None),
+        InboxRow::Mention {
+            room_id,
+            message_id,
+            ..
+        } => (*room_id, Some(*message_id)),
+    };
+    if let Some(message_id) = message_id
+        && !app.chat.rooms.iter().any(|(room, _)| room.id == room_id)
+    {
+        app.chat.open_history_at_message(room_id, message_id);
+        return;
+    }
+    let Some(chat_tile) = app.zen.first_tile_of(TileKind::Chat) else {
+        app.banner = Some(Banner::info("Add a chat tile to open it here"));
+        return;
+    };
+    app.zen.focus = chat_tile;
+    focus_moved(app);
+    bind_focused_chat_to_room(app, room_id);
+    let Some(message_id) = message_id else {
+        return;
+    };
+    if app.chat.message_is_loaded_in_room(room_id, message_id) {
+        app.chat.select_message_by_id_in_room(room_id, message_id);
+    } else {
+        app.chat.set_pending_search_jump(room_id, message_id);
+        app.chat.request_room_tail(room_id);
+    }
+}
+
+/// The focused Headlines tile: `j` `k` walk its items, Enter copies the
+/// selected link. The rows are the ones the tile draws, so the marked item
+/// is the one copied.
+fn handle_headlines(app: &mut App, byte: u8) -> bool {
+    match byte {
+        b'j' | b'J' => {
+            let last = headline_rows(app).len().saturating_sub(1);
+            app.zen.headlines_selected = (app.zen.headlines_selected + 1).min(last);
+            true
+        }
+        b'k' | b'K' => {
+            app.zen.headlines_selected = app.zen.headlines_selected.saturating_sub(1);
+            true
+        }
+        b'\r' | b'\n' => {
+            let rows = headline_rows(app);
+            if let Some(row) = rows.get(app.zen.headlines_selected.min(rows.len().saturating_sub(1))) {
+                app.pending_clipboard = Some(row.url.clone());
+                app.banner = Some(Banner::success("Link copied to clipboard!"));
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+fn headline_rows(app: &App) -> Vec<super::rows::Headline> {
+    super::rows::headlines(
+        app.chat.news.all_articles(),
+        app.chat.feeds.all_entries(),
+    )
 }
 
 /// Rice: arrows, Tab, and Shift+Tab move focus and the layout keys edit

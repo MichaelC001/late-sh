@@ -277,7 +277,7 @@ pub fn test_app_state(db: Db, config: Config) -> State {
     let solitaire_service = SolitaireService::new(db.clone(), activity_tx.clone());
     let minesweeper_service = MinesweeperService::new(db.clone(), activity_tx.clone());
     let bonsai_service = BonsaiService::new(db.clone(), activity_tx.clone());
-    let pet_service = PetService::new(db.clone());
+    let pet_service = PetService::new(db.clone(), activity_tx.clone());
     let aquarium_service =
         crate::app::hub::aquarium::svc::AquariumService::new(db.clone(), activity_tx.clone());
     let dartboard_server = crate::dartboard::spawn_server();
@@ -596,7 +596,7 @@ fn make_app_with_chat_service_and_permissions(
         bonsai_service: BonsaiService::new(db.clone(), broadcast::channel::<ActivityEvent>(64).0),
         initial_bonsai_tree: None,
         initial_bonsai_decay_protection: None,
-        pet_service: PetService::new(db.clone()),
+        pet_service: PetService::new(db.clone(), broadcast::channel::<ActivityEvent>(64).0),
         initial_pet: None,
         aquarium_service: crate::app::hub::aquarium::svc::AquariumService::new(
             db.clone(),
@@ -850,7 +850,7 @@ pub fn make_app_with_paired_client(
         bonsai_service: BonsaiService::new(db.clone(), broadcast::channel::<ActivityEvent>(64).0),
         initial_bonsai_tree: None,
         initial_bonsai_decay_protection: None,
-        pet_service: PetService::new(db.clone()),
+        pet_service: PetService::new(db.clone(), broadcast::channel::<ActivityEvent>(64).0),
         initial_pet: None,
         aquarium_service: crate::app::hub::aquarium::svc::AquariumService::new(
             db.clone(),

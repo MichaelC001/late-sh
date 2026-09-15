@@ -814,10 +814,25 @@ impl App {
                     changed = true;
                 }
             }
-            let active_friend_names = self.chat.active_friend_names();
-            if active_friend_names != self.active_friend_names {
-                self.active_friend_names = active_friend_names;
+            let active_friends = self.chat.active_friends();
+            if active_friends != self.active_friends {
+                self.active_friend_names = active_friends
+                    .iter()
+                    .map(|friend| friend.username.clone())
+                    .collect();
+                self.active_friends = active_friends;
                 changed = true;
+            }
+            // Mentions load only when asked for. An Inbox tile on the page
+            // asks whenever the unread count moves, so a new mention lands.
+            if self.screen == crate::app::common::primitives::Screen::Zen
+                && self.zen.shows(crate::app::zen::state::TileKind::Inbox)
+            {
+                let unread = self.chat.notifications.unread_count();
+                if self.zen_inbox_listed_unread != Some(unread) {
+                    self.chat.notifications.list();
+                    self.zen_inbox_listed_unread = Some(unread);
+                }
             }
             // The username directory swaps its Arc on every real change, so
             // pointer equality is the change signal for the row cache epoch.
@@ -1059,6 +1074,13 @@ impl App {
                         Some(crate::app::common::primitives::Banner::success(&format!(
                             "Fed the tank (+{} chips)",
                             crate::app::hub::aquarium::svc::FEED_CHIP_BONUS
+                        )))
+                    }
+                    // And for the pet: the first pet of the day paid.
+                    ActivityKind::PetPetted if user_id == self.user_id => {
+                        Some(crate::app::common::primitives::Banner::success(&format!(
+                            "Petted (+{} chips)",
+                            crate::app::pet::svc::PET_CHIP_BONUS
                         )))
                     }
                     // The streak's fry: the sim learns which species to draw

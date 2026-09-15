@@ -19,23 +19,34 @@ pub enum TileKind {
     Music,
     Clock,
     Visualizer,
-    Presence,
     Lobby,
+    Activity,
+    Friends,
+    /// Stored layouts from before Pulse still name the retired presence
+    /// tile; they read as Pulse instead of resetting the whole page.
+    #[serde(alias = "presence")]
+    Pulse,
+    Inbox,
+    Headlines,
     Blank,
 }
 
 impl TileKind {
     /// Every kind, alphabetical by label: the tile picker's rows.
-    pub const ALL: [TileKind; 10] = [
+    pub const ALL: [TileKind; 14] = [
+        TileKind::Activity,
         TileKind::Aquarium,
         TileKind::Blank,
         TileKind::Bonsai,
         TileKind::Chat,
         TileKind::Clock,
+        TileKind::Friends,
+        TileKind::Headlines,
+        TileKind::Inbox,
         TileKind::Lobby,
         TileKind::Music,
         TileKind::Pet,
-        TileKind::Presence,
+        TileKind::Pulse,
         TileKind::Visualizer,
     ];
 
@@ -48,8 +59,12 @@ impl TileKind {
             TileKind::Music => "music",
             TileKind::Clock => "clock",
             TileKind::Visualizer => "visualizer",
-            TileKind::Presence => "presence",
             TileKind::Lobby => "lobby",
+            TileKind::Activity => "activity",
+            TileKind::Friends => "friends",
+            TileKind::Pulse => "pulse",
+            TileKind::Inbox => "inbox",
+            TileKind::Headlines => "headlines",
             TileKind::Blank => "blank",
         }
     }
@@ -96,10 +111,14 @@ pub enum Node {
     },
 }
 
-/// Per-mille bounds for a split's first child, so a tile can never be
-/// squeezed to nothing.
-pub const MIN_SHARE: u16 = 100;
-pub const MAX_SHARE: u16 = 900;
+/// Per-mille bounds for a split's first child, so neither side is ever
+/// handed the whole split.
+pub const MIN_SHARE: u16 = 1;
+pub const MAX_SHARE: u16 = 999;
+
+/// The fewest cells a resize leaves on either side of a split: a border
+/// and one row (or column) inside it, so a clock can sit in a one-row tile.
+pub const MIN_TILE_CELLS: u16 = 3;
 
 /// Most tiles a layout holds. Each split nests the stored JSON one level
 /// deeper and the settings blob is read back through serde_json, which
@@ -325,8 +344,10 @@ impl Node {
         }
         let usable = layout::usable_len(area, *my_dir, gap);
         let signed = if is_first { delta_cells } else { -delta_cells };
+        // A split too small for two floors splits what it has evenly.
+        let floor = MIN_TILE_CELLS.min(usable / 2);
         let target = (layout::first_len(usable, *share) as i32 + signed as i32)
-            .clamp(0, usable as i32) as u16;
+            .clamp(floor as i32, (usable - floor) as i32) as u16;
         *share = layout::share_for(usable, target).clamp(MIN_SHARE, MAX_SHARE);
         true
     }
@@ -483,6 +504,11 @@ pub struct ZenState {
     /// The tile picker `space` opens over the focused tile: the selected
     /// row, an index into `TileKind::ALL`, while it is open.
     pub kind_picker: Option<usize>,
+    /// The Inbox tile's selected row. Clamped at draw and at Enter, since
+    /// the rows come and go with the mentions and unread DMs.
+    pub inbox_selected: usize,
+    /// The Headlines tile's selected item, clamped the same way.
+    pub headlines_selected: usize,
     /// Whether the page has been opened this session; the first opening
     /// lands the focus on the first chat tile so the chat keys work at once.
     opened: bool,
@@ -495,6 +521,8 @@ impl ZenState {
             focus: 0,
             zoomed: false,
             kind_picker: None,
+            inbox_selected: 0,
+            headlines_selected: 0,
             opened: false,
         }
     }
@@ -523,10 +551,19 @@ impl ZenState {
             | TileKind::Pet
             | TileKind::Chat
             | TileKind::Clock
-            | TileKind::Presence
             | TileKind::Lobby
+            | TileKind::Activity
+            | TileKind::Friends
+            | TileKind::Pulse
+            | TileKind::Inbox
+            | TileKind::Headlines
             | TileKind::Blank => false,
         })
+    }
+
+    /// Whether any tile on the page is `kind`, zoomed or not.
+    pub fn shows(&self, kind: TileKind) -> bool {
+        self.rice.root.leaf_kinds().contains(&kind)
     }
 
     /// The page opening: the first time this session, the focus moves to

@@ -556,6 +556,11 @@ pub struct App {
     /// shared `active_users` map every frame.
     pub(crate) online_count: usize,
     pub(crate) active_friend_names: Vec<String>,
+    /// The same friends with what the Zen Friends tile shows beside them.
+    pub(crate) active_friends: Vec<crate::app::chat::state::ActiveFriend>,
+    /// The unread mention count the mentions list was last requested at
+    /// while an Inbox tile is on the Zen page (the list loads only on ask).
+    pub(super) zen_inbox_listed_unread: Option<i64>,
     /// Last rendered sidebar clock text, compared on the ~1s tick so minute
     /// rollovers count as a render-visible change.
     pub(super) last_sidebar_clock: String,
@@ -1271,6 +1276,7 @@ impl App {
                     species: late_core::models::pet::PetSpecies::Cat.as_str().to_string(),
                     mood: late_core::models::pet::PetMood::Asleep.as_str().to_string(),
                     mood_since: chrono::Utc::now(),
+                    last_petted: None,
                 },
             )
         };
@@ -1433,6 +1439,8 @@ impl App {
                 .map(crate::state::online_human_count)
                 .unwrap_or(0),
             active_friend_names: Vec::new(),
+            active_friends: Vec::new(),
+            zen_inbox_listed_unread: None,
             last_sidebar_clock: String::new(),
             chat_ctx_epoch: 0,
             last_username_directory: None,

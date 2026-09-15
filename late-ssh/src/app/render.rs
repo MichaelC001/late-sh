@@ -336,7 +336,6 @@ struct DrawContext<'a> {
     selected_icecast_stream: late_core::models::user::IcecastStream,
     selected_radio_station: late_core::models::user::RadioStation,
     radio_now_playing: Option<&'a str>,
-    status: Option<crate::app::common::status::Status>,
     /// Humans currently connected (bots excluded) plus connected friends,
     /// for the sidebar's pinned presence rows.
     online_count: usize,
@@ -369,6 +368,9 @@ struct DrawContext<'a> {
     zen_track: String,
     zen_date: String,
     zen_pet_strip: Option<crate::app::pet::ui::PetView<'a>>,
+    zen_active_friends: &'a [crate::app::chat::state::ActiveFriend],
+    zen_care: crate::app::zen::ui::Care,
+    zen_peer_statuses: &'a std::collections::HashMap<uuid::Uuid, String>,
 }
 
 impl App {
@@ -844,6 +846,7 @@ impl App {
             self.daily
                 .board_chat_room_id()
                 .map(|chat_room_id| chat::ui::EmbeddedRoomChatView {
+                    messages_inset: 1,
                     title: "Match Chat",
                     messages: self.chat.messages_for_room(chat_room_id),
                     overlay: self.chat.overlay(),
@@ -908,6 +911,7 @@ impl App {
             self.house
                 .chat_room_id()
                 .map(|chat_room_id| chat::ui::EmbeddedRoomChatView {
+                    messages_inset: 1,
                     title: "Table Chat",
                     messages: self.chat.messages_for_room(chat_room_id),
                     overlay: self.chat.overlay(),
@@ -981,6 +985,8 @@ impl App {
             .map(|(index, ((room_id, label), rows_cache))| {
                 let active = Some(index) == zen_active_chat;
                 let view = room_id.map(|chat_room_id| chat::ui::EmbeddedRoomChatView {
+                    // The tile's border is already the column of air.
+                    messages_inset: 0,
                     title: label.as_str(),
                     messages: self.chat.messages_for_room(chat_room_id),
                     overlay: if active { self.chat.overlay() } else { None },
@@ -1073,6 +1079,21 @@ impl App {
             radio_now_playing.as_deref(),
         );
         let zen_date = zen_date_text(self.profile_state.profile().timezone.as_deref());
+        let care_day = chrono::Utc::now().date_naive();
+        let zen_care = crate::app::zen::ui::Care {
+            bonsai: crate::app::zen::ui::Chore::of(
+                true,
+                self.bonsai_state.last_watered == Some(care_day),
+            ),
+            tank: crate::app::zen::ui::Chore::of(
+                self.shop_state.entitlements().has_aquarium(),
+                self.aquarium_care.fed_on_day(care_day),
+            ),
+            pet: crate::app::zen::ui::Chore::of(
+                self.shop_state.entitlements().has_pet_companion(),
+                self.pet_state.petted_on(care_day),
+            ),
+        };
         let zen_pet_strip = self
             .shop_state
             .entitlements()
@@ -1357,7 +1378,6 @@ impl App {
                         selected_icecast_stream,
                         selected_radio_station,
                         radio_now_playing: radio_now_playing.as_deref(),
-                        status: self.status.map(|status| status.status),
                         online_count,
                         active_friend_names,
                         marquee_tick: self.marquee_tick,
@@ -1380,6 +1400,9 @@ impl App {
                         zen_track,
                         zen_date,
                         zen_pet_strip,
+                        zen_active_friends: &self.active_friends,
+                        zen_care,
+                        zen_peer_statuses: &self.peer_statuses,
                     },
                     &mut terminal_image_frame,
                 );
@@ -1862,11 +1885,34 @@ impl App {
                     clock: ctx.sidebar_clock,
                     date: ctx.zen_date.clone(),
                     online_count: ctx.online_count,
-                    friends: ctx.active_friend_names,
-                    status: ctx.status,
                     mentions_unread: ctx.mentions_unread_count,
                     daily: ctx.daily,
                     lobby_glow: ctx.lobby.glow(),
+                    activity: ctx.chat_state.activity_ticker(),
+                    active_friends: ctx.zen_active_friends,
+                    peer_statuses: ctx.zen_peer_statuses,
+                    chip_balance: ctx.chip_balance,
+                    care: ctx.zen_care,
+                    inbox: if ctx.zen.shows(crate::app::zen::state::TileKind::Inbox) {
+                        crate::app::zen::rows::inbox_rows(
+                            ctx.user_id,
+                            &ctx.chat_state.rooms,
+                            &ctx.chat_state.unread_counts,
+                            ctx.chat_state.usernames(),
+                            ctx.chat_state.ignored_user_ids(),
+                            ctx.chat_state.notifications.all_items(),
+                        )
+                    } else {
+                        Vec::new()
+                    },
+                    headlines: if ctx.zen.shows(crate::app::zen::state::TileKind::Headlines) {
+                        crate::app::zen::rows::headlines(
+                            ctx.chat_state.news.all_articles(),
+                            ctx.chat_state.feeds.all_entries(),
+                        )
+                    } else {
+                        Vec::new()
+                    },
                     wall_tick: ctx.marquee_tick,
                 };
                 crate::app::zen::ui::draw_rice(frame, content_area, view, terminal_images);
