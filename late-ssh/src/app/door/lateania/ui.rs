@@ -21,12 +21,42 @@ use super::{
     classes::Class,
     state::{ClickAction, Heading, MapMode, Panel, State},
     stats::{POINT_EVERY_LEVELS, SCORE_CAP, Score},
-    svc::{LeaderboardEntry, LogKind, MobView, PlayerView, QuestKind, QuestView, SectionRow},
+    svc::{
+        LeaderboardEntry, LogKind, MobView, PlayerView, QuestKind, QuestView, SectionRow, ShopView,
+    },
     world::{Dir, MapCell, MiniMap, RoomId},
 };
 
 const SIDE_WIDE: u16 = 34;
 const SIDE_NARROW: u16 = 28;
+/// The widest the side rail grows on a big terminal. Past this the room text
+/// stops reading as a column and the main view starts paying for it.
+const SIDE_MAX: u16 = 60;
+
+/// How many rows the bottom log strip gets on a terminal this tall.
+///
+/// It used to be `height / 4` capped at 7, so a tall terminal showed the same
+/// four-or-so events a short one did: room description, one look, and the text
+/// had already scrolled away. A third of the height, capped at 12, keeps a
+/// readable run of events on a big screen while still leaving the field the
+/// larger share, and short terminals are unchanged in practice.
+fn log_strip_height(total_height: u16) -> u16 {
+    (total_height / 3).clamp(4, 12)
+}
+
+/// How wide the side rail gets for a terminal this wide.
+///
+/// It used to be 34 columns flat above a single threshold, whatever the screen:
+/// on a 190-column terminal that spent a third of the panel's *height* on wrap
+/// damage (one exits line wrapping to three, a wildlife entry to three) while
+/// the main column sat half empty. A quarter of the width, bounded, keeps the
+/// rail a column on a laptop and lets it breathe on a wide display.
+fn side_width(total_width: u16) -> u16 {
+    if total_width < 84 {
+        return SIDE_NARROW;
+    }
+    (total_width / 4).clamp(SIDE_WIDE, SIDE_MAX)
+}
 
 // ---- Screen entry: which layout this terminal gets -----------------------
 
@@ -105,19 +135,39 @@ pub fn draw_game(frame: &mut Frame, area: Rect, state: &State, usernames: &Usern
         draw_board_screen(frame, area, state, &view);
         return;
     }
+    // The shop is the densest list in the game (stock, price, the stat line, the
+    // comparison against what's worn, the description) and the side rail wraps
+    // every one of those into a scroll. Given room it takes the screen.
+    if state.panel() == Panel::Shop && area.width >= 100 && area.height >= 20 {
+        match &view.shop {
+            Some(shop) => draw_shop_screen(
+                frame,
+                area,
+                &state.shop_rows(),
+                shop,
+                state.cursor(),
+                view.gold,
+                view.banked_gold,
+            ),
+            None => frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    "No shop here.",
+                    Style::default().fg(theme::TEXT_DIM()),
+                ))),
+                area,
+            ),
+        }
+        return;
+    }
 
-    let side_w = if area.width >= 84 {
-        SIDE_WIDE
-    } else {
-        SIDE_NARROW
-    };
+    let side_w = side_width(area.width);
     // Wide terminals get the live field with the message log as a full-width
     // strip along the bottom, the way terminal roguelikes have always laid it:
     // log lines are sentences, and sentences want width, not a narrow rail.
     // Below this width the field folds away and the classic log + side view
     // stands in (the minimap still rides in the side panel there).
     if state.panel() == Panel::Room && view.rpg_mode && area.width >= 96 {
-        let log_h = (area.height / 4).clamp(4, 7);
+        let log_h = log_strip_height(area.height);
         let rows = Layout::vertical([Constraint::Min(3), Constraint::Length(log_h)]).split(area);
         let cols = Layout::horizontal([
             Constraint::Min(24),        // live field (fills the middle)
@@ -2511,18 +2561,77 @@ fn draw_room_side(
         frame.render_widget(Paragraph::new(lines), panel_area);
         return;
     }
-    let (lines, foe_hits, player_hits) =
-        room_panel(view, usernames, panel_area.width as usize, state.heading());
+    let panel = room_panel(view, usernames, panel_area.width as usize, state.heading());
+    let RoomPanel {
+        mut body,
+        footer,
+        foe_hits,
+        player_hits,
+    } = panel;
+
+    // The standing keys are pinned to the floor of the rail rather than
+    // trailing the content. The room's state then reads top-down from the
+    // vitals and the keys sit at a fixed edge, instead of the block ending
+    // wherever the content happened to stop with dead space below it.
+    //
+    // Only while it leaves the room itself the larger half: on a cramped rail
+    // the footer goes back to being ordinary content at the end of the body,
+    // where it scrolls with everything else instead of eating the panel.
+    let footer_rows: usize = footer
+        .iter()
+        .map(|line| line_rows(line, panel_area.width as usize))
+        .sum();
+    let (body_area, footer_area) = match footer_anchor(footer_rows, panel_area.height) {
+        Some(rows) => {
+            let split =
+                Layout::vertical([Constraint::Min(0), Constraint::Length(rows)]).split(panel_area);
+            (split[0], Some(split[1]))
+        }
+        None => {
+            body.push(Line::raw(""));
+            body.extend(footer.iter().cloned());
+            (panel_area, None)
+        }
+    };
+
+    // The room panel was the one panel in the game that could not scroll: it
+    // rendered every line into a fixed rect and whatever ran past the bottom
+    // was silently dropped, so on a short terminal the tail of the panel simply
+    // did not exist. It scrolls now, on the same `[`/`]` + `list_scroll` path
+    // every other cursor-less panel uses, with the vitals block pinned: your HP
+    // must not be something you scroll to find.
+    let (lines, pinned, off) = scroll_room_panel(
+        body,
+        state.list_scroll(),
+        body_area.width as usize,
+        body_area.height as usize,
+    );
+    state.set_list_scroll(off);
+
     // Make each visible foe row clickable: its rect is where the panel (drawn
-    // from the top, one pre-wrapped line per row) places that line. Rows scrolled
-    // off the bottom just aren't recorded, so they aren't clickable.
+    // from the top, one pre-wrapped line per row) places that line. A row above
+    // the scroll window, or past the bottom, is not on screen and so is not
+    // recorded. `screen_row` maps a line index through the pinned head and the
+    // scroll offset; getting this wrong aims clicks at the wrong foe.
+    let screen_row = |idx: usize| -> Option<u16> {
+        let row = if idx < pinned {
+            idx
+        } else {
+            let below = idx - pinned;
+            if below < off {
+                return None;
+            }
+            pinned + (below - off)
+        };
+        (row < body_area.height as usize).then_some(row as u16)
+    };
     for (idx, mob_id) in foe_hits {
-        if (idx as u16) < panel_area.height {
+        if let Some(row) = screen_row(idx) {
             state.record_combat_hit(
                 Rect {
-                    x: panel_area.x,
-                    y: panel_area.y + idx as u16,
-                    width: panel_area.width,
+                    x: body_area.x,
+                    y: body_area.y + row,
+                    width: body_area.width,
                     height: 1,
                 },
                 ClickAction::AttackMob(mob_id),
@@ -2531,19 +2640,22 @@ fn draw_room_side(
     }
     // Same for hostile adventurers in a pvp room's "Adventurers here" list.
     for (idx, target_id) in player_hits {
-        if (idx as u16) < panel_area.height {
+        if let Some(row) = screen_row(idx) {
             state.record_combat_hit(
                 Rect {
-                    x: panel_area.x,
-                    y: panel_area.y + idx as u16,
-                    width: panel_area.width,
+                    x: body_area.x,
+                    y: body_area.y + row,
+                    width: body_area.width,
                     height: 1,
                 },
                 ClickAction::AttackPlayer(target_id),
             );
         }
     }
-    frame.render_widget(Paragraph::new(lines), panel_area);
+    frame.render_widget(Paragraph::new(lines), body_area);
+    if let Some(rect) = footer_area {
+        frame.render_widget(Paragraph::new(footer), rect);
+    }
 }
 
 /// Titles panel: a selectable list of earned titles with their levels. Enter
@@ -3004,6 +3116,224 @@ fn draw_journal_screen(frame: &mut Frame, area: Rect, state: &State, view: &Play
     render_scrolled(frame, cols[2], frontier, frontier_sel);
 }
 
+/// The shop as a full screen: a dense one-line-per-item list on the left,
+/// grouped under the same collapsible category headers the side panel uses, and
+/// the highlighted piece stood next to what it would replace on the right.
+///
+/// The side panel renders the same stock as four wrapped lines an item (name,
+/// stats, comparison, description), which a ten-item shop already outgrows and
+/// the market tier's stock outgrows badly. Same cursor, same rows, same keys:
+/// only the shape changes, so `w`/`s`, Enter, and the collapse toggle behave
+/// identically in both renderings.
+///
+/// Takes its data rather than the `State` it is drawn from, so the layout can
+/// be rendered in a test without standing up a service.
+fn draw_shop_screen(
+    frame: &mut Frame,
+    area: Rect,
+    shop_rows: &[SectionRow],
+    shop: &ShopView,
+    cursor: usize,
+    gold: i64,
+    banked_gold: i64,
+) {
+    let rows = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).split(area);
+    let purse = if banked_gold > 0 {
+        format!("your gold: {gold}  (bank: {banked_gold})")
+    } else {
+        format!("your gold: {gold}")
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled(
+                    shop.shop_name.clone(),
+                    Style::default()
+                        .fg(theme::AMBER_GLOW())
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("   {} - {purse}", shop.npc_name),
+                    Style::default().fg(theme::TEXT_DIM()),
+                ),
+            ]),
+            hint("w/s", "select  Enter buy/fold  b back"),
+            Line::raw(""),
+        ]),
+        rows[0],
+    );
+
+    let cols =
+        Layout::horizontal([Constraint::Percentage(52), Constraint::Percentage(48)]).split(rows[1]);
+
+    // Left: one line an item - name, price, and the upgrade tag. Everything
+    // else moves to the detail pane, so the list stays scannable.
+    let list_w = cols[0].width as usize;
+    let mut list: Vec<Line> = Vec::new();
+    let mut sel = None;
+    for (i, row) in shop_rows.iter().enumerate() {
+        let selected = i == cursor;
+        if selected {
+            sel = Some(list.len());
+        }
+        match row {
+            SectionRow::Header {
+                label,
+                count,
+                collapsed,
+                ..
+            } => list.push(section_header_line(label, *count, *collapsed, selected)),
+            SectionRow::Item { index } => {
+                let Some(e) = shop.entries.get(*index) else {
+                    continue;
+                };
+                let tag = e
+                    .compare_pct
+                    .map(|pct| format!("{}{pct:+}%", if pct > 0 { '\u{25B2}' } else { '\u{25BC}' }))
+                    .unwrap_or_default();
+                let price = format!("{}g", e.price);
+                let marker = if selected { "> " } else { "  " };
+                // Fixed cells, sized once: deriving the name width from this
+                // row's own price and tag lets a long price push the tag off
+                // the column edge, which is how "▲+77%" renders as "▲+7".
+                const PRICE_W: usize = 9;
+                const TAG_W: usize = 7;
+                let name_w = list_w.saturating_sub(marker.len() + PRICE_W + TAG_W);
+                let name_style = {
+                    let base = Style::default().fg(rarity_color(&e.rarity));
+                    if selected {
+                        base.patch(theme::selection_style())
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        base
+                    }
+                };
+                list.push(Line::from(vec![
+                    Span::styled(
+                        format!("{marker}{:<name_w$}", truncate_chars(&e.name, name_w)),
+                        name_style,
+                    ),
+                    Span::styled(
+                        format!("{price:>PRICE_W$}"),
+                        Style::default().fg(if e.affordable {
+                            theme::BADGE_GOLD()
+                        } else {
+                            theme::ERROR()
+                        }),
+                    ),
+                    Span::styled(
+                        format!("{tag:>TAG_W$}"),
+                        Style::default()
+                            .fg(match e.compare_pct {
+                                Some(pct) if pct > 0 => theme::SUCCESS(),
+                                Some(pct) if pct < 0 => theme::ERROR(),
+                                _ => theme::TEXT_DIM(),
+                            })
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+            }
+        }
+    }
+    render_scrolled(frame, cols[0], list, sel);
+
+    // Right: the highlighted piece against what it would replace.
+    let detail_w = (cols[1].width as usize).saturating_sub(2);
+    let entry = shop_rows.get(cursor).and_then(|row| match row {
+        SectionRow::Item { index } => shop.entries.get(*index),
+        SectionRow::Header { .. } => None,
+    });
+    let mut detail: Vec<Line> = Vec::new();
+    match entry {
+        None => detail.push(Line::from(Span::styled(
+            "  A category. Enter folds it; w/s moves on.",
+            Style::default().fg(theme::TEXT_DIM()),
+        ))),
+        Some(e) => {
+            detail.push(Line::from(vec![
+                Span::styled(
+                    e.name.clone(),
+                    Style::default()
+                        .fg(rarity_color(&e.rarity))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("  {}", e.rarity),
+                    Style::default().fg(theme::TEXT_DIM()),
+                ),
+            ]));
+            if let Some(slot) = &e.slot {
+                detail.push(Line::from(Span::styled(
+                    format!("  worn on the {slot}"),
+                    Style::default().fg(theme::TEXT_DIM()),
+                )));
+            }
+            detail.push(Line::raw(""));
+            detail.push(Line::from(Span::styled(
+                format!("  {}", e.stats),
+                Style::default().fg(theme::AMBER()),
+            )));
+            detail.push(Line::raw(""));
+
+            // The direct comparison: what is on your body right now, then the
+            // delta between the two, so the trade reads without arithmetic.
+            match (&e.worn_name, &e.worn_stats) {
+                (Some(name), Some(stats)) => {
+                    detail.push(Line::from(Span::styled(
+                        "  instead of what you wear:",
+                        Style::default().fg(theme::TEXT_DIM()),
+                    )));
+                    detail.push(Line::from(Span::styled(
+                        format!("  {name}"),
+                        Style::default().fg(theme::TEXT_BRIGHT()),
+                    )));
+                    detail.push(Line::from(Span::styled(
+                        format!("  {stats}"),
+                        Style::default().fg(theme::TEXT_DIM()),
+                    )));
+                }
+                _ if e.slot.is_some() => detail.push(Line::from(Span::styled(
+                    "  that slot is empty",
+                    Style::default().fg(theme::TEXT_DIM()),
+                ))),
+                _ => {}
+            }
+            if let Some(line) = compare_line(&e.compare) {
+                detail.push(line);
+            }
+            if let Some(pct) = e.compare_pct {
+                let (arrow, color) = match pct {
+                    p if p > 0 => ('\u{25B2}', theme::SUCCESS()),
+                    p if p < 0 => ('\u{25BC}', theme::ERROR()),
+                    _ => ('=', theme::TEXT_DIM()),
+                };
+                detail.push(Line::from(Span::styled(
+                    format!("  {arrow}{pct:+}% overall"),
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
+                )));
+            }
+            detail.push(Line::raw(""));
+            detail.extend(side_text_wrap(e.desc, LAT_TEXT, detail_w));
+            detail.push(Line::raw(""));
+            detail.push(Line::from(Span::styled(
+                if e.affordable {
+                    format!("  Enter to buy - {}g", e.price)
+                } else {
+                    format!("  {}g - you cannot afford this", e.price)
+                },
+                Style::default()
+                    .fg(if e.affordable {
+                        theme::BADGE_GOLD()
+                    } else {
+                        theme::ERROR()
+                    })
+                    .add_modifier(Modifier::BOLD),
+            )));
+        }
+    }
+    frame.render_widget(Paragraph::new(detail), cols[1]);
+}
+
 /// The board as a full view (wide terminals): a master-detail split - the
 /// postings list on the left, the highlighted posting's full story on the
 /// right. Same cursor and keys as the sidebar `board_panel`, which still
@@ -3316,20 +3646,32 @@ fn vitals(view: &PlayerView, style: VitalStyle) -> Vec<Line<'static>> {
     lines
 }
 
-/// The room side panel. Returns the lines plus, for each foe, the line index of
-/// its roster row and its spawn id, so the caller can record a clickable rect
-/// over each foe (click a foe to lock onto it).
-#[allow(clippy::type_complexity)]
+/// The room panel, split where it is anchored: `body` scrolls in the top of the
+/// rail, `footer` is pinned to its floor. `foe_hits`/`player_hits` index into
+/// `body`.
+struct RoomPanel {
+    body: Vec<Line<'static>>,
+    footer: Vec<Line<'static>>,
+    foe_hits: Vec<(usize, u32)>,
+    player_hits: Vec<(usize, Uuid)>,
+}
+
+/// The room side panel. Alongside the lines it records, for each foe, the line
+/// index of its roster row and its spawn id, so the caller can record a
+/// clickable rect over each foe (click a foe to lock onto it).
 fn room_panel(
     view: &PlayerView,
     usernames: &UsernameLookup<'_>,
     width: usize,
     heading: Option<Heading>,
-) -> (Vec<Line<'static>>, Vec<(usize, u32)>, Vec<(usize, Uuid)>) {
+) -> RoomPanel {
     let mut foe_hits: Vec<(usize, u32)> = Vec::new();
     let mut player_hits: Vec<(usize, Uuid)> = Vec::new();
     let mut lines = vitals(view, VitalStyle::Numbers);
     lines.push(Line::raw(""));
+    // What this room lets you do, before anything you have to read: a shop or a
+    // stable is the reason you walked in here.
+    lines.extend(room_actions(view));
     lines.push(section("Here"));
     // The zone plus its level band, so one glance answers "do I belong here".
     lines.extend(side_text_wrap(&zone_with_band(view), LAT_TEXT, width));
@@ -3473,7 +3815,6 @@ fn room_panel(
                 width,
             ));
         }
-        lines.push(hint("o", "look / interact"));
     }
     if !view.mobs.is_empty() {
         lines.push(section("Foes"));
@@ -3616,8 +3957,18 @@ fn room_panel(
             } else {
                 String::new()
             };
-            if w.adoptable {
-                detail.push_str(", feed it daily (~) and it may take to you as a stray");
+            // The tutorial sentence is worth its two wrapped lines exactly
+            // once: until the first feed. After that the player knows the
+            // mechanic, and the live count is both shorter and more use than
+            // being taught again every time they stand here.
+            match (w.adoptable, w.adopt_streak) {
+                (true, Some((fed, need))) => {
+                    detail.push_str(&format!(" (~ {fed}/{need} days)"));
+                }
+                (true, None) => {
+                    detail.push_str(", feed it daily (~) and it may take to you as a stray");
+                }
+                (false, _) => {}
             }
             lines.extend(side_text_wrap(
                 &format!("{marker}{}{detail}", w.name),
@@ -3667,9 +4018,12 @@ fn room_panel(
             ));
         }
     }
-    lines.push(Line::raw(""));
-    lines.extend(footer_hints(view));
-    (lines, foe_hits, player_hits)
+    RoomPanel {
+        body: lines,
+        footer: footer_hints(view, width),
+        foe_hits,
+        player_hits,
+    }
 }
 
 /// The side panel while a fight is on, in the field layout: the room summary
@@ -5626,7 +5980,95 @@ fn wrap_plain(s: &str, width: usize) -> Vec<String> {
 
 // ---- The footer hint row -------------------------------------------------
 
-fn footer_hints(view: &PlayerView) -> Vec<Line<'static>> {
+/// A bright, room-specific action row: `b  shop here`.
+///
+/// Louder than `hint`, which is for the standing keys that never change. These
+/// are the ones that only work *where you are standing*, so they get the weight.
+fn action_hint(key: &str, label: &str) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!("  {key:<3}"),
+            Style::default()
+                .fg(theme::SUCCESS())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" {label}"),
+            Style::default()
+                .fg(theme::TEXT_BRIGHT())
+                .add_modifier(Modifier::BOLD),
+        ),
+    ])
+}
+
+/// What this room offers that nowhere else does: a merchant, a stable, a craft
+/// station, a portal, a body to raise. Empty in a room with none of it.
+///
+/// These lead the panel instead of trailing it. A twenty-line key catalogue at
+/// the bottom put the one thing that changes from room to room (there is a shop
+/// *here*) below the fold, under fifteen keys that are identical everywhere and
+/// already in the `?` guide.
+fn room_actions(view: &PlayerView) -> Vec<Line<'static>> {
+    let entries = room_action_entries(view);
+    if entries.is_empty() {
+        return Vec::new();
+    }
+    let mut out = vec![section("You can")];
+    out.extend(entries.iter().map(|(key, label)| action_hint(key, label)));
+    out.push(Line::raw(""));
+    out
+}
+
+/// The `(key, label)` table behind `room_actions`, kept separate because
+/// `footer_hints` needs the keys too: a key promoted to the top of the panel is
+/// dropped from the dim standing-key block, so each one is shown once, in the
+/// loud place, instead of twice in two different styles.
+fn room_action_entries(view: &PlayerView) -> Vec<(&'static str, &'static str)> {
+    let mut out: Vec<(&'static str, &'static str)> = Vec::new();
+    if view.dead {
+        return out;
+    }
+    if view.corpse_here && view.can_resurrect {
+        out.push(("g", "raise the fallen"));
+    }
+    if view.shop.is_some() {
+        out.push(("b", "shop here"));
+    }
+    if view.stable.is_some() {
+        out.push(("p", "stable - buy a pet"));
+    }
+    if view.crafting.is_some() {
+        out.push(("u", "craft here"));
+    }
+    if view.nodes.iter().any(|n| n.gatherable) {
+        out.push(("y", "gather here"));
+    }
+    if view.taming.as_ref().is_some_and(|t| !t.entries.is_empty()) {
+        out.push(("q", "tame a beast"));
+    }
+    if view.portal.is_some() {
+        out.push(("i", "the ways - travel"));
+    }
+    if view.housing.is_some() {
+        out.push(("n", "housing ledger"));
+    }
+    // One key, two errands: `o` opens the look list, and picking the board out
+    // of it opens the board. So a board room says so, and any other room with
+    // something worth looking at gets the general form - which used to be a
+    // key hint sitting *inside* the "Of note" list, styled like one of the
+    // features you could walk up to.
+    if view.board.is_some() {
+        out.push(("o", "read the board"));
+    } else if !view.features.is_empty() {
+        out.push(("o", "look / interact"));
+    }
+    if view.pet.is_some() {
+        out.push(("~", "feed companion"));
+    }
+    out
+}
+
+fn footer_hints(view: &PlayerView, width: usize) -> Vec<Line<'static>> {
     let mut lines = vec![section("Commands")];
     if view.dead {
         lines.push(Line::from(Span::styled(
@@ -5642,64 +6084,96 @@ fn footer_hints(view: &PlayerView) -> Vec<Line<'static>> {
         lines.push(hint("r", "release to temple"));
         return lines;
     }
-    if view.corpse_here && view.can_resurrect {
-        lines.push(hint("g", "resurrect the fallen"));
-    }
     if view.in_combat_with.is_some() {
+        // Mid-fight these are the only keys that matter, and they are worth
+        // their lines: everything else waits.
         lines.push(hint("space/x", "strike"));
         lines.push(hint("1-9 0", "use ability"));
         lines.push(hint("z", "flee"));
-    } else {
-        lines.push(hint("wasd/arrows", "move"));
-        let at_town_square = view.room_name == "Embergate - Town Square";
-        if at_town_square && view.exits.iter().any(|(dir, _)| *dir == Dir::South) {
-            lines.push(hint("s", "King's Road"));
+        lines.push(hint("?", "all keys"));
+        return lines;
+    }
+    // Out of combat this block is the standing keys: identical in every room in
+    // the world, so they pack into a few dim lines rather than fifteen. What is
+    // specific to *this* room leads the panel instead (`room_actions`), and the
+    // full reference lives one keypress away in the `?` guide.
+    let mut chips = vec!["wasd move", "space attack", "o look"];
+    let has_up = view.exits.iter().any(|(dir, _)| *dir == Dir::Up);
+    let has_down = view.exits.iter().any(|(dir, _)| *dir == Dir::Down);
+    let has_danger_down = view
+        .exits
+        .iter()
+        .any(|(dir, label)| *dir == Dir::Down && label.contains("dangerous Frontier"));
+    match (has_up, has_down) {
+        (true, true) => chips.push("< > up/down"),
+        (true, false) => chips.push("< up"),
+        (false, true) if has_danger_down => chips.push("> the Frontier"),
+        (false, true) => chips.push("> down"),
+        (false, false) => {}
+    }
+    chips.extend([
+        "c sheet",
+        "v abilities",
+        "t bag",
+        "j quests",
+        "k titles",
+        "m map",
+        "[ ] scroll",
+        "r recall",
+        "; haven",
+        "f follow",
+        "' say",
+        "! ranks",
+        "Esc leave",
+    ]);
+    // What the room promoted into "You can" does not repeat down here.
+    let promoted = room_action_entries(view);
+    chips.retain(|chip| {
+        let key = chip.split(' ').next().unwrap_or("");
+        !promoted.iter().any(|(k, _)| *k == key)
+    });
+    for text in pack_hint_chips(&chips, width) {
+        lines.push(Line::from(Span::styled(
+            format!("  {text}"),
+            Style::default().fg(theme::TEXT_DIM()),
+        )));
+    }
+    lines.push(hint("?", "all keys"));
+    lines
+}
+
+/// Pack short `key label` chips into `·`-joined lines that fit `width`.
+///
+/// The standing-key block is rendered into a fixed-width rail with no wrapping
+/// (`draw_room_side` paints pre-wrapped lines), so a line built without knowing
+/// the width is simply chopped at the edge: `f follow` came out as `f follo`.
+/// Packing to the measured width means the same block reads on a 28-column rail
+/// and a 60-column one, just in more or fewer lines.
+fn pack_hint_chips(chips: &[&str], width: usize) -> Vec<String> {
+    const SEP: &str = " · ";
+    const INDENT: usize = 2;
+    let budget = width.saturating_sub(INDENT).max(1);
+    let mut lines: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for chip in chips {
+        let need = if current.is_empty() {
+            UnicodeWidthStr::width(*chip)
+        } else {
+            UnicodeWidthStr::width(current.as_str())
+                + UnicodeWidthStr::width(SEP)
+                + UnicodeWidthStr::width(*chip)
+        };
+        if !current.is_empty() && need > budget {
+            lines.push(std::mem::take(&mut current));
         }
-        // Vertical exits aren't on wasd, so spell out the stair keys only when
-        // this room actually has a way up or down.
-        let has_up = view.exits.iter().any(|(dir, _)| *dir == Dir::Up);
-        let has_down = view.exits.iter().any(|(dir, _)| *dir == Dir::Down);
-        let has_danger_down = view
-            .exits
-            .iter()
-            .any(|(dir, label)| *dir == Dir::Down && label.contains("dangerous Frontier"));
-        match (has_up, has_down) {
-            (true, true) => lines.push(hint("< >", "climb up / go down")),
-            (true, false) => lines.push(hint("<", "climb up")),
-            (false, true) if has_danger_down => lines.push(hint(">", "dangerous Frontier")),
-            (false, true) => lines.push(hint(">", "go down")),
-            (false, false) => {}
+        if !current.is_empty() {
+            current.push_str(SEP);
         }
-        lines.push(hint("space", "attack"));
-        lines.push(hint("o", "look at things"));
+        current.push_str(chip);
     }
-    lines.push(hint("c v t", "sheet abilities bag"));
-    lines.push(hint("j k", "quests titles"));
-    lines.push(hint("r f", "recall follow"));
-    lines.push(hint(";", "nearest haven"));
-    lines.push(hint(": /", "set waypoint / warp"));
-    if view.pet.is_some() {
-        lines.push(hint("~", "feed companion"));
+    if !current.is_empty() {
+        lines.push(current);
     }
-    lines.push(hint("'", "say (/z zone, /w world)"));
-    if view.shop.is_some() {
-        lines.push(hint("b", "shop"));
-    }
-    if view.stable.is_some() {
-        lines.push(hint("p", "stable (pets)"));
-    }
-    if view.housing.is_some() {
-        lines.push(hint("n", "housing ledger"));
-    }
-    if view.crafting.is_some() {
-        lines.push(hint("u", "craft (station here)"));
-    }
-    if view.portal.is_some() {
-        lines.push(hint("i", "the ways (portal)"));
-    }
-    lines.push(hint("m", "world atlas"));
-    lines.push(hint("!", "leaderboard"));
-    lines.push(hint("Esc", "leave (press twice)"));
     lines
 }
 
@@ -6157,6 +6631,81 @@ fn append_long_word(
         }
         line.push(ch);
     }
+}
+
+/// A spacer line: no spans, or nothing but whitespace in them.
+fn is_blank_line(line: &Line<'_>) -> bool {
+    line.spans.iter().all(|s| s.content.trim().is_empty())
+}
+
+/// Rows to reserve at the floor of the rail for the standing-key block, or
+/// `None` when it should stay ordinary scrolling content at the end of the
+/// body.
+///
+/// It is anchored only while it leaves the room itself at least half the rail.
+/// Pinning it on a short terminal would trade the dead gap at the bottom of a
+/// tall one for something worse: the room's own state squeezed into four rows
+/// under a key list that never changes.
+fn footer_anchor(footer_rows: usize, height: u16) -> Option<u16> {
+    (footer_rows > 0 && footer_rows * 2 <= height as usize).then_some(footer_rows as u16)
+}
+
+/// Fit the room panel into `height` rows: the vitals block (everything down to
+/// the first spacer) stays pinned at the top, the rest scrolls by `prev_off`,
+/// and a `+N more` marker takes the last row whenever content is still hidden
+/// below. Returns the lines to render, how many are pinned, and the clamped
+/// offset, the last two so the caller can map a line index to its screen row
+/// for click targets.
+///
+/// Pure, because the arithmetic is fiddly: it counts **wrapped rows**, not
+/// logical lines (one wildlife entry is three rows in a narrow rail), and an
+/// off-by-one here either hides a row with no marker or reports the wrong
+/// count.
+fn scroll_room_panel(
+    mut lines: Vec<Line<'static>>,
+    prev_off: usize,
+    width: usize,
+    height: usize,
+) -> (Vec<Line<'static>>, usize, usize) {
+    let pinned = lines
+        .iter()
+        .position(is_blank_line)
+        .map(|i| i + 1)
+        .unwrap_or(0)
+        .min(lines.len());
+    let body_h = height.saturating_sub(pinned);
+    let body: Vec<Line<'static>> = lines.split_off(pinned);
+    let off = scroll_offset(prev_off, &body, None, width, body_h);
+    let mut shown: Vec<Line<'static>> = body.into_iter().skip(off).collect();
+    let total_rows: usize = shown.iter().map(|line| line_rows(line, width)).sum();
+    // Only when something is genuinely below the fold. Reserving the marker row
+    // unconditionally pushed the last line off the final page and then reported
+    // it as "+1 more", which no amount of scrolling could ever reach.
+    if body_h > 0 && total_rows > body_h {
+        let room_for = body_h - 1; // the last row is the marker's
+        let mut used = 0;
+        let mut fits = 0;
+        for line in &shown {
+            let rows = line_rows(line, width);
+            if used + rows > room_for {
+                break;
+            }
+            used += rows;
+            fits += 1;
+        }
+        let hidden = shown.len() - fits;
+        if hidden > 0 {
+            shown.truncate(fits);
+            shown.push(Line::from(Span::styled(
+                format!("  +{hidden} more  [ ] to scroll"),
+                Style::default()
+                    .fg(theme::AMBER_DIM())
+                    .add_modifier(Modifier::BOLD),
+            )));
+        }
+    }
+    lines.extend(shown);
+    (lines, pinned, off)
 }
 
 fn section(title: &str) -> Line<'static> {
