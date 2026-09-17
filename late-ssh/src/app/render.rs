@@ -256,6 +256,9 @@ struct DrawContext<'a> {
     clubhouse_bot_id: Option<uuid::Uuid>,
     /// The clubhouse composer footer; built only on that screen.
     clubhouse_composer: Option<chat::ui::ComposerBlockView<'a>>,
+    /// A chat overlay that lands on the Lounge (a `/summary` or reaction list
+    /// requested on Home); the Lounge composer itself opens none.
+    clubhouse_overlay: Option<&'a crate::app::common::overlay::Overlay>,
     artboard_interacting: bool,
     leaderboard: &'a Arc<LeaderboardData>,
     now_playing: Option<&'a NowPlaying>,
@@ -1300,6 +1303,7 @@ impl App {
                         clubhouse_graybeard_id: self.clubhouse_graybeard_id,
                         clubhouse_bot_id: self.clubhouse_bot_id,
                         clubhouse_composer,
+                        clubhouse_overlay: self.chat.overlay(),
                         artboard_interacting: self.artboard_interacting,
                         leaderboard: &self.leaderboard,
                         now_playing: now_playing.as_ref(),
@@ -1864,6 +1868,7 @@ impl App {
                     graybeard_user_id: ctx.clubhouse_graybeard_id,
                     bot_user_id: ctx.clubhouse_bot_id,
                     composer: ctx.clubhouse_composer.take(),
+                    overlay: ctx.clubhouse_overlay,
                 },
             ),
             Screen::Zen => {
@@ -2155,6 +2160,7 @@ impl App {
                 ctx.room_search_modal_state,
                 ctx.chat_state,
                 ctx.user_id,
+                room_search_modal::state::PickerScope::for_screen(screen),
             );
         }
 

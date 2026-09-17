@@ -37,7 +37,10 @@ use crate::app::ai::translate::{TranslationEvent, TranslationOutcome, Translatio
 use crate::app::common::overlay::{Overlay, OverlayInk, OverlayLine, OverlaySpan};
 
 use crate::app::common::status::Status;
-use crate::app::common::{composer, mentions, primitives::Banner};
+use crate::app::common::{
+    composer, mentions,
+    primitives::{Banner, Screen},
+};
 use crate::app::help_modal::data::HelpTopic;
 use crate::app::notify::{Notification, Notifier};
 use crate::authz::Permissions;
@@ -199,6 +202,43 @@ impl PendingClipboardImageUpload {
 
     fn is_expired(&self) -> bool {
         self.requested_at.elapsed() >= CLIPBOARD_IMAGE_REQUEST_TIMEOUT
+    }
+}
+
+/// Whether a submitted `/` draft runs as a command. The Lounge composer is
+/// plain speech (`Disabled`); every other chat composer takes commands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComposerCommands {
+    Enabled,
+    Disabled,
+}
+
+impl ComposerCommands {
+    pub fn for_screen(screen: Screen) -> Self {
+        match screen {
+            Screen::Clubhouse => Self::Disabled,
+            Screen::Dashboard
+            | Screen::Arcade
+            | Screen::Games
+            | Screen::Lateania
+            | Screen::Rebels
+            | Screen::Nethack
+            | Screen::Dcss
+            | Screen::Brogue
+            | Screen::Dopewars
+            | Screen::Bashquest
+            | Screen::Codekeep
+            | Screen::Usurper
+            | Screen::GreenDragon
+            | Screen::Darkroom
+            | Screen::Artboard
+            | Screen::Profiles
+            | Screen::Leaderboard
+            | Screen::Zen
+            | Screen::DailyMatch
+            | Screen::HouseTable
+            | Screen::Scratchpad => Self::Enabled,
+        }
     }
 }
 
@@ -3451,8 +3491,21 @@ impl ChatState {
         self.open_overlay("Active Users", self.active_user_lines());
     }
 
-    pub fn submit_composer(&mut self, keep_open: bool, _from_dashboard: bool) -> Option<Banner> {
+    pub fn submit_composer(
+        &mut self,
+        keep_open: bool,
+        commands: ComposerCommands,
+    ) -> Option<Banner> {
         let body = self.composer.lines().join("\n").trim_end().to_string();
+
+        match (commands, is_command_draft(&body)) {
+            (ComposerCommands::Disabled, true) => {
+                return Some(Banner::error(
+                    "Commands are off in the Lounge, use them from Home",
+                ));
+            }
+            (ComposerCommands::Disabled, false) | (ComposerCommands::Enabled, _) => {}
+        }
 
         if body.trim() == "/binds" {
             self.clear_composer_after_submit();
@@ -7933,6 +7986,17 @@ pub(crate) fn cup_art(kind: CupKind, variant: u8) -> String {
         CupKind::Tea => "  \\___/",
     };
     format!("{steam}\n{cup}")
+}
+
+/// Whether a draft is a command attempt rather than speech: its first word
+/// leads with `/`. A bare `/` and a `//` aside are speech, as they are to
+/// `unknown_slash_command`. Multi-line drafts count, since several command
+/// parsers take a body that runs over lines.
+fn is_command_draft(input: &str) -> bool {
+    match input.split_whitespace().next() {
+        Some("/") | Some("//") | None => false,
+        Some(word) => word.starts_with('/'),
+    }
 }
 
 fn unknown_slash_command(input: &str) -> Option<&str> {
