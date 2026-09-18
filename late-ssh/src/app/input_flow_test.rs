@@ -3647,6 +3647,18 @@ async fn f_favorites_the_bugs_room_from_the_rail() {
     ChatRoomMember::join(&client, bugs.id, viewer.id)
         .await
         .expect("join bugs");
+    // Seeded before the app starts: a raw insert mid-test is never broadcast,
+    // so it would only render if an unrelated refresh happened to land after it.
+    ChatMessage::create(
+        &client,
+        ChatMessageParams {
+            room_id: bugs.id,
+            user_id: viewer.id,
+            body: "---BUG--- a report to read".to_string(),
+        },
+    )
+    .await
+    .expect("create message");
 
     let mut app = make_app(test_db.db.clone(), viewer.id, "f-fav-bugs-flow-it");
     app.resize(160, 32).expect("resize test terminal");
@@ -3655,6 +3667,7 @@ async fn f_favorites_the_bugs_room_from_the_rail() {
     // Core order is lounge, then bugs: one step right lands on it.
     app.handle_input(b"l");
     assert_eq!(app.chat.selected_room_id, Some(bugs.id));
+    wait_for_render_contains(&mut app, "a report to read").await;
 
     app.handle_input(b"f");
     wait_for_render_contains(&mut app, "Added to favorites").await;
@@ -3667,17 +3680,6 @@ async fn f_favorites_the_bugs_room_from_the_rail() {
 
     // With a message selected, `f` belongs to the reaction leader and never
     // reaches the favorite toggle: the favorite stays exactly as it was.
-    ChatMessage::create(
-        &client,
-        ChatMessageParams {
-            room_id: bugs.id,
-            user_id: viewer.id,
-            body: "---BUG--- a report to read".to_string(),
-        },
-    )
-    .await
-    .expect("create message");
-    wait_for_render_contains(&mut app, "a report to read").await;
     app.handle_input(b"j");
     assert!(app.chat.selected_message_id.is_some());
     app.handle_input(b"f");
