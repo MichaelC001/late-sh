@@ -243,6 +243,7 @@ struct DrawContext<'a> {
     directory_state: &'a crate::app::directory::state::DirectoryState,
     clubhouse_state: &'a crate::app::clubhouse::state::State,
     clubhouse_own_username: &'a str,
+    nightcap_state: &'a crate::app::nightcap::state::State,
     /// Resolved name flair (color style and rented title) for clubhouse name
     /// labels.
     clubhouse_name_flair: &'a std::collections::HashMap<
@@ -1301,6 +1302,7 @@ impl App {
                         directory_state: &self.directory_state,
                         clubhouse_state: &self.clubhouse,
                         clubhouse_own_username: self.profile_state.profile().username.as_str(),
+                        nightcap_state: &self.nightcap,
                         clubhouse_name_flair: &self.name_flair,
                         clubhouse_lounge_messages,
                         clubhouse_graybeard_id: self.clubhouse_graybeard_id,
@@ -1885,6 +1887,13 @@ impl App {
                     look: ctx.city_look,
                 },
             ),
+            Screen::Nightcap => crate::app::nightcap::ui::draw(
+                frame,
+                content_area,
+                crate::app::nightcap::ui::NightcapView {
+                    state: ctx.nightcap_state,
+                },
+            ),
             Screen::Zen => {
                 let view = crate::app::zen::ui::ZenView {
                     zen: ctx.zen,
@@ -2306,7 +2315,8 @@ fn app_frame_title(screen: Screen, ctx: &DrawContext<'_>) -> Line<'static> {
                 ))
             || (*tab_screen == Screen::Dashboard
                 && matches!(screen, Screen::DailyMatch | Screen::HouseTable))
-            || (*tab_screen == Screen::Clubhouse && screen == Screen::City);
+            || (*tab_screen == Screen::Clubhouse
+                && matches!(screen, Screen::City | Screen::Nightcap));
         let style = if active {
             Style::default()
                 .fg(theme::BG_SELECTION())
@@ -2337,6 +2347,7 @@ fn app_frame_title(screen: Screen, ctx: &DrawContext<'_>) -> Line<'static> {
         Screen::Profiles => "Profiles",
         Screen::Leaderboard => "Leaderboards",
         Screen::Clubhouse => "Clubhouse",
+        Screen::Nightcap => "Nightcap",
         Screen::City => "Undercity",
         Screen::DailyMatch => "Daily Match",
         Screen::HouseTable => "House Table",

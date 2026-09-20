@@ -76,6 +76,10 @@ pub enum Screen {
     Profiles,
     Leaderboard,
     Clubhouse,
+    /// A small bar out back of the Clubhouse (`app/nightcap`): a handful of
+    /// sittable seats and a round of drinks, no walking. Entered with `n`
+    /// from the Clubhouse, absent from the Tab cycle; Esc returns there.
+    Nightcap,
     /// The Undercity (`app/deadchannel/city`): deadchannel's street under
     /// the Clubhouse. `0` again on the Clubhouse goes down, runners only;
     /// `0` or Enter at the wire comes back up. Not in the Tab cycle.
@@ -127,6 +131,7 @@ impl Screen {
             Screen::DailyMatch => Screen::Dashboard,
             Screen::HouseTable => Screen::Dashboard,
             Screen::Scratchpad => Screen::Dashboard,
+            Screen::Nightcap => Screen::Clubhouse,
         }
     }
 
@@ -155,6 +160,7 @@ impl Screen {
             Screen::DailyMatch => Screen::Dashboard,
             Screen::HouseTable => Screen::Dashboard,
             Screen::Scratchpad => Screen::Dashboard,
+            Screen::Nightcap => Screen::Clubhouse,
         }
     }
 }
@@ -208,6 +214,7 @@ pub fn draw_tabs(frame: &mut Frame, area: Rect, current: Screen) {
         Screen::Profiles => "Profiles",
         Screen::Leaderboard => "Leaderboards",
         Screen::Clubhouse => "Clubhouse",
+        Screen::Nightcap => "Nightcap",
         Screen::City => "Undercity",
         Screen::DailyMatch => "Daily Match",
         Screen::HouseTable => "House Table",

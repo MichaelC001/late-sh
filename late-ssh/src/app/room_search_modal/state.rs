@@ -44,6 +44,7 @@ impl PickerScope {
             | Screen::Profiles
             | Screen::Leaderboard
             | Screen::Clubhouse
+            | Screen::Nightcap
             | Screen::City
             | Screen::DailyMatch
             | Screen::HouseTable
