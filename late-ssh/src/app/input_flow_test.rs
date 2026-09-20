@@ -659,6 +659,53 @@ async fn zero_twice_goes_under_the_clubhouse_for_runners_only() {
     wait_for_render_contains(&mut app, " Clubhouse ").await;
 }
 
+/// `/leave #deadchannel` on one session closes the street under every
+/// session the runner has open, on this replica and every other: the looks
+/// directory drops them, and the tick edge that copies it walks them back
+/// up. The gate on `0` only guards the descent.
+#[tokio::test]
+async fn leaving_the_deadchannel_walks_a_standing_runner_back_up() {
+    use crate::app::deadchannel::runner::state::Look;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    let test_db = new_test_db().await;
+    let user = create_test_user(&test_db.db, "undercity-leave-it").await;
+    let client = test_db.db.get().await.expect("db client");
+    let lounge = ChatRoom::ensure_lounge(&client)
+        .await
+        .expect("ensure lounge room");
+    ChatRoomMember::join(&client, lounge.id, user.id)
+        .await
+        .expect("join lounge room");
+    let mut app = make_app(test_db.db.clone(), user.id, "undercity-leave-flow-it");
+
+    // A live directory, the shape the replica's listener feeds.
+    let mut rng = StdRng::seed_from_u64(7);
+    let (looks_tx, looks_rx) =
+        tokio::sync::watch::channel(Arc::new(HashMap::from([(user.id, Look::random(&mut rng))])));
+    app.runner_looks = looks_rx.borrow().clone();
+    app.runner_looks_rx = looks_rx;
+
+    app.handle_input(b"0");
+    wait_for_render_contains(&mut app, " Clubhouse ").await;
+    app.handle_input(b"0");
+    wait_for_render_contains(&mut app, " Undercity ").await;
+
+    // The leave lands (on any session, on any replica): the directory drops
+    // the runner, and this session cannot stay down there.
+    looks_tx.send_replace(Arc::new(HashMap::new()));
+    wait_for_render_not_contains(&mut app, " Undercity ").await;
+    assert!(!app.is_runner());
+    let frame = render_plain(&mut app);
+    assert!(
+        frame.contains(" Clubhouse "),
+        "expected the leave to walk the runner up to the clubhouse; frame={frame:?}"
+    );
+}
+
 /// A runner's session parked on the Undercity, one row north of the wire
 /// stairs: at the railing, where the popover offers the ledge.
 async fn runner_at_the_railing(

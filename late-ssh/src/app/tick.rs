@@ -782,6 +782,15 @@ impl App {
             if self.runner_looks_rx.has_changed().unwrap_or(false) {
                 self.runner_looks = self.runner_looks_rx.borrow_and_update().clone();
                 self.chat_ctx_epoch += 1;
+                // Leaving #deadchannel on one session closes the undercity
+                // for every session the runner has open, here and on every
+                // other replica. This edge is the only place in the process
+                // that can notice: the gate on `0` guards the descent, not
+                // the standing there.
+                if self.screen == Screen::City && !self.is_runner() {
+                    self.set_screen(Screen::Clubhouse);
+                    changed = true;
+                }
             }
             // The pot resolves on the same edge, and for the same reason:
             // the panel reads owned values, and only a change the viewer can

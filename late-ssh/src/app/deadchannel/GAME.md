@@ -964,7 +964,11 @@ model, the multi-replica rule throughout: the day roll and every spend
 are conditional claims on the row (`WHERE day < $today`, `WHERE
 rations_left > 0 ... RETURNING`), so several replicas and two devices of
 one person always agree. The invited join creates the row with a random
-starter look and no band. Piece ownership rides `user_purchases` with a
+starter look and no band. Leaving #deadchannel never deletes it: the row
+carries a `left_at` stamp, so the gate shuts and the portrait goes dark
+while the character (its look, and everything phase 2 grows beside it)
+waits for an invited rejoin, which clears the stamp and hands back the
+same face. Piece ownership rides `user_purchases` with a
 new catalog category; the mark reaches the chat author line through the
 existing chat label query, never a second directory.
 

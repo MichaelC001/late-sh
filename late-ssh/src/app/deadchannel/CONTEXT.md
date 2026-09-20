@@ -149,7 +149,9 @@ payload, and parse), and `metrics::record_first_contact_beat` /
 The runner's seams are as thin: `ChatService::join_deadchannel_room`
 creates the row (`DeadchannelRunner::ensure_for_user`, a conditional
 insert, so two devices joining at once share one face; a fresh row is
-the `RunnerCreated` beat), `State.runner_looks` holds the directory
+the `RunnerCreated` beat, a return the `RunnerDoor::Returned` one),
+`ChatService::leave_room` stamps the leave for the `deadchannel` kind
+(`mark_left`, the `RunnerDoor::Left` beat), `State.runner_looks` holds the directory
 service (`main.rs` starts its listener), `App.runner_looks` is the
 session's owned copy refreshed on the 1 Hz edge in `tick.rs` (bumping
 `chat_ctx_epoch`, so the rows rebuild once per change), and chat's rows
@@ -319,10 +321,15 @@ the art before a single purchase is wired.
 - **Where it is reached.** Under the clubhouse: `0` lands on the
   clubhouse, `0` again on the clubhouse goes down to the undercity, `0`
   on the undercity comes back up. Runners only (`App::is_runner`: a look
-  in `App.runner_looks` for this user, so a `deadchannel_runners` row,
-  the one thing `/join #deadchannel` creates; the app-wide gate for
-  everything under the clubhouse, not an `app_flags` switch, which are
-  process-wide, not per user); anyone else stays on the clubhouse. Not in the Tab cycle
+  in `App.runner_looks` for this user, so a `deadchannel_runners` row
+  without a leave stamp; the app-wide gate for everything under the
+  clubhouse, not an `app_flags` switch, which are process-wide, not per
+  user); anyone else stays on the clubhouse. The gate guards the descent,
+  so the standing there is guarded on the 1 Hz edge in `tick.rs`: when the
+  directory changes and this user is no longer in it, a session on
+  `Screen::City` is walked back up to the clubhouse. That is the only
+  place in the process that can notice a leave taken on another session or
+  another replica. Not in the Tab cycle
   (`Screen::City.next()`/`prev()` return the clubhouse), no tab of its
   own, the clubhouse tab stays lit under it, title "Undercity". Enter at
   the wire goes back up to the clubhouse. The wiring is thin on purpose
@@ -449,10 +456,24 @@ the art before a single purchase is wired.
 - `deadchannel_runners` (migration 172, model
   `late-core/src/models/deadchannel_runner.rs`): one row per user
   (`user_id` unique, cascade on delete), `look` JSONB in the shape
-  `{"hood": {"piece", "tint"}, "eyes": ..., "coat": ..., "mark": {"glyph"}}`.
-  Created only by the invited join; phase 2 grows it column by column.
-  Insert and update fire `deadchannel_runner_changed` (payload: the user
-  id, for logs only; listeners re-read every look).
+  `{"hood": {"piece", "tint"}, "eyes": ..., "coat": ..., "mark": {"glyph"}}`,
+  and `left_at` (migration 187), the leave stamp. Created only by the
+  invited join; phase 2 grows it column by column. Insert and update fire
+  `deadchannel_runner_changed` (payload: the user id, for logs only;
+  listeners re-read every look).
+  - `/leave #deadchannel` stamps `left_at` (`mark_left`, conditional on
+    the stamp being absent, so leaving twice writes and notifies once) and
+    never deletes: the character keeps its row, its id, and its face, and
+    an invited rejoin clears the stamp and gets that face back
+    (`ensure_for_user`, whose `RunnerOrigin` is `Created`, `Returned`, or
+    `Existing`, one statement per outcome). A stamp is also what keeps the
+    directory honest, because the trigger fires on insert and update only:
+    a delete would notify nobody and leave the undercity open on every
+    replica that missed it.
+  - `list_looks` serves only rows with `left_at IS NULL`, so one write
+    closes the gate and drops the portrait everywhere. A runner who left
+    disappears from the #deadchannel gutter retroactively, old messages
+    included: going dark takes the face with it.
 
 - `first_contact_glitch_hits` (int) + `first_contact_glitch_day`
   (YYYY-MM-DD) + `first_contact_glitch_day_hits` (int): stage-1 bursts.
