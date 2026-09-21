@@ -164,6 +164,16 @@ impl ReportKind {
     }
 }
 
+/// What a game-room join found. Public game rooms (house tables, stream
+/// chats, match chats) take anyone who is not banned; a match claimed while
+/// match chat was players-only keeps a private room, and a spectator staying
+/// outside it is a normal answer, not a failure to report.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameRoomJoin {
+    Joined(Uuid),
+    PlayersOnly,
+}
+
 /// Why a gild did not happen. Every arm is a rule the buyer can act on, and
 /// every arm costs nothing: a refused gild never touches the ledger. Kept
 /// closed so a new guard has to write its own line rather than fall into a
@@ -4772,11 +4782,14 @@ impl ChatService {
         tokio::spawn(
             async move {
                 match service.join_game_room(user_id, room_id).await {
-                    Ok(room_id) => {
+                    Ok(GameRoomJoin::Joined(room_id)) => {
                         let _ = service
                             .evt_tx
                             .send(ChatEvent::GameRoomJoined { user_id, room_id });
                     }
+                    // Nothing to tell the user: the surface that asked for
+                    // this join draws no chat when the join does not land.
+                    Ok(GameRoomJoin::PlayersOnly) => {}
                     Err(e) => {
                         let _ = service.evt_tx.send(ChatEvent::RoomFailed {
                             user_id,
@@ -4801,7 +4814,11 @@ impl ChatService {
         Ok(room.id)
     }
 
-    pub(crate) async fn join_game_room(&self, user_id: Uuid, room_id: Uuid) -> Result<Uuid> {
+    pub(crate) async fn join_game_room(
+        &self,
+        user_id: Uuid,
+        room_id: Uuid,
+    ) -> Result<GameRoomJoin> {
         let client = self.db.get().await?;
         let room = ChatRoom::get(&client, room_id)
             .await?
@@ -4809,19 +4826,20 @@ impl ChatService {
         if room.kind != "game" {
             anyhow::bail!("Only game rooms can be joined here");
         }
-        // Private game rooms are daily match chats: membership is fixed at
-        // claim time to the two players, so joining is only the idempotent
-        // re-join that kicks off the tail/list refresh chain. Nobody else
-        // may enter.
+        // House tables, stream chats and match chats are public: anyone who
+        // opens the surface joins and talks. The one private flavor left is
+        // a match claimed while match chat was players-only, where the two
+        // memberships written at claim time are the whole room; a spectator
+        // walking into one stays out, which is an outcome and not an error.
         if room.visibility != "public"
             && !ChatRoomMember::is_member(&client, room.id, user_id).await?
         {
-            anyhow::bail!("this match chat is players only");
+            return Ok(GameRoomJoin::PlayersOnly);
         }
         // A ban is what keeps someone out of a public game room, and
         // `ChatRoomMember::join` is where that is enforced for every join path.
         ChatRoomMember::join(&client, room.id, user_id).await?;
-        Ok(room.id)
+        Ok(GameRoomJoin::Joined(room.id))
     }
 
     async fn open_public_room(&self, user_id: Uuid, slug: &str) -> Result<Uuid> {

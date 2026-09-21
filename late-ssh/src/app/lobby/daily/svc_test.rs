@@ -1248,7 +1248,7 @@ async fn finished_results_linger_until_each_player_acks() {
 }
 
 #[tokio::test]
-async fn claim_creates_private_match_chat_with_voice() {
+async fn claim_creates_match_chat_with_voice() {
     let test_db = new_test_db().await;
     let challenger = create_test_user(&test_db.db, "daily-chat-challenger").await;
     let opponent = create_test_user(&test_db.db, "daily-chat-opponent").await;
@@ -1273,14 +1273,17 @@ async fn claim_creates_private_match_chat_with_voice() {
         .expect("load chat room")
         .expect("chat room exists");
     assert_eq!(room.kind, "game");
-    assert_eq!(room.visibility, "private");
+    // Public, like the house tables: a spectator who opens the board joins
+    // and talks. The two players are seeded here all the same, so the room
+    // is theirs before anyone wanders in.
+    assert_eq!(room.visibility, "public");
     assert!(!room.auto_join);
     assert_eq!(
         room.slug.as_deref(),
         Some(format!("daily-{}", claimed.id).as_str())
     );
 
-    // Exactly the two players are members.
+    // Both players are members from the claim.
     assert!(
         ChatRoomMember::is_member(&client, chat_room_id, challenger.id)
             .await

@@ -339,7 +339,7 @@ fn draw_panels(
     );
     draw_cue_panel(frame, rows[1], board, pool, shot);
     if legend_rows > 0 {
-        let chat = !board.spectating && detail.row.chat_room_id.is_some();
+        let chat = board.shows_chat(detail);
         let keys = legend_keys(daily, board, detail, pool);
         let lines: Vec<Line<'static>> = legend_rows_for(keys, chat)
             .into_iter()

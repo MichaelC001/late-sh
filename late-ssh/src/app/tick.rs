@@ -475,18 +475,24 @@ impl App {
         // Modal cursor, pending claim, and glow follow the daily snapshot.
         self.lobby.sync(&self.daily);
         // The match chat room id only becomes known once the board's row
-        // loads, so the visible-room sync (read marker + tail) and the
-        // one-time idempotent join both key off the loaded detail here
-        // rather than off the screen switch.
+        // loads, so the one-time idempotent join and the visible-room sync
+        // (read marker + tail) both key off the loaded detail here rather
+        // than off the screen switch. Membership is what the pane hangs on
+        // for a spectator, so it is read back before the sync: the join
+        // aims at the room the match carries, the pane follows the room
+        // this session is actually in.
         if self.screen == crate::app::common::primitives::Screen::DailyMatch {
-            self.sync_visible_chat_room();
-            if let Some(chat_room_id) = self.daily.board_chat_room_id()
-                && let Some(board) = self.daily.board.as_mut()
-                && !board.chat_join_requested
-            {
-                board.chat_join_requested = true;
-                self.chat.join_game_room_chat(chat_room_id);
+            if let Some(chat_room_id) = self.daily.board_match_chat_room_id() {
+                let joined = self.chat.room_by_id(chat_room_id).is_some();
+                if let Some(board) = self.daily.board.as_mut() {
+                    board.chat_joined = joined;
+                    if !board.chat_join_requested {
+                        board.chat_join_requested = true;
+                        self.chat.join_game_room_chat(chat_room_id);
+                    }
+                }
             }
+            self.sync_visible_chat_room();
         }
         let house_changed = self.house.tick();
         if self.screen == crate::app::common::primitives::Screen::HouseTable {

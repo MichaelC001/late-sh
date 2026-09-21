@@ -4437,6 +4437,53 @@ async fn a_non_stream_game_room_has_no_owner_moderator() {
     );
 }
 
+/// The lobby's `spectate` row opens any live match's board, and the board
+/// draws the match chat for whoever is watching. Membership is the auth for
+/// the tail and for the send, so the join is the whole permission story:
+/// a third party must get into the room and be able to talk in it.
+#[tokio::test]
+async fn a_spectator_joins_a_match_chat_and_talks() {
+    let test_db = new_test_db().await;
+    let service = ChatService::new(
+        test_db.db.clone(),
+        NotificationService::new(test_db.db.clone()),
+    );
+    let client = test_db.db.get().await.expect("db client");
+
+    let challenger = create_test_user(&test_db.db, "match_challenger").await;
+    let opponent = create_test_user(&test_db.db, "match_opponent").await;
+    let spectator = create_test_user(&test_db.db, "match_spectator").await;
+    let room = ChatRoom::create_daily_match_room(
+        &client,
+        "chess",
+        &format!("daily-{}", Uuid::now_v7()),
+        challenger.id,
+        opponent.id,
+    )
+    .await
+    .expect("match room");
+    drop(client);
+
+    service
+        .join_game_room(spectator.id, room.id)
+        .await
+        .expect("spectator join");
+    assert!(
+        is_member(&test_db.db, room.id, spectator.id).await,
+        "a spectator must land in the match room"
+    );
+
+    service.send_message_task(
+        spectator.id,
+        room.id,
+        None,
+        "lovely cut on the seven".to_string(),
+        Uuid::now_v7(),
+        false,
+    );
+    wait_for_message_containing(&test_db.db, room.id, "lovely cut").await;
+}
+
 /// What makes a ban mean anything in a public room: the rail's join path must
 /// refuse a banned user, or they are back in the room the moment they click
 /// it. Enforced down in `ChatRoomMember::join` so every join path inherits it;

@@ -183,6 +183,11 @@ pub struct DailyBoardState {
     /// refresh + tail chain) has been requested for this board. Set by
     /// `App::tick` once the loaded row reveals the chat room id.
     pub chat_join_requested: bool,
+    /// This session is actually in the match's chat room. Players are members
+    /// from the claim transaction; a spectator becomes one when the lazy join
+    /// lands, which never happens for a match claimed while match chat was
+    /// players-only. Pumped from the chat room list by `App::tick`.
+    pub chat_joined: bool,
     /// Last drawn chess board rect + tier, set during render and consumed by
     /// the mouse hit test. Cleared before every board draw.
     pub board_geometry: Cell<Option<(Rect, Tier)>>,
@@ -213,6 +218,18 @@ pub struct DailyBoardState {
     /// into a spot on the cloth. Same render-recorded contract as
     /// `target_geometry`; `None` whenever the overview is the one on screen.
     pub pool_eye_geometry: Cell<Option<Eye>>,
+}
+
+impl DailyBoardState {
+    /// Whether this board shows its match chat: the pane, the `i` hint, and
+    /// the room every chat gate addresses. A player is a member from the
+    /// claim transaction. A spectator talks in the match chat too, but only
+    /// once the lazy join has landed them in the room: matches claimed while
+    /// match chat was players-only kept a private room, and those refuse
+    /// them, so the pane stays shut exactly where the chat is not theirs.
+    pub fn shows_chat(&self, detail: &DailyMatchDetail) -> bool {
+        detail.row.chat_room_id.is_some() && (!self.spectating || self.chat_joined)
+    }
 }
 
 /// Canonical match detail derived from one `daily_matches` row: the row
@@ -1000,6 +1017,7 @@ impl DailyState {
             reload_pending: false,
             names,
             chat_join_requested: false,
+            chat_joined: false,
             board_geometry: Cell::new(None),
             target_geometry: Cell::new(None),
             cue_geometry: Cell::new(None),
@@ -1018,18 +1036,24 @@ impl DailyState {
         self.board = None;
     }
 
-    /// The open board's match chat room, for the embedded chat pane. `None`
-    /// for spectators (players-only chat), for matches claimed before chat
-    /// existed, and until the row has loaded.
+    /// The open board's match chat room, for the embedded chat pane and
+    /// every room-addressed gate. `None` for matches claimed before chat
+    /// existed, until the row has loaded, and for a spectator who is not in
+    /// the room (see `DailyBoardState::shows_chat`).
     pub fn board_chat_room_id(&self) -> Option<Uuid> {
         let board = self.board.as_ref()?;
-        if board.spectating {
+        let detail = board.detail.as_ref()?;
+        if !board.shows_chat(detail) {
             return None;
         }
-        board
-            .detail
-            .as_ref()
-            .and_then(|detail| detail.row.chat_room_id)
+        detail.row.chat_room_id
+    }
+
+    /// The room the open match carries, whether or not this session is in it
+    /// yet: what the lazy join aims at. Separate from `board_chat_room_id`
+    /// because gating the join on membership would never let a spectator in.
+    pub fn board_match_chat_room_id(&self) -> Option<Uuid> {
+        self.board.as_ref()?.detail.as_ref()?.row.chat_room_id
     }
 
     /// Leaving a finished match's board acknowledges its result: the row
