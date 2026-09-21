@@ -817,6 +817,61 @@ fn the_pot_lines_step_through_the_pockets_the_ball_can_go_in() {
 }
 
 #[test]
+fn a_pot_the_aim_is_already_on_is_where_the_pot_keys_step_from() {
+    // Aim dead at a ball that is a full-ball pot into a corner, then press
+    // `}`: the aim is *on* that pot, so the key steps to the next pocket on
+    // offer. It used to restart from the easiest, which was the very pot the
+    // player was on, so the press did nothing visible whenever that pot's
+    // bearing was negative: the pot lines stored a raw `atan2` and every
+    // other control stored a bearing wrapped into [0, 2π).
+    let mut state = state(PoolRules::NineBall);
+    let spec = state.spec().expect("known table");
+    let geom = spec.geometry();
+    for ball in &mut state.rack.balls {
+        if ball.id != 1 && ball.id != 0 {
+            ball.potted = Some(0);
+        }
+    }
+    // The one low on the table with the bottom-right corner a full ball from
+    // a cue ball sitting behind it on the same line: a bearing that points
+    // toward the low rail, which is a negative angle. The top-right corner
+    // is also on, as a sixty degree cut.
+    let corner = geom.pockets[3].center;
+    let object = [1.2, 0.15];
+    let to_pocket = {
+        let d = [corner[0] - object[0], corner[1] - object[1]];
+        let len = d[0].hypot(d[1]);
+        [d[0] / len, d[1] / len]
+    };
+    state.rack.balls[1].pos = object;
+    state.rack.balls[0].pos = [object[0] - 0.6 * to_pocket[0], object[1] - 0.6 * to_pocket[1]];
+    let mut draft = PoolDraft::new(&state);
+
+    draft.aim_at_ball(&state, 1);
+    let dead_on = draft.azimuth;
+    assert!(draft.cycle_pot(&state, 1), "a pot is on");
+    let line = draft.line(&state).expect("aimed");
+    let object_leg = line.object.expect("the one is hit");
+    assert!(
+        matches!(object_leg.hit, Hit::Pocket { index: 2, .. }),
+        "on the full-ball pot already, so `}}` steps to the other pocket: {:?}",
+        object_leg.hit
+    );
+    assert!(
+        (0.0..std::f64::consts::TAU).contains(&draft.azimuth),
+        "a pot line leaves the bearing in the same range every other control keeps: {}",
+        draft.azimuth
+    );
+    // And the step back lands on the full ball again, as the same bearing.
+    assert!(draft.cycle_pot(&state, -1));
+    assert!(
+        (draft.azimuth - dead_on).abs() < 1e-9,
+        "back on the full ball: {} vs {dead_on}",
+        draft.azimuth
+    );
+}
+
+#[test]
 fn the_tip_never_leaves_the_miscue_limit() {
     // The board refuses to set up a shot the server would then reject, so a
     // player cannot walk the tip off the ball and only find out on firing.

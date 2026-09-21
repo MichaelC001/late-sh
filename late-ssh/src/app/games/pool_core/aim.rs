@@ -321,7 +321,9 @@ pub fn pot_lines(
             Some(PotLine {
                 target,
                 pocket: index as u8,
-                azimuth: dir[1].atan2(dir[0]),
+                // Wrapped into [0, 2π) like every bearing a control sets, so
+                // a pot the aim is already on compares equal to itself.
+                azimuth: dir[1].atan2(dir[0]).rem_euclid(std::f64::consts::TAU),
                 cut,
             })
         })

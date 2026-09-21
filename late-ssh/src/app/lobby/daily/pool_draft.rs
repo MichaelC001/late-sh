@@ -684,9 +684,13 @@ impl PoolDraft {
         if pots.is_empty() {
             return false;
         }
-        let current = pots
-            .iter()
-            .position(|pot| (pot.azimuth - self.azimuth).abs() < 1e-9);
+        // Compared as bearings, a full turn apart being no distance at all.
+        let current = pots.iter().position(|pot| {
+            let apart = (pot.azimuth - self.azimuth + std::f64::consts::PI)
+                .rem_euclid(std::f64::consts::TAU)
+                - std::f64::consts::PI;
+            apart.abs() < 1e-9
+        });
         let next = match current {
             Some(index) => (index as isize + delta).rem_euclid(pots.len() as isize) as usize,
             None if delta < 0 => pots.len() - 1,

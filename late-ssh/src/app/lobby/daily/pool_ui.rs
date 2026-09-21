@@ -340,7 +340,34 @@ fn draw_panels(
     draw_cue_panel(frame, rows[1], board, pool, shot);
     if legend_rows > 0 {
         let chat = !board.spectating && detail.row.chat_room_id.is_some();
-        frame.render_widget(Paragraph::new(legend_lines(chat)), rows[2]);
+        let keys = legend_keys(daily, board, detail, pool);
+        let lines: Vec<Line<'static>> = legend_rows_for(keys, chat)
+            .into_iter()
+            .map(legend_row)
+            .collect();
+        frame.render_widget(Paragraph::new(lines), rows[2]);
+    }
+}
+
+/// Which keys act on this board right now. The same gate the input layer
+/// applies (`pool_draft_mut`): a key the legend teaches must be a key that
+/// does something, or the legend is lying to exactly the player who is
+/// reading it to learn.
+fn legend_keys(
+    daily: &DailyState,
+    board: &DailyBoardState,
+    detail: &DailyMatchDetail,
+    pool: &PoolDetail,
+) -> LegendKeys {
+    if board.spectating || !detail.is_active() {
+        return LegendKeys::Watching;
+    }
+    let mine = detail.row.turn_user_id == Some(daily.user_id());
+    let rolling = pool.playback.is_some() || pool.shot_in_flight;
+    if mine && !rolling {
+        LegendKeys::AtTheTable
+    } else {
+        LegendKeys::Waiting
     }
 }
 
@@ -384,12 +411,28 @@ pub(crate) fn exit_row(chat: bool) -> [(&'static str, &'static str); 2] {
     }
 }
 
-fn legend_lines(chat: bool) -> Vec<Line<'static>> {
-    LEGEND
-        .into_iter()
-        .chain([exit_row(chat)])
-        .map(legend_row)
-        .collect()
+/// Who the legend is for, which is to say which keys do anything.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LegendKeys {
+    /// This player's shot, nothing rolling: every control.
+    AtTheTable,
+    /// A player waiting on the other side, or on a shot playing out: the
+    /// camera and resigning are all that answer.
+    Waiting,
+    /// A spectator, or a finished match: the camera and the way out.
+    Watching,
+}
+
+/// The legend's rows for `keys`, the exit row last.
+pub(crate) fn legend_rows_for(
+    keys: LegendKeys,
+    chat: bool,
+) -> Vec<[(&'static str, &'static str); 2]> {
+    match keys {
+        LegendKeys::AtTheTable => LEGEND.into_iter().chain([exit_row(chat)]).collect(),
+        LegendKeys::Waiting => vec![[("v", "eye view"), ("r", "resign")], exit_row(chat)],
+        LegendKeys::Watching => vec![[("v", "eye view"), ("", "")], exit_row(chat)],
+    }
 }
 
 /// One row of the legend: two keys with their labels, in fixed columns so

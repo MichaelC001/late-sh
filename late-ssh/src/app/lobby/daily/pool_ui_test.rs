@@ -169,6 +169,38 @@ fn the_exit_row_only_offers_chat_where_there_is_one() {
 }
 
 #[test]
+fn the_legend_only_teaches_keys_that_act() {
+    // A spectator, or a player waiting on the other side, reads no aim,
+    // stroke or ball-in-hand key: the input gate refuses all of them, and a
+    // legend that teaches a dead key is a lie told to the one player who is
+    // reading it to learn.
+    let plays = |keys: LegendKeys| {
+        legend_rows_for(keys, true)
+            .into_iter()
+            .flatten()
+            .any(|(key, _)| ["a", "e", "m", "x s w", "h l", "{ }"].contains(&key))
+    };
+    let has = |keys: LegendKeys, want: &str| {
+        legend_rows_for(keys, true)
+            .into_iter()
+            .flatten()
+            .any(|(key, _)| key == want)
+    };
+    assert!(plays(LegendKeys::AtTheTable), "the shooter gets every control");
+    assert!(!plays(LegendKeys::Waiting), "waiting, nothing but the camera acts");
+    assert!(!plays(LegendKeys::Watching));
+    assert!(has(LegendKeys::Waiting, "v") && has(LegendKeys::Waiting, "r"));
+    assert!(has(LegendKeys::Watching, "v") && !has(LegendKeys::Watching, "r"));
+    for keys in [LegendKeys::AtTheTable, LegendKeys::Waiting, LegendKeys::Watching] {
+        assert!(has(keys, "Q"), "{keys:?} can always leave");
+        assert!(
+            legend_rows_for(keys, true).len() as u16 <= LEGEND_ROWS,
+            "{keys:?} fits the rows reserved for the legend"
+        );
+    }
+}
+
+#[test]
 fn the_readout_names_what_the_line_is_on() {
     let state = pool_state();
     let draft = PoolDraft::new(&state);
