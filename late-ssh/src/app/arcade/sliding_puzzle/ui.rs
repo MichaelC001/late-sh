@@ -54,7 +54,10 @@ pub fn draw_game(frame: &mut Frame, area: Rect, state: &State, show_bottom_bar: 
     let art_geometry = state.art_tile_geometry();
     let layout = board_layout(board_area, difficulty, art_geometry);
     let art_fits = layout.is_some_and(|(_, geometry)| Some(geometry) == art_geometry);
+    // A pending two-press confirm is the one line the player must see, so
+    // it wins over the art-status tips: a second `r` wipes the board.
     let tip = match state.art_status() {
+        _ if state.reset_pending() => state.message().to_string(),
         ArtStatus::Loading => "Loading today's art; numbered tiles until it lands.".to_string(),
         ArtStatus::Empty => {
             "No gallery art yet: hang a piece on the Artboard and it shows here tomorrow."
@@ -168,17 +171,35 @@ fn add_art_tile_number(fragment: &mut [Line<'static>], tile: u8, geometry: TileG
     };
     let label = tile.to_string();
     let label_width = label.len();
-    let start = usize::from(geometry.width).saturating_sub(label_width) / 2;
-    let end = start + label_width;
+    let mut start = usize::from(geometry.width).saturating_sub(label_width) / 2;
+    let mut end = start + label_width;
+    // The grid pairs a wide glyph with a zero-width placeholder span. A
+    // digit over either half alone would change the row's width, so the
+    // range grows to cover the whole pair and the spare cell goes blank.
+    if line
+        .spans
+        .get(start)
+        .is_some_and(|span| span.content.is_empty())
+    {
+        start -= 1;
+    }
+    if line.spans.get(end - 1).is_some_and(|span| span.width() > 1) {
+        end += 1;
+    }
     if line.spans.len() < end {
         return;
     }
-    for (span, digit) in line.spans[start..end].iter_mut().zip(label.chars()) {
+    let mut digits = label.chars();
+    for span in &mut line.spans[start..end] {
         let style = span
             .style
             .fg(theme::AMBER_DIM())
             .remove_modifier(Modifier::BOLD);
-        *span = Span::styled(digit.to_string(), style);
+        let cell = match digits.next() {
+            Some(digit) => digit.to_string(),
+            None => " ".to_string(),
+        };
+        *span = Span::styled(cell, style);
     }
 }
 

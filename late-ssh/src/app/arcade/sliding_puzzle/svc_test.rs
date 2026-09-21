@@ -356,7 +356,11 @@ async fn the_board_lands_yesterdays_gallery_piece_as_its_art() {
         .expect("pin")
         .expect("the piece is up");
     state.open_daily(0);
-    assert_eq!(state.art_status(), ArtStatus::Loading);
+    assert_eq!(state.art_status(), ArtStatus::Ready);
+    assert_eq!(
+        state.art_credit().as_deref(),
+        Some(format!("night train by @{}", painter.username).as_str())
+    );
     wait_until(
         || {
             state.poll_art();

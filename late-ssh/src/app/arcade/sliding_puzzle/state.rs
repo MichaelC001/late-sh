@@ -79,6 +79,14 @@ enum ArtSlot {
     Loading(oneshot::Receiver<ArtLoad>),
     /// The piece and its grid for each difficulty, cut once on arrival.
     Ready(Box<ReadyArt>),
+    /// Ready, and the next poll asks again (an open from the lobby).
+    Stale(Box<ReadyArt>),
+    /// Ready, with the re-ask in flight; the current piece stays on the
+    /// board until the answer lands.
+    Refreshing {
+        current: Box<ReadyArt>,
+        rx: oneshot::Receiver<ArtLoad>,
+    },
     /// Nothing in the gallery's backlog, or the gallery switched off.
     Empty,
     Failed {
@@ -89,6 +97,13 @@ enum ArtSlot {
 struct ReadyArt {
     art: PuzzleArt,
     grids: [ArtGrid; 3],
+}
+
+impl ReadyArt {
+    fn cut(art: PuzzleArt) -> Self {
+        let grids = DIFFICULTIES.map(|difficulty| art_grid(&art, difficulty));
+        Self { art, grids }
+    }
 }
 
 /// What the art view can show right now, for the tip line and the tiles.
@@ -221,18 +236,27 @@ impl State {
     /// board is the open screen. Returns true when the frame changed.
     pub(crate) fn poll_art(&mut self) -> bool {
         let now = Instant::now();
-        match &mut self.art {
+        match std::mem::replace(&mut self.art, ArtSlot::Unrequested) {
             ArtSlot::Unrequested => {
-                if tokio::runtime::Handle::try_current().is_err() {
-                    return false;
+                if tokio::runtime::Handle::try_current().is_ok() {
+                    self.art = ArtSlot::Loading(self.svc.load_daily_art_task(self.puzzle_date));
                 }
-                self.art = ArtSlot::Loading(self.svc.load_daily_art_task(self.puzzle_date));
                 false
             }
-            ArtSlot::Loading(rx) => match rx.try_recv() {
+            ArtSlot::Stale(current) => {
+                self.art = if tokio::runtime::Handle::try_current().is_ok() {
+                    ArtSlot::Refreshing {
+                        current,
+                        rx: self.svc.load_daily_art_task(self.puzzle_date),
+                    }
+                } else {
+                    ArtSlot::Stale(current)
+                };
+                false
+            }
+            ArtSlot::Loading(mut rx) => match rx.try_recv() {
                 Ok(ArtLoad::Featured(art)) => {
-                    let grids = DIFFICULTIES.map(|difficulty| art_grid(&art, difficulty));
-                    self.art = ArtSlot::Ready(Box::new(ReadyArt { art, grids }));
+                    self.art = ArtSlot::Ready(Box::new(ReadyArt::cut(art)));
                     true
                 }
                 Ok(ArtLoad::Empty) => {
@@ -245,15 +269,47 @@ impl State {
                     };
                     true
                 }
-                Err(oneshot::error::TryRecvError::Empty) => false,
+                Err(oneshot::error::TryRecvError::Empty) => {
+                    self.art = ArtSlot::Loading(rx);
+                    false
+                }
+            },
+            // A refresh that fails keeps the piece already on the board:
+            // the task logged it, and a stale piece beats a numbered one.
+            ArtSlot::Refreshing { current, mut rx } => match rx.try_recv() {
+                Ok(ArtLoad::Featured(art)) => {
+                    self.art = ArtSlot::Ready(Box::new(ReadyArt::cut(art)));
+                    true
+                }
+                Ok(ArtLoad::Empty) => {
+                    self.art = ArtSlot::Empty;
+                    true
+                }
+                Ok(ArtLoad::Failed) | Err(oneshot::error::TryRecvError::Closed) => {
+                    self.art = ArtSlot::Ready(current);
+                    false
+                }
+                Err(oneshot::error::TryRecvError::Empty) => {
+                    self.art = ArtSlot::Refreshing { current, rx };
+                    false
+                }
             },
             ArtSlot::Failed { retry_after } => {
-                if now >= *retry_after {
-                    self.art = ArtSlot::Unrequested;
-                }
+                self.art = if now >= retry_after {
+                    ArtSlot::Unrequested
+                } else {
+                    ArtSlot::Failed { retry_after }
+                };
                 false
             }
-            ArtSlot::Ready(_) | ArtSlot::Empty => false,
+            ArtSlot::Ready(current) => {
+                self.art = ArtSlot::Ready(current);
+                false
+            }
+            ArtSlot::Empty => {
+                self.art = ArtSlot::Empty;
+                false
+            }
         }
     }
 
@@ -263,7 +319,7 @@ impl State {
         }
         match self.art {
             ArtSlot::Unrequested | ArtSlot::Loading(_) => ArtStatus::Loading,
-            ArtSlot::Ready(_) => ArtStatus::Ready,
+            ArtSlot::Ready(_) | ArtSlot::Stale(_) | ArtSlot::Refreshing { .. } => ArtStatus::Ready,
             ArtSlot::Empty => ArtStatus::Empty,
             ArtSlot::Failed { .. } => ArtStatus::Failed,
         }
@@ -275,9 +331,19 @@ impl State {
         if self.tile_view == TileView::Numbered {
             return None;
         }
+        self.ready_art()
+            .map(|ready| &ready.grids[self.selected_difficulty])
+    }
+
+    /// The piece on the board, whether or not a re-ask is in flight.
+    fn ready_art(&self) -> Option<&ReadyArt> {
         match &self.art {
-            ArtSlot::Ready(ready) => Some(&ready.grids[self.selected_difficulty]),
-            _ => None,
+            ArtSlot::Ready(ready) | ArtSlot::Stale(ready) => Some(ready),
+            ArtSlot::Refreshing { current, .. } => Some(current),
+            ArtSlot::Unrequested
+            | ArtSlot::Loading(_)
+            | ArtSlot::Empty
+            | ArtSlot::Failed { .. } => None,
         }
     }
 
@@ -293,12 +359,8 @@ impl State {
         if self.tile_view == TileView::Numbered {
             return None;
         }
-        match &self.art {
-            ArtSlot::Ready(ready) => {
-                Some(format!("{} by @{}", ready.art.title, ready.art.username))
-            }
-            _ => None,
-        }
+        self.ready_art()
+            .map(|ready| format!("{} by @{}", ready.art.title, ready.art.username))
     }
 
     pub fn reward_chips(&self) -> Option<i64> {
@@ -356,12 +418,16 @@ impl State {
 
     /// Opening the board from the lobby asks for the day's art again, so a
     /// piece pinned or taken down by a mod shows without a reconnect. One
-    /// cheap query per open; a load already in flight is left alone.
+    /// cheap query per open; a load already in flight is left alone, and a
+    /// piece already on the board stays up until the answer lands.
     pub fn open_daily(&mut self, difficulty_index: usize) {
         self.clear_reset_pending();
-        if !matches!(self.art, ArtSlot::Loading(_)) {
-            self.art = ArtSlot::Unrequested;
-        }
+        self.art = match std::mem::replace(&mut self.art, ArtSlot::Unrequested) {
+            ArtSlot::Ready(current) | ArtSlot::Stale(current) => ArtSlot::Stale(current),
+            ArtSlot::Refreshing { current, rx } => ArtSlot::Refreshing { current, rx },
+            ArtSlot::Loading(rx) => ArtSlot::Loading(rx),
+            ArtSlot::Unrequested | ArtSlot::Empty | ArtSlot::Failed { .. } => ArtSlot::Unrequested,
+        };
         self.mode = Mode::Daily;
         self.selected_difficulty = difficulty_index.min(DIFFICULTIES.len() - 1);
         self.message = self.board_message();
@@ -600,10 +666,7 @@ impl State {
     #[cfg(test)]
     pub(crate) fn set_art_for_test(&mut self, load: ArtLoad) {
         self.art = match load {
-            ArtLoad::Featured(art) => {
-                let grids = DIFFICULTIES.map(|difficulty| art_grid(&art, difficulty));
-                ArtSlot::Ready(Box::new(ReadyArt { art, grids }))
-            }
+            ArtLoad::Featured(art) => ArtSlot::Ready(Box::new(ReadyArt::cut(art))),
             ArtLoad::Empty => ArtSlot::Empty,
             ArtLoad::Failed => ArtSlot::Failed {
                 retry_after: Instant::now() + ART_RETRY_DELAY,
