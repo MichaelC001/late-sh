@@ -176,3 +176,24 @@ async fn a_finished_match_tells_the_pet_win_or_loss_and_a_draw_tells_it_nothing(
     let tick = state.tick();
     assert!(!tick.own_win && !tick.own_loss);
 }
+
+#[test]
+fn draft_picker_wraps_at_both_ends() {
+    let mut draft = ChallengeDraft {
+        selected: 0,
+        directed: false,
+        username: None,
+    };
+    let last = DailyGame::ALL.len() - 1;
+
+    // Up from the first game lands on the last, and down from there comes back.
+    draft.move_selection(-1);
+    assert_eq!(draft.selected, last);
+    draft.move_selection(1);
+    assert_eq!(draft.selected, 0);
+
+    // The username prompt owns the keys: j/k type, they don't move the cursor.
+    draft.username = Some(String::new());
+    draft.move_selection(1);
+    assert_eq!(draft.selected, 0);
+}

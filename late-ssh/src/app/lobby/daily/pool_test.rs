@@ -803,7 +803,7 @@ fn the_pot_lines_step_through_the_pockets_the_ball_can_go_in() {
     let mut walled = state.clone();
     // A wall of balls round the one.
     for (index, ball) in walled.rack.balls.iter_mut().enumerate() {
-        if index >= 2 && index < 8 {
+        if (2..8).contains(&index) {
             let angle = index as f64;
             ball.potted = None;
             ball.pos = [
@@ -844,7 +844,10 @@ fn a_pot_the_aim_is_already_on_is_where_the_pot_keys_step_from() {
         [d[0] / len, d[1] / len]
     };
     state.rack.balls[1].pos = object;
-    state.rack.balls[0].pos = [object[0] - 0.6 * to_pocket[0], object[1] - 0.6 * to_pocket[1]];
+    state.rack.balls[0].pos = [
+        object[0] - 0.6 * to_pocket[0],
+        object[1] - 0.6 * to_pocket[1],
+    ];
     let mut draft = PoolDraft::new(&state);
 
     draft.aim_at_ball(&state, 1);

@@ -59,6 +59,17 @@ impl ChallengeDraft {
     pub fn game(&self) -> DailyGame {
         DailyGame::ALL[self.selected.min(DailyGame::ALL.len() - 1)]
     }
+
+    /// Move the picker cursor, wrapping at both ends so up from the first
+    /// game reaches the last. Ignored while the username prompt is active,
+    /// where `j`/`k` are letters being typed.
+    pub fn move_selection(&mut self, delta: isize) {
+        if self.username.is_some() {
+            return;
+        }
+        let count = DailyGame::ALL.len() as isize;
+        self.selected = (self.selected as isize + delta).rem_euclid(count) as usize;
+    }
 }
 
 /// Per-session daily-games UI state: the modal, the lobby glow, and the
@@ -867,13 +878,10 @@ impl DailyState {
         });
     }
 
-    /// Move the picker cursor; ignored while the username prompt is active.
+    /// Move the picker cursor; see [`ChallengeDraft::move_selection`].
     pub fn draft_move_selection(&mut self, delta: isize) {
-        if let Some(draft) = &mut self.challenge_draft
-            && draft.username.is_none()
-        {
-            let max = DailyGame::ALL.len() as isize - 1;
-            draft.selected = (draft.selected as isize + delta).clamp(0, max) as usize;
+        if let Some(draft) = &mut self.challenge_draft {
+            draft.move_selection(delta);
         }
     }
 

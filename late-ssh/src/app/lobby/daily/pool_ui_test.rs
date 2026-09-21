@@ -186,12 +186,22 @@ fn the_legend_only_teaches_keys_that_act() {
             .flatten()
             .any(|(key, _)| key == want)
     };
-    assert!(plays(LegendKeys::AtTheTable), "the shooter gets every control");
-    assert!(!plays(LegendKeys::Waiting), "waiting, nothing but the camera acts");
+    assert!(
+        plays(LegendKeys::AtTheTable),
+        "the shooter gets every control"
+    );
+    assert!(
+        !plays(LegendKeys::Waiting),
+        "waiting, nothing but the camera acts"
+    );
     assert!(!plays(LegendKeys::Watching));
     assert!(has(LegendKeys::Waiting, "v") && has(LegendKeys::Waiting, "r"));
     assert!(has(LegendKeys::Watching, "v") && !has(LegendKeys::Watching, "r"));
-    for keys in [LegendKeys::AtTheTable, LegendKeys::Waiting, LegendKeys::Watching] {
+    for keys in [
+        LegendKeys::AtTheTable,
+        LegendKeys::Waiting,
+        LegendKeys::Watching,
+    ] {
         assert!(has(keys, "Q"), "{keys:?} can always leave");
         assert!(
             legend_rows_for(keys, true).len() as u16 <= LEGEND_ROWS,
