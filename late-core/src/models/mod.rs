@@ -83,6 +83,9 @@ pub mod greendragon_commentary;
 pub mod greendragon_news;
 pub mod greendragon_setting;
 pub mod irc_token;
+pub mod job_posting;
+#[cfg(test)]
+mod job_posting_test;
 pub mod le_word;
 #[cfg(test)]
 mod le_word_test;

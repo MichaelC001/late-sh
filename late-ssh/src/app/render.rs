@@ -241,6 +241,9 @@ struct DrawContext<'a> {
     dartboard_state: Option<&'a crate::app::artboard::state::State>,
     scratchpad: Option<&'a crate::app::scratchpad::state::ScratchpadState>,
     directory_state: &'a crate::app::directory::state::DirectoryState,
+    jobs_state: &'a crate::app::jobs::state::JobsState,
+    /// The viewer's languages from their profile, for the job matcher.
+    viewer_langs: &'a [String],
     clubhouse_state: &'a crate::app::clubhouse::state::State,
     clubhouse_own_username: &'a str,
     nightcap_state: &'a crate::app::clubhouse::nightcap::state::State,
@@ -341,6 +344,7 @@ struct DrawContext<'a> {
     room_info_modal_open: bool,
     room_info_modal_state: &'a room_info_modal::state::RoomInfoModalState,
     directory_editor: &'a crate::app::directory::editor::state::EditorState,
+    tag_picker: &'a crate::app::tag_picker::state::TagPickerState,
     /// The showcase feed, for the editor's projects page.
     showcase_items: &'a [chat::showcase::svc::ShowcaseFeedItem],
     booth_modal_open: bool,
@@ -436,6 +440,7 @@ impl App {
         let ultimate_effects = self.ultimate_state.active_theme_effects();
         self.chat.refresh_composer_theme();
         self.directory_editor.refresh_theme();
+        self.jobs.post.refresh_theme();
 
         // Synchronize terminal background color with theme bg_canvas if enabled
         let enabled = if self.show_settings {
@@ -1082,6 +1087,13 @@ impl App {
                 });
                 crate::app::zen::ui::ZenChatTile {
                     label: label.clone(),
+                    stream_badge: room_id.and_then(|room_id| {
+                        self.chat
+                            .live_streams
+                            .iter()
+                            .find(|stream| stream.room_id == room_id)
+                            .map(chat::ui::stream_count_badge)
+                    }),
                     view,
                 }
             })
@@ -1316,6 +1328,8 @@ impl App {
                         dartboard_state: self.dartboard_state.as_ref(),
                         scratchpad: self.scratchpad.as_ref(),
                         directory_state: &self.directory_state,
+                        jobs_state: &self.jobs,
+                        viewer_langs: &self.profile_state.profile().langs,
                         clubhouse_state: &self.clubhouse,
                         clubhouse_own_username: self.profile_state.profile().username.as_str(),
                         nightcap_state: &self.nightcap,
@@ -1398,6 +1412,7 @@ impl App {
                         room_info_modal_open: self.room_info_modal_state.is_open(),
                         room_info_modal_state: &self.room_info_modal_state,
                         directory_editor: &self.directory_editor,
+                        tag_picker: &self.tag_picker,
                         showcase_items: self.chat.showcase.all_items(),
                         booth_modal_open: self.booth_modal_state.is_open(),
                         booth_modal_state: &self.booth_modal_state,
@@ -1838,6 +1853,8 @@ impl App {
                     content_area,
                     crate::app::directory::ui::DirectoryPageView {
                         directory: ctx.directory_state,
+                        jobs: ctx.jobs_state,
+                        viewer_langs: ctx.viewer_langs,
                         projects: ctx.chat_view.showcase_view.items,
                         people: ctx.chat_view.work_view.items,
                         work_marker: ctx.chat_view.work_view.marker_read_at,
@@ -2233,6 +2250,16 @@ impl App {
                     viewer_name: ctx.clubhouse_own_username,
                 },
             );
+        }
+
+        if ctx.jobs_state.post.is_open() {
+            crate::app::jobs::ui::draw_post_form(frame, inner, &ctx.jobs_state.post);
+        }
+
+        // Over the settings modal, the profile editor, and the post form,
+        // whichever opened it.
+        if ctx.tag_picker.is_open() {
+            crate::app::tag_picker::ui::draw(frame, inner, ctx.tag_picker);
         }
 
         if ctx.booth_modal_open {
