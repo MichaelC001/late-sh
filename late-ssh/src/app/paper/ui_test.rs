@@ -34,7 +34,6 @@ fn build(edition: &PaperEdition) -> PaperModal {
     PaperModal::edition(PaperLayout {
         edition,
         announcements: &[],
-        wall: &[],
         work: &PaperWork::none(),
         rail_order: &rail,
         member_room_ids: &members,
