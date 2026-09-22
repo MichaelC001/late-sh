@@ -201,7 +201,7 @@ fn a_wide_frame_draws_the_list_beside_the_sectioned_detail() {
     let card = row_of(&lines, "▸ CARD").expect("card section, focused first");
     let about = row_of(&lines, "  ABOUT").expect("about section");
     let projects = row_of(&lines, "  PROJECTS").expect("projects section");
-    let fetch = row_of(&lines, "late.fetch").expect("late.fetch last");
+    let fetch = row_of(&lines, "  LATE.FETCH").expect("late.fetch last");
     assert!(
         card < about && about < projects && projects < fetch,
         "section order:\n{text}"
@@ -216,9 +216,16 @@ fn a_wide_frame_draws_the_list_beside_the_sectioned_detail() {
         row_of(&lines, "page     late.sh/profiles/w_abcdef123456").is_some(),
         "{text}"
     );
+    // late.fetch: identity on the left, setup on the right, paired by row.
+    let country = row_of(&lines, "country  PL").expect("country row");
     assert!(
-        lines[fetch + 1].contains("PL  ·  rust · elixir  ·  ide nvim  ·  os nixos"),
-        "{text}"
+        country == fetch + 1 && lines[country].contains("ide      nvim"),
+        "country pairs with ide on the first row:\n{text}"
+    );
+    let langs = row_of(&lines, "langs    rust · elixir").expect("langs row");
+    assert!(
+        langs == fetch + 2 && lines[langs].contains("os       nixos"),
+        "langs pairs with os on the second row:\n{text}"
     );
     assert!(
         lines[lines.len() - 1].contains("Space jobs"),

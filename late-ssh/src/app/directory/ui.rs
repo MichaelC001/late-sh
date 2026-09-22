@@ -415,7 +415,7 @@ fn project_count_label(count: usize) -> String {
 }
 
 /// The whole person: a header row, the card, the bio, the projects, and
-/// late.fetch last as a dim block. The `h`/`l` focus cursor paints a `▸`
+/// late.fetch last. The `h`/`l` focus cursor paints a `▸`
 /// on the focused section; Enter/e/d act on it.
 fn draw_person_detail(
     frame: &mut Frame,
@@ -660,44 +660,90 @@ fn section_heading(label: &'static str, focused: bool) -> Line<'static> {
     ])
 }
 
-/// late.fetch as two dim lines at the foot of the pane: context, not the
-/// point of the page.
+/// Below this pane width late.fetch stacks into one column.
+const LATE_FETCH_TWO_COLUMN_MIN: usize = 56;
+/// `terminal ` is the longest label; values start after it.
+const LATE_FETCH_LABEL_WIDTH: usize = 9;
+
+/// late.fetch as its own section at the foot of the pane: who they are on
+/// the left (country, langs, since, theme), their setup on the right (ide,
+/// terminal, os). One column when the pane is too narrow for two.
 fn late_fetch_lines(
     profile: &late_core::models::profile::Profile,
     width: usize,
 ) -> Vec<Line<'static>> {
-    let faint = Style::default().fg(theme::TEXT_FAINT());
     let dim = Style::default().fg(theme::TEXT_DIM());
-    let mut parts: Vec<String> = Vec::new();
-    if let Some(country) = profile.country.as_deref().filter(|v| !v.trim().is_empty()) {
-        parts.push(country.trim().to_string());
+    let langs = Style::default().fg(theme::AMBER_DIM());
+    let filled = |value: Option<&str>| {
+        value
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+
+    let mut identity: Vec<(&'static str, String, Style)> = Vec::new();
+    if let Some(country) = filled(profile.country.as_deref()) {
+        identity.push(("country", country, dim));
     }
     if !profile.langs.is_empty() {
-        parts.push(profile.langs.join(" · "));
-    }
-    for (label, value) in [
-        ("ide", profile.ide.as_deref()),
-        ("os", profile.os.as_deref()),
-        ("terminal", profile.terminal.as_deref()),
-    ] {
-        if let Some(value) = value.filter(|v| !v.trim().is_empty()) {
-            parts.push(format!("{label} {}", value.trim()));
-        }
+        identity.push(("langs", profile.langs.join(" · "), langs));
     }
     if let Some(created) = profile.created_at {
-        parts.push(format!("since {}", created.format("%Y-%m")));
+        identity.push(("since", created.format("%Y-%m").to_string(), dim));
     }
-    if parts.is_empty() {
+    let mut setup: Vec<(&'static str, String, Style)> = Vec::new();
+    for (label, value) in [
+        ("ide", profile.ide.as_deref()),
+        ("terminal", profile.terminal.as_deref()),
+        ("os", profile.os.as_deref()),
+    ] {
+        if let Some(value) = filled(value) {
+            setup.push((label, value, dim));
+        }
+    }
+    if identity.is_empty() && setup.is_empty() {
         return Vec::new();
     }
     let theme_label = theme::label_for_id(profile.theme_id.as_deref().unwrap_or(theme::DEFAULT_ID));
-    parts.push(format!("theme {theme_label}"));
+    identity.push(("theme", theme_label.to_string(), dim));
+
+    let mut lines = vec![section_heading("late.fetch", false)];
+    if width < LATE_FETCH_TWO_COLUMN_MIN {
+        for field in identity.iter().chain(setup.iter()) {
+            lines.push(Line::from(late_fetch_cell(field, width)));
+        }
+        return lines;
+    }
+    let column = width / 2;
+    let rows = identity.len().max(setup.len());
+    for row in 0..rows {
+        let mut spans = match identity.get(row) {
+            Some(field) => late_fetch_cell(field, column),
+            None => Vec::new(),
+        };
+        if let Some(field) = setup.get(row) {
+            let used: usize = spans.iter().map(|span| span.width()).sum();
+            spans.push(Span::raw(" ".repeat(column - used)));
+            spans.extend(late_fetch_cell(field, width - column));
+        }
+        lines.push(Line::from(spans));
+    }
+    lines
+}
+
+/// One `label    value` cell, the value truncated to leave a gap before
+/// whatever sits to its right.
+fn late_fetch_cell(
+    (label, value, style): &(&'static str, String, Style),
+    width: usize,
+) -> Vec<Span<'static>> {
+    let budget = width.saturating_sub(LATE_FETCH_LABEL_WIDTH + 2);
     vec![
-        Line::from(Span::styled("late.fetch", dim)),
-        Line::from(Span::styled(
-            truncate_to_width(&parts.join("  ·  "), width),
-            faint,
-        )),
+        Span::styled(
+            format!("{label:<w$}", w = LATE_FETCH_LABEL_WIDTH),
+            Style::default().fg(theme::TEXT_FAINT()),
+        ),
+        Span::styled(truncate_to_width(value, budget), *style),
     ]
 }
 
