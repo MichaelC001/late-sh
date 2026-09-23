@@ -1058,6 +1058,7 @@ fn lobby_help_lines() -> Vec<String> {
         "  briscola holds a hand: yours is drawn face up, theirs never is, and spectators see neither",
         "  8ball / 9ball are real pool, and nothing about a shot is sequenced: adjust anything, shoot whenever",
 "  snooker is the full frame on a 12ft table: fifteen reds, colours re-spotted, then the colours in order",
+"    scores: red 1, yellow 2, green 3, brown 4, blue 5, pink 6, black 7; each colour wears its value",
 "    y                 snooker: after their foul, hand the shot straight back and make them play it again",
 "    a foul pays the ball on or the ball at fault, whichever is worth more, never under 4; a snooker gives a free ball",
         "    [ ]  '           step through the balls you may legally hit; ' jumps to the lowest one that is on",
