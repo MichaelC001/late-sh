@@ -38,8 +38,7 @@ use crate::app::games::pool_core::{
     aim::{Leg, LegKind, ShotLine},
     ball::CUE,
     canvas::{Canvas, Rgb, mix},
-    rules_snooker,
-    rack,
+    rack, rules_snooker,
     shot::BallFrame,
     table::{Geometry, PocketKind, TableSpec},
 };

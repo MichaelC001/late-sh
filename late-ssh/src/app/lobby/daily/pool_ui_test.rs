@@ -243,7 +243,11 @@ fn a_snooker_ball_is_named_with_what_it_scores() {
     assert_eq!(ball_name(&snooker, RED_FIRST), "a red (1)");
     assert_eq!(ball_name(&snooker, YELLOW), "the yellow (2)");
     assert_eq!(ball_name(&snooker, BLACK), "the black (7)");
-    assert_eq!(ball_name(&pool_state(), 8), "the 8", "pool keeps its numbers");
+    assert_eq!(
+        ball_name(&pool_state(), 8),
+        "the 8",
+        "pool keeps its numbers"
+    );
 }
 
 #[test]

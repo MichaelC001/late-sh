@@ -451,7 +451,11 @@ fn a_snooker_colour_always_wears_what_it_scores() {
     assert_eq!(printed_label(BLACK).as_deref(), Some("7"));
     assert_eq!(printed_label(RED_FIRST), None);
     assert_eq!(printed_label(CUE), None);
-    assert_eq!(printed_label(9).as_deref(), Some("9"), "pool keeps its numbers");
+    assert_eq!(
+        printed_label(9).as_deref(),
+        Some("9"),
+        "pool keeps its numbers"
+    );
 
     let mut c = Canvas::new(220, 60, CLOTH);
     let view = View::fit(&SPEC, &c);
@@ -491,7 +495,10 @@ fn a_snooker_colour_always_wears_what_it_scores() {
     };
     let ink = [16, 16, 18];
     assert!(!has(&balls[0], ink), "a red wears no number");
-    assert!(has(&balls[1], ink), "the green wears its 3 while reds are on");
+    assert!(
+        has(&balls[1], ink),
+        "the green wears its 3 while reds are on"
+    );
     assert!(
         has(&balls[2], table_ui::WHITE),
         "the black wears its 7 in white ink"
