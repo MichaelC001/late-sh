@@ -220,8 +220,8 @@ impl AiService {
 
         let api_key = self.api_key.as_ref().context("missing api key")?;
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            AI_MODEL, api_key
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            AI_MODEL
         );
 
         let req = GeminiRequest {
@@ -246,8 +246,16 @@ impl AiService {
             }),
         };
 
-        // The URL carries the key; a status error must not print it.
-        let res = match self.client.post(&url).json(&req).send_traced().await {
+        // The key travels in the `x-goog-api-key` header, never the URL;
+        // `without_url()` stays as defense in depth for a status error's text.
+        let res = match self
+            .client
+            .post(&url)
+            .header("x-goog-api-key", api_key)
+            .json(&req)
+            .send_traced()
+            .await
+        {
             Ok(res) => res,
             Err(error) => return Err(error.without_url().into()),
         };
@@ -286,8 +294,8 @@ impl AiService {
 
         let api_key = self.api_key.as_ref().context("missing api key")?;
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            AI_MODEL, api_key
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            AI_MODEL
         );
 
         let req = GeminiRequest {
@@ -310,8 +318,16 @@ impl AiService {
             }]),
         };
 
-        // The URL carries the key; a status error must not print it.
-        let res = match self.client.post(&url).json(&req).send_traced().await {
+        // The key travels in the `x-goog-api-key` header, never the URL;
+        // `without_url()` stays as defense in depth for a status error's text.
+        let res = match self
+            .client
+            .post(&url)
+            .header("x-goog-api-key", api_key)
+            .json(&req)
+            .send_traced()
+            .await
+        {
             Ok(res) => res,
             Err(error) => return Err(error.without_url().into()),
         };
@@ -353,8 +369,8 @@ impl AiService {
 
         let api_key = self.api_key.as_ref().context("missing api key")?;
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            model, api_key
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            model
         );
 
         let req = GeminiRequest {
@@ -375,8 +391,16 @@ impl AiService {
             tools: None,
         };
 
-        // The URL carries the key; a status error must not print it.
-        let res = match self.client.post(&url).json(&req).send_traced().await {
+        // The key travels in the `x-goog-api-key` header, never the URL;
+        // `without_url()` stays as defense in depth for a status error's text.
+        let res = match self
+            .client
+            .post(&url)
+            .header("x-goog-api-key", api_key)
+            .json(&req)
+            .send_traced()
+            .await
+        {
             Ok(res) => res,
             Err(error) => return Err(error.without_url().into()),
         };
