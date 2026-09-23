@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use super::draw;
 use crate::app::common::theme;
-use crate::app::paper::state::{PaperLayout, PaperModal, PaperWork};
+use crate::app::paper::state::{PaperLayout, PaperModal};
 
 fn edition() -> PaperEdition {
     PaperEdition {
@@ -34,7 +34,7 @@ fn build(edition: &PaperEdition) -> PaperModal {
     PaperModal::edition(PaperLayout {
         edition,
         announcements: &[],
-        work: &PaperWork::none(),
+        work: None,
         rail_order: &rail,
         member_room_ids: &members,
         bumped_labels: &[],

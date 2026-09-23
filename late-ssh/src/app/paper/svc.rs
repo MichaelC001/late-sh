@@ -204,7 +204,8 @@ impl PrintTally {
 pub struct PaperIssue {
     pub edition: PaperEdition,
     pub announcements: Vec<PaperAnnouncement>,
-    pub work: PaperWork,
+    /// NEW WORK for this reader; `None` while the job feed is off.
+    pub work: Option<PaperWork>,
 }
 
 #[derive(Clone, Debug)]
@@ -869,9 +870,9 @@ impl PaperService {
         // feed's kill switch drops the section.
         let covered = today.pred_opt().unwrap_or(today);
         let work = if !self.flags().jobs_enabled {
-            PaperWork::none()
+            None
         } else {
-            read_work(&client, user_id, covered).await?
+            Some(read_work(&client, user_id, covered).await?)
         };
         let issue = PaperIssue {
             edition,
@@ -903,9 +904,6 @@ impl PaperService {
 /// normalized skills) and their profile languages decide the matches.
 async fn read_work(client: &Client, user_id: Uuid, day: NaiveDate) -> anyhow::Result<PaperWork> {
     let released = JobPosting::list_released_on(client, day).await?;
-    if released.is_empty() {
-        return Ok(PaperWork::none());
-    }
     let card = WorkProfile::find_by_user_id(client, user_id).await?;
     let langs = match User::get(client, user_id).await? {
         Some(user) => extract_langs(&user.settings),
@@ -1286,7 +1284,7 @@ fn drain_events(app: &mut App) -> bool {
                             &PaperIssue {
                                 edition,
                                 announcements,
-                                work: PaperWork::none(),
+                                work: None,
                             },
                         ));
                         Banner::success(&format!("Preview, not printed. {line}"))
@@ -1357,7 +1355,7 @@ fn edition_modal(app: &App, issue: &PaperIssue) -> PaperModal {
     PaperModal::edition(PaperLayout {
         edition: &issue.edition,
         announcements: &issue.announcements,
-        work: &issue.work,
+        work: issue.work.as_ref(),
         rail_order: &rail_order,
         member_room_ids: &member_room_ids,
         bumped_labels: &bumped_labels,

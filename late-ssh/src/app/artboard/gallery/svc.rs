@@ -13,10 +13,9 @@
 //! The refresh is also the assignment: the first replica awake on a UTC
 //! day stamps the queue's head with the day (`ArtboardPiece::splash_for_day`,
 //! a row claim on a unique index), the rest read it back, so any number of
-//! replicas may run it (root CONTEXT.md, multi-replica rule). Each login
-//! claims its account's one view of the day's piece
-//! (`claim_splash_piece`) and the door shows that piece, or the coffee cup
-//! once the account has seen it.
+//! replicas may run it (root CONTEXT.md, multi-replica rule). Every login
+//! reads the day's piece off the watch (`splash_piece`) and the door shows
+//! it all day, or the coffee cup when there is none.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,7 +29,6 @@ use late_core::models::artboard_piece::{
     ApplauseOutcome, ArtboardPiece, HangOutcome, HangParams, ListingCounts, PieceListing,
     TakeDownOutcome,
 };
-use late_core::models::user::User;
 use tokio::sync::{mpsc, watch};
 use uuid::Uuid;
 
@@ -44,7 +42,7 @@ use super::frame::{Credit, FramedPiece};
 /// between; a replica is at most an hour behind either.
 const SPLASH_REFRESH_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
-/// The day's piece over the door, and the UTC day it holds. Claimed once
+/// The day's piece over the door, and the UTC day it holds. Read once
 /// at bootstrap; the session never re-reads it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SplashPiece {
@@ -239,42 +237,16 @@ impl GalleryService {
                 .is_some_and(|flags| flags.artboard_gallery_enabled)
     }
 
-    /// The day's piece as this replica last read it. Tests read it;
-    /// sessions get their view through `claim_splash_piece`.
-    pub fn splash_wall(&self) -> Option<SplashPiece> {
-        self.splash_rx.borrow().clone()
-    }
-
-    /// The piece this login shows over the door, if the account has not
-    /// seen the day's piece yet. One `UPDATE` per login on a fresh day,
-    /// none after (the stamp's `WHERE` fails and nothing is written). The
-    /// stamp is the piece's own day, not the clock's, so a watch that is
-    /// still on yesterday's piece for an hour past midnight shows it only
-    /// to accounts that missed it and never spends today's view on it. A
-    /// failed claim is the cup: the door is not worth failing a login over.
-    pub async fn claim_splash_piece(&self, user_id: Uuid) -> Option<SplashPiece> {
-        let db = self.db.as_ref()?;
+    /// The day's piece over the door, as this replica last read it.
+    /// Every login shows it for the whole UTC day; `None` (switch off, no
+    /// database, empty queue) is the coffee cup. The switch is checked
+    /// here too, so flipping it off takes the piece off new logins at
+    /// once rather than at the next hourly refresh.
+    pub fn splash_piece(&self) -> Option<SplashPiece> {
         if !self.is_enabled() {
             return None;
         }
-        let splash = self.splash_wall()?;
-        let claimed = async {
-            let client = db.get().await?;
-            User::claim_splash_shown(&client, user_id, splash.shown_on).await
-        }
-        .await;
-        match claimed {
-            Ok(true) => Some(splash),
-            Ok(false) => None,
-            Err(error) => {
-                tracing::warn!(
-                    error = ?error,
-                    %user_id,
-                    "artboard gallery splash claim failed"
-                );
-                None
-            }
-        }
+        self.splash_rx.borrow().clone()
     }
 
     /// Hourly re-read of the splash wall, assigning the day's piece when

@@ -115,7 +115,7 @@ fn the_paper_follows_the_rail_then_elsewhere_then_the_back_pages() {
 
     let lines = plain(&lay_out(PaperLayout {
         announcements: &announcements,
-        work: &PaperWork::none(),
+        work: None,
         edition: &edition,
         rail_order: &rail_order,
         member_room_ids: &member_room_ids,
@@ -180,7 +180,7 @@ fn a_member_room_missing_from_the_rail_still_gets_its_column() {
     let member_room_ids: HashSet<Uuid> = [Uuid::from_u128(1)].into_iter().collect();
     let lines = plain(&lay_out(PaperLayout {
         announcements: &[],
-        work: &PaperWork::none(),
+        work: None,
         edition: &edition,
         rail_order: &[],
         member_room_ids: &member_room_ids,
@@ -258,7 +258,7 @@ fn new_work_speaks_to_the_card_the_reader_has() {
         rooms: Vec::new(),
         sections: Vec::new(),
     };
-    let lay = |work: &PaperWork| {
+    let lay = |work: Option<&PaperWork>| {
         plain(&lay_out(PaperLayout {
             announcements: &[],
             work,
@@ -268,22 +268,35 @@ fn new_work_speaks_to_the_card_the_reader_has() {
             bumped_labels: &[],
         }))
     };
-    let byline = "by @graybeard · covers Wed Sep 2 (UTC) · he read it all so you would not have to";
+    let section = |line: &str| {
+        vec![
+            "by @graybeard · covers Wed Sep 2 (UTC) · he read it all so you would not have to"
+                .to_string(),
+            String::new(),
+            "NEW WORK".to_string(),
+            line.to_string(),
+        ]
+    };
 
-    // No card: the one line that sells the card.
+    // No card: the one line that sells the card, on a quiet day too.
     let nobody = PaperWork {
         released: 11,
         card: None,
         matches: Vec::new(),
     };
     assert_eq!(
-        lay(&nobody),
-        vec![
-            byline,
-            "",
-            "NEW WORK",
-            "11 postings landed yesterday, remote only. Open a work card on page 5 and the paper will pick yours.",
-        ]
+        lay(Some(&nobody)),
+        section(
+            "11 postings yesterday, all remote. Create a work card on page 5 to see matches here."
+        )
+    );
+    let nobody_quiet = PaperWork {
+        released: 0,
+        ..nobody.clone()
+    };
+    assert_eq!(
+        lay(Some(&nobody_quiet)),
+        section("No new postings yesterday. Create a work card on page 5 to see matches here.")
     );
 
     // An open card with matches: the matches, then the count.
@@ -295,40 +308,56 @@ fn new_work_speaks_to_the_card_the_reader_has() {
             posting("Fastly", &["go"]),
         ],
     };
-    assert_eq!(
-        lay(&matched),
-        vec![
-            byline,
-            "",
-            "NEW WORK",
-            "Acme · Backend Engineer · remote · EU · rust, postgres · €80k",
-            "Fastly · Backend Engineer · remote · EU · go · €80k",
-            "    11 postings released yesterday; the rest on page 5, / there keeps yours",
-        ]
+    let mut expected = section("Acme · Backend Engineer · remote · EU · rust, postgres · €80k");
+    expected.push("Fastly · Backend Engineer · remote · EU · go · €80k".to_string());
+    expected.push(
+        "    11 postings yesterday. All postings are on page 5, / filters to your tags."
+            .to_string(),
     );
+    assert_eq!(lay(Some(&matched)), expected);
 
-    // A casual card with nothing on its tags still hears the count.
+    // A casual card with nothing on its tags still hears the count, and
+    // on a day with no release hears that too.
     let unmatched = PaperWork {
         released: 1,
         card: Some(WorkStatus::Casual),
         matches: Vec::new(),
     };
     assert_eq!(
-        lay(&unmatched),
-        vec![
-            byline,
-            "",
-            "NEW WORK",
-            "1 posting landed yesterday, none on your tags; the shelf on page 5 has them all.",
-        ]
+        lay(Some(&unmatched)),
+        section("1 posting yesterday, none matching your tags. All postings are on page 5.")
+    );
+    let casual_quiet = PaperWork {
+        released: 0,
+        ..unmatched
+    };
+    assert_eq!(
+        lay(Some(&casual_quiet)),
+        section("No new postings yesterday. All postings are on page 5.")
     );
 
-    // Not looking said so; and a day with no release has no section.
+    // Not looking gets a small hint, with the count when there is one.
     let not_looking = PaperWork {
         released: 11,
         card: Some(WorkStatus::NotLooking),
         matches: Vec::new(),
     };
-    assert_eq!(lay(&not_looking), vec![byline]);
-    assert_eq!(lay(&PaperWork::none()), vec![byline]);
+    assert_eq!(
+        lay(Some(&not_looking)),
+        section("11 postings yesterday. Your work card is set to not looking (page 5).")
+    );
+    let not_looking_quiet = PaperWork {
+        released: 0,
+        ..not_looking
+    };
+    assert_eq!(
+        lay(Some(&not_looking_quiet)),
+        section("No new postings yesterday. Your work card is set to not looking (page 5).")
+    );
+
+    // The job feed switched off (or a preview): no section at all.
+    assert_eq!(
+        lay(None),
+        vec!["by @graybeard · covers Wed Sep 2 (UTC) · he read it all so you would not have to"]
+    );
 }

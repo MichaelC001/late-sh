@@ -415,9 +415,6 @@ const LANDING_PAGE_KEY: &str = "landing_page";
 const PAPER_AT_LOGIN_KEY: &str = "paper_at_login";
 /// The edition (UTC date, ISO) whose login pop this account has had.
 const PAPER_SHOWN_ON_KEY: &str = "paper_shown_on";
-/// The UTC day (ISO) whose splash wall piece this account has seen. One
-/// key, overwritten in place; it never grows.
-const SPLASH_SHOWN_ON_KEY: &str = "splash_shown_on";
 const TRANSLATE_TO_KEY: &str = "translate_to";
 const AUTO_TRANSLATE_KEY: &str = "auto_translate";
 const TRANSLATE_MINE_TO_EN_KEY: &str = "translate_mine_to_en";
@@ -1507,32 +1504,6 @@ impl User {
                  WHERE id = $3
                    AND COALESCE(settings->>$1, '') < $2",
                 &[&PAPER_SHOWN_ON_KEY, &value, &user_id],
-            )
-            .await?;
-        Ok(updated == 1)
-    }
-
-    /// Claim this account's one view of the splash wall piece for `day`
-    /// (the piece's own `splash_on`): the first login of the day gets it,
-    /// every later login that day the coffee cup, and this returns `false`
-    /// without writing. Wins once per day across every device and replica,
-    /// the way the paper's stamp does: the row is the only judge. A stored
-    /// day past `day` (a replica whose watch is behind midnight) never
-    /// resets and never counts.
-    pub async fn claim_splash_shown(
-        client: &Client,
-        user_id: Uuid,
-        day: chrono::NaiveDate,
-    ) -> Result<bool> {
-        let value = day.format("%Y-%m-%d").to_string();
-        let updated = client
-            .execute(
-                "UPDATE users
-                 SET settings = settings || jsonb_build_object($1::text, $2::text),
-                     updated = current_timestamp
-                 WHERE id = $3
-                   AND COALESCE(settings->>$1, '') < $2",
-                &[&SPLASH_SHOWN_ON_KEY, &value, &user_id],
             )
             .await?;
         Ok(updated == 1)

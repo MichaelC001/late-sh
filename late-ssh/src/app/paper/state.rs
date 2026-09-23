@@ -14,7 +14,7 @@ use tokio::sync::{broadcast, oneshot};
 use uuid::Uuid;
 
 use super::svc::{PaperEvent, PaperService, PaperTrigger};
-use crate::app::jobs::state::{PAPER_MATCHES, match_tail, posting_count_label, wants_matches};
+use crate::app::jobs::state::{PAPER_MATCHES, match_tail, posting_count_label};
 
 /// Rooms the reader is not in that make the paper: the top few by
 /// activity, bumped rooms first. A cap, so the paper stays a paper and
@@ -177,25 +177,17 @@ pub struct PaperAnnouncement {
 /// NEW WORK as read for one reader: what went active on the covered day,
 /// and this reader's card and matches. The one per-reader selection in
 /// the paper; the rows it selects from were released once for everyone.
+/// A paper with no NEW WORK section (the job feed off, a preview) carries
+/// no `PaperWork` at all.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PaperWork {
-    /// Postings released on the covered day, on the shelf now.
+    /// Postings released on the covered day, on the shelf now; zero on a
+    /// day nothing landed, which still prints the section.
     pub released: usize,
     /// The reader's card status, or none without a card.
     pub card: Option<WorkStatus>,
     /// The reader's best matches among them, up to `PAPER_MATCHES`.
     pub matches: Vec<JobPosting>,
-}
-
-impl PaperWork {
-    /// A paper with no NEW WORK: the press is off, or a preview.
-    pub fn none() -> Self {
-        Self {
-            released: 0,
-            card: None,
-            matches: Vec::new(),
-        }
-    }
 }
 
 /// Everything the layout needs from the session: the edition's rows, the
@@ -207,8 +199,9 @@ pub(crate) struct PaperLayout<'a> {
     /// Yesterday's announcements, oldest first; empty on a day the
     /// operator said nothing.
     pub announcements: &'a [PaperAnnouncement],
-    /// Yesterday's job releases as they concern this reader.
-    pub work: &'a PaperWork,
+    /// Yesterday's job releases as they concern this reader; `None`
+    /// prints no NEW WORK section (the job feed off, a preview).
+    pub work: Option<&'a PaperWork>,
     /// Member rooms in rail order; rooms the edition has no page for are
     /// skipped, rooms missing from the rail follow by activity.
     pub rail_order: &'a [Uuid],
@@ -311,6 +304,64 @@ fn labels(pages: &[&PaperRoomPage]) -> String {
 /// verbatim, your rooms in rail order, elsewhere, what we were reading,
 /// outside, and a footer naming the rooms that were quiet or still at
 /// the press.
+/// The NEW WORK section's body for one reader, one arm per card.
+fn work_lines(work: &PaperWork) -> Vec<PaperLine> {
+    let count = posting_count_label(work.released);
+    let quiet_day = work.released == 0;
+    match work.card {
+        None if quiet_day => vec![vec![PaperSpan::new(
+            "No new postings yesterday. Create a work card on page 5 to see matches here.",
+            PaperInk::Faint,
+        )]],
+        None => vec![vec![PaperSpan::new(
+            format!(
+                "{count} yesterday, all remote. Create a work card on page 5 to see matches here."
+            ),
+            PaperInk::Body,
+        )]],
+        Some(WorkStatus::NotLooking) if quiet_day => vec![vec![PaperSpan::new(
+            "No new postings yesterday. Your work card is set to not looking (page 5).",
+            PaperInk::Faint,
+        )]],
+        Some(WorkStatus::NotLooking) => vec![vec![PaperSpan::new(
+            format!("{count} yesterday. Your work card is set to not looking (page 5)."),
+            PaperInk::Faint,
+        )]],
+        Some(WorkStatus::Open | WorkStatus::Casual) if quiet_day => vec![vec![PaperSpan::new(
+            "No new postings yesterday. All postings are on page 5.",
+            PaperInk::Faint,
+        )]],
+        Some(WorkStatus::Open | WorkStatus::Casual) if work.matches.is_empty() => {
+            vec![vec![PaperSpan::new(
+                format!("{count} yesterday, none matching your tags. All postings are on page 5."),
+                PaperInk::Body,
+            )]]
+        }
+        Some(WorkStatus::Open | WorkStatus::Casual) => {
+            let mut lines: Vec<PaperLine> = work
+                .matches
+                .iter()
+                .map(|posting| {
+                    vec![
+                        PaperSpan::new(posting.company.clone(), PaperInk::Title),
+                        PaperSpan::new(
+                            format!(" · {}", match_tail(posting, PAPER_MATCHES)),
+                            PaperInk::Meta,
+                        ),
+                    ]
+                })
+                .collect();
+            lines.push(vec![PaperSpan::new(
+                format!(
+                    "    {count} yesterday. All postings are on page 5, / filters to your tags."
+                ),
+                PaperInk::Faint,
+            )]);
+            lines
+        }
+    }
+}
+
 pub(crate) fn lay_out(layout: PaperLayout<'_>) -> Vec<PaperLine> {
     let PaperLayout {
         edition,
@@ -347,52 +398,15 @@ pub(crate) fn lay_out(layout: PaperLayout<'_>) -> Vec<PaperLine> {
         }
     }
 
-    // NEW WORK: yesterday's releases, as they concern this reader. No
-    // card gets the one line that is the whole incentive to fill one; a
-    // not-looking card said so and gets nothing; an open or casual card
-    // gets its matches, or a pointer at the shelf when none carried its
-    // tags. A day with no release has no section.
-    if work.released > 0 {
-        let count = posting_count_label(work.released);
-        match work.card {
-            None => {
-                lines.push(PaperLine::new());
-                lines.push(heading("NEW WORK"));
-                lines.push(vec![PaperSpan::new(
-                    format!(
-                        "{count} landed yesterday, remote only. Open a work card on page 5 and the paper will pick yours."
-                    ),
-                    PaperInk::Body,
-                )]);
-            }
-            Some(status) if !wants_matches(status) => {}
-            Some(_) => {
-                lines.push(PaperLine::new());
-                lines.push(heading("NEW WORK"));
-                if work.matches.is_empty() {
-                    lines.push(vec![PaperSpan::new(
-                        format!(
-                            "{count} landed yesterday, none on your tags; the shelf on page 5 has them all."
-                        ),
-                        PaperInk::Body,
-                    )]);
-                } else {
-                    for posting in &work.matches {
-                        lines.push(vec![
-                            PaperSpan::new(posting.company.clone(), PaperInk::Title),
-                            PaperSpan::new(
-                                format!(" · {}", match_tail(posting, PAPER_MATCHES)),
-                                PaperInk::Meta,
-                            ),
-                        ]);
-                    }
-                    lines.push(vec![PaperSpan::new(
-                        format!("    {count} released yesterday; the rest on page 5, / there keeps yours"),
-                        PaperInk::Faint,
-                    )]);
-                }
-            }
-        }
+    // NEW WORK: yesterday's releases, as they concern this reader. It
+    // prints whenever the job feed is on. No card gets the one line that
+    // is the whole incentive to fill one; an open or casual card gets its
+    // matches, or a pointer at the shelf when none carried its tags; a
+    // not-looking card and a day with no release get a faint hint.
+    if let Some(work) = work {
+        lines.push(PaperLine::new());
+        lines.push(heading("NEW WORK"));
+        lines.extend(work_lines(work));
     }
 
     // Member rooms in rail order, then any the rail does not list.

@@ -259,9 +259,8 @@ pub struct SessionConfig {
     pub artboard_snapshot_service: crate::app::artboard::svc::ArtboardSnapshotService,
     /// The Artboard gallery: listings, hanging, applause, the splash wall.
     pub gallery_service: crate::app::artboard::gallery::svc::GalleryService,
-    /// The wall piece this login shows over the door, claimed at
-    /// bootstrap (`GalleryService::claim_splash_piece`); `None` is the
-    /// coffee cup.
+    /// The wall piece this login shows over the door, read at bootstrap
+    /// (`GalleryService::splash_piece`); `None` is the coffee cup.
     pub splash_piece: Option<crate::app::artboard::gallery::svc::SplashPiece>,
     pub username: String,
     pub bonsai_service: crate::app::bonsai::svc::BonsaiService,

@@ -26,15 +26,14 @@ fn hang_params(user_id: Uuid, title: &str) -> HangParams {
     }
 }
 
-/// The refresh publishes the day's piece into the watch and the login
-/// claim hands it to an account once; an empty day, and the switch off,
-/// publish nothing and every login is the cup.
+/// The refresh publishes the day's piece into the watch and every login
+/// that day shows it; an empty day, and the switch off, publish nothing
+/// and every login is the cup.
 #[tokio::test]
-async fn the_refresh_publishes_todays_piece_and_the_claim_shows_it_once() {
+async fn the_refresh_publishes_todays_piece_for_every_login_that_day() {
     let test_db = new_test_db().await;
     let client = test_db.db.get().await.expect("db client");
     let painter = create_test_user(&test_db.db, "splash-refresh-painter").await;
-    let viewer = create_test_user(&test_db.db, "splash-refresh-viewer").await;
     let today = chrono::Utc::now().date_naive();
     let tomorrow = today + chrono::Duration::days(1);
 
@@ -48,8 +47,7 @@ async fn the_refresh_publishes_todays_piece_and_the_claim_shows_it_once() {
             queued: 0
         }
     );
-    assert_eq!(service.splash_wall(), None);
-    assert_eq!(service.claim_splash_piece(viewer.id).await, None);
+    assert_eq!(service.splash_piece(), None);
 
     // A piece hung today is tomorrow's; the refresh for tomorrow assigns
     // it and publishes it.
@@ -70,22 +68,12 @@ async fn the_refresh_publishes_todays_piece_and_the_claim_shows_it_once() {
     assert_eq!(published.piece.id, hung.id);
     assert_eq!(published.piece.title, "dawn");
     assert_eq!(published.shown_on, tomorrow);
-    assert_eq!(service.splash_wall(), Some(published.clone()));
+    // Every login of the day reads it, not only the first.
+    assert_eq!(service.splash_piece(), Some(published.clone()));
+    assert_eq!(service.splash_piece(), Some(published));
 
-    // The first login of the day gets it, the next is the cup.
-    assert_eq!(
-        service.claim_splash_piece(viewer.id).await,
-        Some(published.clone())
-    );
-    assert_eq!(service.claim_splash_piece(viewer.id).await, None);
-    // Another account has its own view.
-    assert_eq!(
-        service.claim_splash_piece(painter.id).await,
-        Some(published)
-    );
-
-    // The switch off empties the watch on the next refresh, and a login
-    // that never saw the piece gets the cup.
+    // The switch off empties the watch on the next refresh: every login
+    // is the cup.
     let (_flags_tx, flags_rx) = tokio::sync::watch::channel(Some(AppFlags {
         haunt_enabled: true,
         haunt_live: false,
@@ -99,7 +87,5 @@ async fn the_refresh_publishes_todays_piece_and_the_claim_shows_it_once() {
         off.refresh_splash(tomorrow).await.expect("refresh"),
         SplashRefresh::Off
     );
-    assert_eq!(off.splash_wall(), None);
-    let bystander = create_test_user(&test_db.db, "splash-refresh-bystander").await;
-    assert_eq!(off.claim_splash_piece(bystander.id).await, None);
+    assert_eq!(off.splash_piece(), None);
 }
