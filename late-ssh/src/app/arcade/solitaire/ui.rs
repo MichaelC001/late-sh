@@ -111,7 +111,11 @@ fn draw_win_cascade(frame: &mut Frame, area: Rect, anim: &WinAnimation) {
                 continue;
             };
             cell.set_char(ink.ch);
-            cell.set_style(Style::default().fg(if ink.red { red } else { black }).bg(bg));
+            cell.set_style(
+                Style::default()
+                    .fg(if ink.red { red } else { black })
+                    .bg(bg),
+            );
         }
     }
 }
