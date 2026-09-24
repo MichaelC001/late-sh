@@ -271,6 +271,10 @@ struct DrawContext<'a> {
     /// The night city page: the runner's spot and its look.
     city_state: &'a crate::app::deadchannel::city::state::State,
     city_look: Option<&'a crate::app::deadchannel::runner::state::Look>,
+    city_sheet: Option<&'a crate::app::deadchannel::fight::state::Sheet>,
+    city_scene: Option<&'a crate::app::deadchannel::fight::session::Scene>,
+    city_till: Option<&'a str>,
+    city_tailor: crate::app::deadchannel::tailor::ui::MirrorView<'a>,
     /// A chat overlay that lands on the Lounge (a `/summary` or reaction list
     /// requested on Home); the Lounge composer itself opens none.
     clubhouse_overlay: Option<&'a crate::app::common::overlay::Overlay>,
@@ -1344,6 +1348,15 @@ impl App {
                         drunk_levels: &self.drunk_levels,
                         city_state: &self.city,
                         city_look: self.runner_looks.get(&self.user_id),
+                        city_sheet: self.fight.sheet.as_ref(),
+                        city_scene: self.fight.scene.as_ref(),
+                        city_till: self.fight.till.as_deref(),
+                        city_tailor: crate::app::deadchannel::tailor::ui::MirrorView {
+                            draft: self.tailor.draft.as_ref(),
+                            word: self.tailor.word.as_deref(),
+                            changed: self.tailor.changed(),
+                            saving: self.tailor.saving,
+                        },
                         clubhouse_overlay: self.chat.overlay(),
                         artboard_interacting: self.artboard_interacting,
                         leaderboard: &self.leaderboard,
@@ -1921,6 +1934,10 @@ impl App {
                     state: ctx.city_state,
                     own_username: ctx.clubhouse_own_username,
                     look: ctx.city_look,
+                    sheet: ctx.city_sheet,
+                    scene: ctx.city_scene,
+                    till: ctx.city_till,
+                    tailor: ctx.city_tailor,
                 },
             ),
             Screen::Nightcap => crate::app::clubhouse::nightcap::ui::draw(

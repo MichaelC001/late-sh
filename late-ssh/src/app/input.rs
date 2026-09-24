@@ -2267,8 +2267,12 @@ fn dispatch_escape(app: &mut App) {
     }
     // Esc in the city closes an open shop panel or steps back from the
     // ledge; on the street it means nothing (the wire is the way out).
-    if ctx.screen == Screen::City && (app.city.panel().is_some() || app.city.at_ledge()) {
+    if ctx.screen == Screen::City
+        && (app.city.panel().is_some() || app.city.at_ledge() || app.fight.scene_open())
+    {
         app.city.dismiss();
+        app.fight.close();
+        app.tailor.close();
         return;
     }
     // Esc from the Games hub closes the rc config modal, cancels a pending
@@ -3827,6 +3831,11 @@ fn handle_global_key(app: &mut App, ctx: InputContext, byte: u8) -> bool {
             let target = match ctx.screen {
                 Screen::Clubhouse if app.is_runner() => {
                     app.city.dismiss();
+                    app.fight.close();
+                    app.tailor.close();
+                    // The descent is a touch: the sheet re-reads (and the
+                    // day rolls if it turned) before the strip shows it.
+                    app.fight.reload();
                     Screen::City
                 }
                 _ => Screen::Clubhouse,

@@ -610,6 +610,11 @@ fn make_app_with_chat_service_and_permissions(
         ),
         username: world.username.unwrap_or_else(|| "test-user".to_string()),
         bonsai_service: BonsaiService::new(db.clone(), broadcast::channel::<ActivityEvent>(64).0),
+        fight_service: crate::app::deadchannel::fight::svc::FightService::new(
+            db.clone(),
+            chat_service.clone(),
+        ),
+        tailor_service: crate::app::deadchannel::tailor::svc::TailorService::new(db.clone()),
         initial_bonsai_tree: None,
         initial_bonsai_decay_protection: None,
         pet_service: PetService::new(db.clone(), broadcast::channel::<ActivityEvent>(64).0),
@@ -871,6 +876,11 @@ pub fn make_app_with_paired_client(
         ),
         username: "test-user".to_string(),
         bonsai_service: BonsaiService::new(db.clone(), broadcast::channel::<ActivityEvent>(64).0),
+        fight_service: crate::app::deadchannel::fight::svc::FightService::new(
+            db.clone(),
+            ChatService::new(db.clone(), notification_service.clone()),
+        ),
+        tailor_service: crate::app::deadchannel::tailor::svc::TailorService::new(db.clone()),
         initial_bonsai_tree: None,
         initial_bonsai_decay_protection: None,
         pet_service: PetService::new(db.clone(), broadcast::channel::<ActivityEvent>(64).0),

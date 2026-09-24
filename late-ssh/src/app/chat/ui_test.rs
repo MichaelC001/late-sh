@@ -3155,11 +3155,12 @@ fn the_you_left_rule_draws_above_the_first_message_past_the_left_app_mark() {
 }
 
 /// The #deadchannel portrait gutter (`app/deadchannel/runner`): a runner's
-/// face rides the blank separator above their block plus the header and
-/// first body row, the text wraps short of the gutter for every entry in
-/// the room, a continuation shares the face above it, and the first block
-/// in the list (no separator above) seats all three rows on the entry.
-/// A mention's wash covers the hood row too: the face is one block.
+/// face sits level with their header and wears what the entry has rows
+/// for (a one-liner the head only, a taller message the coat too), the
+/// blank separator above the block stays blank so two faces never touch,
+/// the text wraps short of the gutter for every entry in the room, and a
+/// continuation shares the face above it. A mention's wash covers every
+/// face row: the face is one block.
 #[test]
 fn the_wire_seats_a_runners_portrait_beside_their_message() {
     use crate::app::deadchannel::runner::state::Look;
@@ -3264,22 +3265,26 @@ fn the_wire_seats_a_runners_portrait_beside_their_message() {
         })
         .collect();
 
-    // The list opens with dax's one-liner: no separator above it, so the
-    // face takes the header, the body row, and one padded row under them.
+    // The list opens with dax's one-liner: two rows, so the head only,
+    // the hood level with his name and the eyes on the body row, and no
+    // row grown under it for a coat.
     assert!(rendered[0].contains("dax"), "{rendered:?}");
     assert!(rendered[0].ends_with(" ╬═╬ "), "{rendered:?}");
     assert!(rendered[1].contains("o7"), "{rendered:?}");
     assert!(rendered[1].ends_with("▐◈ ◈▌"), "{rendered:?}");
-    assert_eq!(rendered[2].trim(), "▟▓▙", "{rendered:?}");
-    // Mira's block sits below the civilian: the hood rides the blank
-    // separator above her header, so the face ends level with her first
-    // body row and nothing is padded under it.
+    // Then the separator, blank all the way across: dax's face and the
+    // next block's never touch.
+    assert_eq!(rendered[2].trim(), "", "{rendered:?}");
+    assert!(rendered[3].contains("afterglow"), "{rendered:?}");
+    // Mira's message wraps, so her block wears the whole face: the
+    // separator above her header stays blank, the hood sits level with
+    // her name, the eyes and the coat on her first two body rows.
     let mira = rendered
         .iter()
         .position(|row| row.contains("mira"))
         .expect("mira's header");
-    assert_eq!(rendered[mira - 1].trim(), "╬═╬", "{rendered:?}");
-    assert!(rendered[mira].ends_with("▐◈ ◈▌"), "{rendered:?}");
+    assert_eq!(rendered[mira - 1].trim(), "", "{rendered:?}");
+    assert!(rendered[mira].ends_with(" ╬═╬ "), "{rendered:?}");
     // The mention's margin bar is the row's first cell.
     assert!(
         rendered[mira + 1]
@@ -3287,31 +3292,34 @@ fn the_wire_seats_a_runners_portrait_beside_their_message() {
             .starts_with("dax get"),
         "{rendered:?}"
     );
-    assert!(rendered[mira + 1].ends_with(" ▟▓▙ "), "{rendered:?}");
-    assert!(!rendered[mira + 2].contains('▟'), "{rendered:?}");
-    // Mira mentioned alice, so her block washes, hood row included: the
-    // face never tears between the separator and the header.
+    assert!(rendered[mira + 1].ends_with("▐◈ ◈▌"), "{rendered:?}");
+    assert!(rendered[mira + 2].ends_with(" ▟▓▙ "), "{rendered:?}");
+    // Mira mentioned alice, so her block washes, every face row included:
+    // the face never tears between rows.
     let visible = visible_chat_rows(&cache, None, None, cache.all_rows.len(), None);
-    for index in [mira - 1, mira, mira + 1] {
+    for index in [mira, mira + 1, mira + 2] {
         assert_eq!(
             visible.lines[index].spans[0].style.bg,
             Some(theme::CHAT_MENTION_BG()),
             "row {index} of mira's block is not washed: {rendered:?}"
         );
     }
-    assert_eq!(
-        visible.lines[mira - 2].spans[0].style.bg,
-        None,
+    // The separator above her is nobody's: unwashed, and a click there
+    // selects nothing.
+    assert!(
+        visible.lines[mira - 1]
+            .spans
+            .iter()
+            .all(|span| span.style.bg.is_none()),
         "{rendered:?}"
     );
     assert!(matches!(visible.hits[mira - 1].kind, ChatRowKind::None));
     for row in [
         &rendered[0],
         &rendered[1],
-        &rendered[2],
-        &rendered[mira - 1],
         &rendered[mira],
         &rendered[mira + 1],
+        &rendered[mira + 2],
     ] {
         assert_eq!(row.width(), width, "{row:?}");
     }
