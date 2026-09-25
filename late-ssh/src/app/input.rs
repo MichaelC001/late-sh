@@ -3,7 +3,6 @@ use super::{
     chat, dashboard, help_modal, hub, icon_picker, mod_modal, profile_modal, quit_confirm,
     room_info_modal, room_search_modal, settings_modal, sheet_modal,
     state::{App, IconPickerTarget},
-    status_picker,
 };
 use late_core::models::user::{RightSidebarMode, RoomListMode};
 
@@ -772,6 +771,17 @@ fn handle_parsed_input_inner(app: &mut App, event: ParsedInput) {
         app.apply_primary_device_attributes(attrs);
         return;
     }
+    // `/brb` holds "until your next key". A bare mouse move is not one: with
+    // any-event tracking on, the pointer merely crossing the terminal reports
+    // here, and must not bring the session back. Keys, clicks, drags and
+    // scrolls do; the 1Hz edge publishes it.
+    match &event {
+        ParsedInput::Mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            ..
+        }) => {}
+        _ => app.sent_away = false,
+    }
 
     // The Late Edition sits above everything else: it is the first thing
     // a session sees after the splash and the tour.
@@ -848,11 +858,6 @@ fn handle_parsed_input_inner(app: &mut App, event: ParsedInput) {
 
     if app.room_search_modal_state.is_open() {
         room_search_modal::input::handle_input(app, event);
-        return;
-    }
-
-    if app.status_picker.is_open() {
-        status_picker::input::handle_input(app, event);
         return;
     }
 
@@ -2499,6 +2504,7 @@ fn chat_room_list_view<'a>(
 ) -> crate::app::chat::ui::ChatRoomListView<'a> {
     crate::app::chat::ui::ChatRoomListView {
         chat_rooms: &app.chat.rooms,
+        away_user_ids: &app.away_user_ids,
         live_streams: &app.chat.live_streams,
         usernames,
         unread_counts: &app.chat.unread_counts,
@@ -3229,13 +3235,6 @@ fn close_overlays_for_modal(app: &mut App) {
     app.chat.close_news_modal();
     app.chat.cancel_room_jump();
     app.chat.message_search.clear();
-}
-
-/// Open the `/status` picker.
-pub(crate) fn open_status_picker_globally(app: &mut App) {
-    let current = app.status;
-    close_overlays_for_modal(app);
-    app.status_picker.open(current);
 }
 
 /// The `Ctrl+/` room picker, also behind `/picker` for terminals that
