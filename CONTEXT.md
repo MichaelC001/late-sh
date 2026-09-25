@@ -788,7 +788,7 @@ overwrite its own layout on every reconnect.
 
 ## 6. Current Work [VOLATILE]
 
-- **deadchannel** (`late-ssh/src/app/deadchannel/`): the character layer of late.sh. First contact, the haunting ladder that onboards a person without a tutorial, is built and staff-scoped behind the unlit `haunt_live` fuse; phase 2, the runner, is at build-order step 1 (row, random starter look, portrait in the #deadchannel gutter). Design in `GAME.md` and `DIGEST.md` beside the code; status and contracts in that directory's `CONTEXT.md`.
+- **deadchannel** (`late-ssh/src/app/deadchannel/`): the character layer of late.sh. First contact, the haunting ladder that onboards a person without a tutorial, is built and staff-scoped behind the unlit `haunt_live` fuse; phase 2, the runner, is live in #deadchannel: the row and its level-gated look, the portrait gutter, the night city, the ration fight, the armorer, and the tailor. Design in `GAME.md` and `DIGEST.md` beside the code; status and contracts in that directory's `CONTEXT.md`.
 - Domain-level in-progress work is described in the local `CONTEXT.md` it belongs to (see the Context Directory in §0).
 
 ---

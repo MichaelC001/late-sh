@@ -119,7 +119,7 @@ async fn find_profile_settles_the_runners_sheet_for_the_view() {
     let test_db = new_test_db().await;
     let client = test_db.db.get().await.expect("db client");
     let user = create_test_user(&test_db.db, "profile-runner-roll").await;
-    let look = Look::random(&mut rand::thread_rng());
+    let look = Look::random(1, &mut rand::thread_rng());
     DeadchannelRunner::ensure_for_user(&client, user.id, &look.to_json())
         .await
         .expect("a runner");

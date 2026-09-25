@@ -4,14 +4,15 @@
 //! palette, `shuffle` throws the dice the join threw. Pure: the draft is
 //! a value, and nothing here knows whether it was worn yet.
 //!
-//! The rack is the starter set, free, re-picked forever. Bought and
-//! earned pieces join the table with their own kinds later and will need
-//! an ownership check here; today every piece in `PIECES` is on the rack.
+//! The draft knows the runner's level, and the level is the gate: the rack
+//! holds only the pieces and tints it has unlocked (`Piece::level`,
+//! `Tint::level`), free, re-picked forever. Level only climbs, so what a
+//! runner wears is always on their rack.
 
 use rand::Rng;
 
 use crate::app::deadchannel::glyphs::GLYPH_ALPHABET;
-use crate::app::deadchannel::runner::state::{Look, Slot, TINTS, Worn, pieces_for};
+use crate::app::deadchannel::runner::state::{Look, Slot, Worn, unlocked_pieces, unlocked_tints};
 
 /// The rows of the mirror, top to bottom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,18 +37,21 @@ impl Row {
     }
 }
 
-/// The look being tried on, and the row the cursor is on.
+/// The look being tried on, the row the cursor is on, and the level the
+/// racks are cut to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Draft {
     pub look: Look,
     pub row: Row,
+    pub level: i32,
 }
 
 impl Draft {
-    pub fn new(look: Look) -> Self {
+    pub fn new(look: Look, level: i32) -> Self {
         Self {
             look,
             row: Row::Hood,
+            level,
         }
     }
 
@@ -76,7 +80,7 @@ impl Draft {
     fn step(&mut self, by: i32) {
         match self.row.slot() {
             Some(slot) => {
-                let rack: Vec<&'static _> = pieces_for(slot).collect();
+                let rack: Vec<&'static _> = unlocked_pieces(slot, self.level).collect();
                 let worn = self.worn_mut(slot);
                 let at = rack
                     .iter()
@@ -94,24 +98,26 @@ impl Draft {
         }
     }
 
-    /// The next tint for the row's piece, wrapping. The mark has no tint
+    /// The next unlocked tint for the row's piece, wrapping. The mark has no tint
     /// (GAME.md: a colored mark is earned, never picked), so on that row
     /// nothing moves.
     pub fn tint(&mut self) {
         let Some(slot) = self.row.slot() else {
             return;
         };
+        let tints: Vec<_> = unlocked_tints(self.level).collect();
         let worn = self.worn_mut(slot);
-        let at = TINTS
+        let at = tints
             .iter()
             .position(|tint| *tint == worn.tint)
-            .expect("the worn tint is in the palette");
-        worn.tint = TINTS[wrap(at, 1, TINTS.len())];
+            .expect("the worn tint is unlocked");
+        worn.tint = tints[wrap(at, 1, tints.len())];
     }
 
-    /// A whole new look off the same dice as the join. The cursor stays.
+    /// A whole new look off the join's dice, cut to the level. The cursor
+    /// stays.
     pub fn shuffle<R: Rng>(&mut self, rng: &mut R) {
-        self.look = Look::random(rng);
+        self.look = Look::random(self.level, rng);
     }
 
     /// What the row on the cursor wears, for the rack view; `None` on the

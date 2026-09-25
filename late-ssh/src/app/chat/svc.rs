@@ -4908,12 +4908,12 @@ impl ChatService {
         ChatRoomMember::join(&client, room.id, user_id).await?;
         tracing::info!(user_id = %user_id, username = %user.username, room_id = %room.id, "deadchannel joined by invitation");
         // Consent creates the character (GAME.md, Phase 2): the runner row,
-        // wearing a random starter look. A conditional insert, so a second
+        // wearing a random level-1 look. A conditional insert, so a second
         // device finds the runner already there and keeps its face, and a
         // runner who left comes back wearing the same one; only a fresh row
         // counts as the ladder's last beat, and the statements say which
         // this was.
-        let look = crate::app::deadchannel::runner::state::Look::random(&mut rand::thread_rng());
+        let look = crate::app::deadchannel::runner::state::Look::random(1, &mut rand::thread_rng());
         let (runner, origin) =
             late_core::models::deadchannel_runner::DeadchannelRunner::ensure_for_user(
                 &client,

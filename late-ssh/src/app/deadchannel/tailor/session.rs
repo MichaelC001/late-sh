@@ -9,6 +9,7 @@ use uuid::Uuid;
 use super::state::Draft;
 use super::svc::{TailorOutcome, TailorService};
 use crate::app::deadchannel::runner::state::Look;
+use crate::app::deadchannel::runner::svc::RunnerEntry;
 
 pub(crate) struct TailorSession {
     /// The look being tried on while the panel is open; `None` when it
@@ -42,11 +43,12 @@ impl TailorSession {
         }
     }
 
-    /// Step up to the mirror wearing `look` (the directory's copy; `None`
-    /// when the directory has no runner for this user yet).
-    pub(crate) fn open(&mut self, look: Option<Look>) {
-        self.draft = look.map(Draft::new);
-        self.worn = look;
+    /// Step up to the mirror as `runner` (the directory's copy; `None`
+    /// when the directory has no runner for this user yet). The racks are
+    /// cut to the level it carries.
+    pub(crate) fn open(&mut self, runner: Option<RunnerEntry>) {
+        self.draft = runner.map(|entry| Draft::new(entry.look, entry.level));
+        self.worn = runner.map(|entry| entry.look);
         self.word = None;
     }
 

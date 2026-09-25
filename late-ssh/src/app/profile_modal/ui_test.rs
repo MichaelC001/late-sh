@@ -199,7 +199,7 @@ async fn a_runners_profile_shows_the_row_to_runners_only() {
     let db = fixture._test_db.db.clone();
     let client = db.get().await.expect("db client");
     let mut rng = StdRng::seed_from_u64(7);
-    let look = Look::random(&mut rng);
+    let look = Look::random(1, &mut rng);
     DeadchannelRunner::ensure_for_user(&client, fixture.user_id, &look.to_json())
         .await
         .expect("runner row");

@@ -740,9 +740,14 @@ pieces are the thing chips buy.
 **The portrait.** 5 columns by 3 rows, three slots, one row each: **hood**
 (top), **eyes** (middle), **coat** (bottom). Rows stack, so any hood
 composes with any coat and the set never needs compatibility rules. The
-starter set is three pieces per slot, free; a join assigns a random
-starter look so the mark exists from the first second, and starter
-pieces can be re-picked at the tailor for nothing, forever.
+rack is gated by level: three pieces per slot at level 1, three more
+at 4, 7, 10, and 13 (fifteen per slot), free once unlocked and
+re-picked at the tailor for nothing, forever. A join assigns a random
+level-1 look so the mark exists from the first second. There are no
+earned or legendary pieces: a piece only a few can wear becomes the
+look everyone chases and then everyone wears. Feats (the Old Signal
+kill) earn a badge, not clothes, and no piece carries the Signal's `╬`
+on the chest.
 
 **The mark.** One cell: a glyph, rendered in the chat author badge stack
 (beside the bonsai glyph, the existing precedent for a game glyph there)
@@ -761,14 +766,17 @@ Signal kill and can never be bought, so the room learns to read it.
   rental treadmill is what made effects a moment). The tailor's rack
   rotates by season and a piece that leaves the rack never returns, so
   a look dates you the way a jersey does.
-- **Earned** pieces: milestones only (level 15, the first mark, a season
-  placement, later the arena title), never on any rack at any price.
+- **Level** pieces: the tailor's rack opens by level, three per slot
+  every three levels, so the look says how far down you have been.
+  There are no earned pieces: a piece only a few can wear becomes the
+  look everyone chases and then everyone wears. Milestones (the Old
+  Signal kill, a season placement, later the arena title) earn badges,
+  not clothes.
 
 Because the piece set is closed, a look is legible to anyone who has
-learned it: this coat says "was here in season one", that hood says
-"has killed the Signal", and the difference between bought and earned
-is the difference between "has chips" and "did the thing". Both are
-status; both are why you look.
+learned it: this coat says "was here in season one", that tint says
+"level ten", and the badge beside the name says "did the thing". Both
+are status; both are why you look.
 
 **Signal corrupts the look.** The portrait renders with cells replaced by
 static in proportion to missing signal (the haunting's `glitched_name`
@@ -843,7 +851,8 @@ What the sketches decided:
 
 - **The coat's center cell is the emblem.** `▟╬▙`, `▟═▙`, `▟▓▙` are one
   coat with a different chest; emblems are the cheapest way to grow the
-  catalog, and an earned emblem (the Signal's `╬`) reads at a glance.
+  catalog. The Signal's `╬` is kept off every chest: it belongs to the
+  boss, not to a coat.
 - **Static shades inside a piece mean "half in the city already."** The
   ghost band's pieces mix `░▒▓` into themselves, so the corruption effect
   and the fashion speak one visual language and a wound never reads as
@@ -1099,7 +1108,7 @@ the railing Enter looks over the ledge at the lower city (a half-block
 perspective picture, the showpiece). The screen is the forest (the
 fight pass, next section). The armorer's till trades and the tailor's
 mirror edits the look (pick, not draw: rows, racks, tints, the mark, the
-join's dice again; the starter rack free forever). Still to come on the
+join's dice again; the rack gated by level, free once unlocked). Still to come on the
 street: the locker, the band choice.
 
 ## The fight pass: where the ration goes (2026-09-24)
@@ -1302,16 +1311,20 @@ talk about.
 The badge (mark plus level, `▚7`, decided 2026-09-02) is where the
 game's status lives in chat, and its color is earned, never bought:
 
-- **Level bands tint the badge.** Grey 1 to 4, amber 5 to 9, phosphor
-  10 to 14, white at 15; the earned tint only after an Old Signal kill.
-  The room learns the ladder in a week without a legend.
+- **Level bands tint the badge.** The badge wears the newest tint the
+  level unlocked: grey 1 to 3, phosphor 4 to 6, cyan 7 to 9, magenta 10
+  to 12, red 13 and 14, white at 15; the earned tint only after an Old
+  Signal kill. The room learns the ladder in a week without a legend.
 - **The badge carries the level color; the username keeps the shop
   color.** Username gradients are the shop's one hit. Both on one line
   would fight; side by side they read as "has chips" and "did the
   thing", the exact distinction "The look" draws.
-- **Tints in the tailor unlock by level band, not by price.** Bits stay
-  internal and buy gear; chips buy pieces. A tint you cannot pick yet
-  shows in the rack with its level: a reason to come back at five.
+- **Tints and pieces in the tailor unlock by level, not by price.** Every
+  three levels opens three pieces per slot and a tint: static and amber
+  at 1, phosphor at 4, cyan at 7, magenta at 10, red at 13, white alone
+  at 15. Bits stay internal and buy gear; chips buy pieces later. The
+  mirror names what the next unlock level opens: a reason to come back
+  at four.
 - All of it in #deadchannel only until the public flip.
 
 ### PvP at forty people

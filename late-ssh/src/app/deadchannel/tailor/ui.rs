@@ -16,7 +16,7 @@ use crate::app::deadchannel::city::ui::{
     INK, INK_BRIGHT, INK_DIM, INK_MUTED, glow, ink, lit, tint_rgb,
 };
 use crate::app::deadchannel::glyphs::GLYPH_ALPHABET;
-use crate::app::deadchannel::runner::state::pieces_for;
+use crate::app::deadchannel::runner::state::{PIECES, TINTS, next_unlock, unlocked_pieces};
 
 /// Pieces shown around the worn one, each side.
 const RACK_REACH: usize = 2;
@@ -91,7 +91,9 @@ pub(crate) fn mirror_lines(view: &MirrorView<'_>) -> Vec<Line<'static>> {
                     },
                 ));
                 let slot = row.slot().expect("a dressed row has a slot");
-                let rack: Vec<&'static str> = pieces_for(slot).map(|piece| piece.row).collect();
+                let rack: Vec<&'static str> = unlocked_pieces(slot, draft.level)
+                    .map(|piece| piece.row)
+                    .collect();
                 let at = rack
                     .iter()
                     .position(|piece| *piece == worn.piece.row)
@@ -149,14 +151,31 @@ pub(crate) fn mirror_lines(view: &MirrorView<'_>) -> Vec<Line<'static>> {
     keys.push(Span::styled("[Enter] ", key));
     keys.push(Span::styled("back to the street", text));
     lines.push(Line::from(keys));
-    lines.push(Line::from(Span::styled(
-        "the starter rack is free, forever. bought pieces come with the season, for chips.",
-        dim_text,
-    )));
+    lines.push(Line::from(Span::styled(next_unlock_line(draft.level), dim_text)));
     if let Some(word) = view.word {
         lines.push(Line::from(Span::styled(word.to_string(), lit(Neon::Cyan))));
     }
     lines
+}
+
+/// What the next unlock level puts on the rack, or that it is all out.
+fn next_unlock_line(level: i32) -> String {
+    let Some(next) = next_unlock(level) else {
+        return "the whole rack is yours. every piece, every tint.".to_string();
+    };
+    let pieces = PIECES.iter().filter(|piece| piece.level == next).count();
+    let tints = TINTS
+        .iter()
+        .filter(|tint| tint.level() == next)
+        .map(|tint| format!("{tint:?}").to_lowercase())
+        .collect::<Vec<_>>()
+        .join(" and ");
+    match (pieces, tints.is_empty()) {
+        (0, true) => unreachable!("an unlock level opens something"),
+        (0, false) => format!("level {next} opens {tints}."),
+        (pieces, true) => format!("level {next} opens {pieces} new pieces."),
+        (pieces, false) => format!("level {next} opens {pieces} new pieces and {tints}."),
+    }
 }
 
 #[cfg(test)]

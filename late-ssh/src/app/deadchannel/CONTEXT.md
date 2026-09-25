@@ -37,7 +37,7 @@
   `username` beside `user_id`, and Grafana has a "deadchannel" row over
   the haunt logs and the three first-contact counters; the runner:
   `/join #deadchannel` now creates a `deadchannel_runners` row wearing a
-  random starter look (pieces and
+  random level-1 look (pieces and
   tints from the closed table in `runner/state.rs`), and inside
   #deadchannel every runner's portrait sits in a six-cell gutter on the
   right of their messages (hood level with the header, eyes and coat on
@@ -110,8 +110,8 @@ number of replicas spend one AI call per text.
 | `haunt/state.rs` | The pure machines and data: `HauntState` (the one `App` slot), `FirstContactMarks` (persisted marks bundle), `FirstContactGate` + `BioStanding` + the thresholds and `bio_hash` (the eligibility gate), `ClockGlitch` (stage 1), `NameFlicker` (stage 2, the person being haunted), `ActiveHit` (one hit's playback, holding the wave seed: the roller's own hit and the `witness` slot share it, so every screen corrupts identically), `WhisperState` (stage 3), `Breakthrough` + `InvitationClaim` (stage 4's full-screen beat and the claim answer), the voice/invitation/breakthrough-line constants (stage 4), `PendingClaim`/`HitStage` (claims in flight), `HauntCommand` + `parse_haunt_command`. No I/O, no clock reads. |
 | `haunt/svc.rs` | Orchestration: `bootstrap_gate` (gate + bio screen claim at connect), `arm` (session start), one `tick(app)` (claim drain, splash door, glitch scheduler, name-flicker roller, witness replay, breakthrough (claim answer, scene, due send), `/haunt` drain), `swallows_splash_input`, `replay_whisper`, the bio screen task, and `publish_name_hit` (a won or forced hit goes on the wire through `ChatService::publish_name_hit`). The only haunting layer touching `App`, logging, metrics, and persistence. |
 | `haunt/ui.rs` | Pure render helpers: whisper frame + splash overlay + static surge, breakthrough frame + full-screen draw, `apply_clock_glitch`, `glitched_name`, `name_flicker_for`. Deterministic per burst seed, stateless like the sidebar equalizer. |
-| `runner/state.rs` | The look: `PIECES` (the closed starter table, one five-cell row per piece, `Slot` hood/eyes/coat), `Tint` (the closed palette, gold deliberately absent), `Look` + `Worn` (typed, table references), `Look::random` (the join's dice), `Look::to_json` / `Look::parse` (the JSON contract on the runner row; unknown codes are a `LookError`, never a blank), `PORTRAIT_WIDTH` / `PORTRAIT_HEIGHT`. No I/O. `state_test` asserts every row is five single-width cells. |
-| `runner/ui.rs` | `portrait_spans`: the look as three styled spans, one per worn piece in its tint; `badge_text` (the mark and the level, `▚7`) and `level_color` (the level's band: static to 4, amber to 9, phosphor to 14, white at 15) for the wire's author header and the profile; `tint_color` maps the palette onto the theme. Pure. |
+| `runner/state.rs` | The look: `PIECES` (the closed table, one five-cell row per piece, `Slot` hood/eyes/coat, each with the `level` that unlocks it: three per slot at 1, 4, 7, 10, 13; no earned or legendary pieces, every piece is reachable by level), `Tint` (the closed palette of seven, each with its unlock `level`, white alone at 15; gold deliberately absent), `UNLOCK_LEVELS`, `unlocked_pieces` / `unlocked_tints` / `next_unlock` (the level gate), `Look` + `Worn` (typed, table references), `Look::random(level, rng)` (the join's dice at 1, the tailor's shuffle at the runner's level), `Look::to_json` / `Look::parse` (the JSON contract on the runner row; unknown codes are a `LookError`, never a blank), `PORTRAIT_WIDTH` / `PORTRAIT_HEIGHT`. No I/O. `state_test` asserts every row is five single-width cells and pins the unlock ladder whole. |
+| `runner/ui.rs` | `portrait_spans`: the look as three styled spans, one per worn piece in its tint; `badge_text` (the mark and the level, `▚7`) and `level_color` (the newest tint the level unlocked: static to 3, phosphor to 6, cyan to 9, magenta to 12, red to 14, white at 15) for the wire's author header and the profile; `tint_color` maps the palette onto the theme (cyan and magenta fixed, the theme has neither). Pure. |
 | `runner/data.rs` | `welcome`: the voice's welcome for a runner whose row was just created, one message, one paragraph per line (the runner mentioned by name, the story so far, `0` twice as the way down, `/leave` and `/join #deadchannel`). Names no key on the street: those are the guide's. Placeholder copy at feed-template standards. Pure. |
 | `runner/svc.rs` | `RunnerLookService`: the process-shared runner directory (`watch<Arc<HashMap<Uuid, RunnerEntry>>>`, an entry being the look and the level of a standing runner), seeded and refreshed from `deadchannel_runners` (`list_standing`) on the `deadchannel_runner_changed` LISTEN, the `app/flags` shape. A look that fails to parse is logged and skipped. `fixed_looks_rx` for test apps. |
 | `city/map.rs` | **Generated** by `scripts/gen_city_map.py --write` (never hand-edited): the 232x52 `MAP` literal, the `SOLID` collision bitmap, `SPAWN`, every zone (`SIGNS`, `BANNERS`, `CART_SIGNS`, `AWNINGS`, `WINDOWS`, `VENTS`, `PUDDLES`, `LAMPS`, `DROP_LIGHTS`, `SCREEN_FACE`, `WIRE`, ...), the closed `Neon` palette, `Landmark` + `nearest_landmark` (reach zones), `walkable`, `grid`/`char_at`. |
@@ -125,7 +125,7 @@ number of replicas spend one AI call per text.
 | `fight/session.rs` | `FightSession`, the session's side: the sheet mirror, the `Scene` over the street (lines, `over`, `waiting`), the `till` line (an answer that lands with no scene open), one action in flight, `open` / `close` / `clear_till` / `request` / `reload` / `drop_sheet` / `tick`. Decides nothing. |
 | `fight/input.rs` | Keys while the scene is open: `a` attack, `r` run, Enter closes a finished scene; digits, Tab, `q` stay global (`?` is the guide's, taken in `city/input.rs` first), everything else is swallowed. |
 | `fight/ui.rs` | `draw_scene` (two portraits facing, each losing cells to static in proportion to its missing signal, `corrupt`; the bars; the exchange; the keys) and `draw_strip` (level, signal, rations, bits, the weapon and the armor by name, top-right on the street); `weapon_name` / `armor_name` (`bare hands`, `street clothes` at tier 0) for every readout that names the kit. Pure. |
-| `tailor/state.rs` | `Draft`, the mirror's editor over one `Look`: four `Row`s (hood, eyes, coat, mark), `up` / `down`, `next` / `prev` around the row's rack (wrapping), `tint` around `TINTS` (nothing on the mark row: a colored mark is earned), `shuffle` (the join's dice). Pure. |
+| `tailor/state.rs` | `Draft`, the mirror's editor over one `Look` at the runner's `level`: four `Row`s (hood, eyes, coat, mark), `up` / `down`, `next` / `prev` around the row's unlocked rack (wrapping), `tint` around the unlocked tints (nothing on the mark row: a colored mark is earned), `shuffle` (the join's dice at the level). Pure. |
 | `tailor/svc.rs` | `TailorService`, the look's writer after the join: `wear_task` runs `DeadchannelRunner::store_look` (one statement, standing runner only, last write wins) and answers `TailorOutcome::{Worn, NoRunner, Failed}` on the session's `mpsc`; the metric, the log line per outcome. The change trigger carries the look to every replica's directory. |
 | `tailor/session.rs` | `TailorSession`: the `draft` while the panel is open, `worn` (what the row wears as far as this session knows), the tailor's `word`, one write in flight (`saving`); `open(look)` / `close` / `changed` / `wear` / `tick`. Decides nothing. |
 | `tailor/input.rs` | Keys while the tailor's panel is open: up/down (`k`/`j`) row, left/right (`h`/`l`) pick, `t` tint, `r` shuffle, `s` wear, Enter leaves; digits, Tab, `q` stay global (`?` is the guide's, taken in `city/input.rs` first), everything else is swallowed. |
@@ -135,7 +135,7 @@ number of replicas spend one AI call per text.
 | `guide/session.rs` | `GuideSession`: the `state`, `descend` (the claim), `tick` (opens the guide on `FirstDescent`). Decides nothing. |
 | `guide/input.rs` | Keys while the guide is open: `j`/`k` and the arrows scroll a line, PageUp/PageDown a screen, Enter, `q` and `?` close it; digits and Tab stay global, everything else is swallowed. `opens` names the key (`?`). |
 | `guide/ui.rs` | `draw`: the box over the street, the sections as a bright heading and its lines, wrapped and scrolled, the keys under; `body_lines`. Pure. |
-| `tailor/ui.rs` | `mirror_lines` for the city's panel: the draft as a portrait with the mark under it, four rack rows beside it (the cursor, the label, the tint's name, a window of five pieces around the worn one, bracketed; the whole alphabet on the mark row), the keys (`[s] wear it` lit only when the draft differs from what is worn), the tailor's word. Pure. |
+| `tailor/ui.rs` | `mirror_lines` for the city's panel: the draft as a portrait with the mark under it, four rack rows beside it (the cursor, the label, the tint's name, a window of five pieces around the worn one, bracketed; the whole alphabet on the mark row), the keys (`[s] wear it` lit only when the draft differs from what is worn), what the next unlock level opens, the tailor's word. Pure. |
 
 Root integration is deliberately thin: `App.haunt` (the one field),
 `haunt::svc::tick(self)` in `tick.rs` (plus the splash block consulting
@@ -501,9 +501,9 @@ till; every other counter is a catalog with its till shut.
   a line from that landmark's pool top-left for ~8s. Enter at the wire
   leaves, back up to the Clubhouse.
 - **The tailor.** Pick, not draw (GAME.md, "The look"): Enter at the
-  tailor opens the panel with the runner's look from the directory
-  (`App.runner_looks`; with no entry yet the mirror says nothing looks
-  back) as a `Draft` in `App.tailor`. The city's panel is the frame, every
+  tailor opens the panel with the runner's look and level from the
+  directory (`App.runner_looks`; with no entry yet the mirror says nothing
+  looks back) as a `Draft` in `App.tailor`. The city's panel is the frame, every
   key goes to `tailor/input.rs`: the cursor walks the four rows, left
   and right walk the row's rack (a window of five around the worn piece,
   wrapping; the ten marks all at once), `t` cycles the piece's tint, `r`
@@ -513,9 +513,14 @@ till; every other counter is a catalog with its till shut.
   trigger carries the new face to every replica's look directory, so the
   gutter portraits, the mark on the street, and the fight scene all
   change on the next directory refresh; the panel's own mirror shows the
-  draft at once. Enter or Esc drops a draft not worn. The starter rack is
-  free, forever; every piece in `PIECES` is on it today, and the
-  ownership check for bought and earned pieces lands with them.
+  draft at once. Enter or Esc drops a draft not worn. The rack is gated
+  by level and free once unlocked: the draft only walks pieces and tints
+  at or under the runner's level, and the panel names what the next
+  unlock level opens. The draft is the gate, with no second check at
+  `wear`: level only climbs, and migration 204 re-rolled every look into
+  the level-1 rack when the gate shipped, so what a runner wears is
+  always on their rack (the draft `expect`s it). The ownership check for
+  bought and earned pieces lands with them.
 - **Animation** rides the clubhouse's `anim_half` edge (~7.5fps,
   `tick.rs`), the wake tier is `ANIM_HALF_TICK` on this screen, and every
   effect is a pure function of `marquee_tick` and the cell, so nothing
@@ -656,7 +661,8 @@ service for `Command::Start`.
   the last-ration line's numbers). Created only by the invited
   join with the column defaults (level 1, signal 10, 50 bits, ten
   rations, today). The look is written again only by the tailor's
-  mirror (`store_look`, standing runner only). An insert, or an update
+  mirror (`store_look`, standing runner only) and by migration 204,
+  which re-rolled every look into the level-1 rack. An insert, or an update
   of `look`, `left_at`, or `level` (migration 202), fires
   `deadchannel_runner_changed` (payload: the user id, for logs only;
   listeners re-read every standing row); a sheet write that leaves the

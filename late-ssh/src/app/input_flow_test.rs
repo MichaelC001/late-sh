@@ -748,7 +748,7 @@ async fn zero_twice_goes_under_the_clubhouse_for_runners_only() {
     app.runner_looks = Arc::new(HashMap::from([(
         user.id,
         RunnerEntry {
-            look: Look::random(&mut rng),
+            look: Look::random(1, &mut rng),
             level: 1,
         },
     )]));
@@ -787,7 +787,7 @@ async fn leaving_the_deadchannel_walks_a_standing_runner_back_up() {
     let (looks_tx, looks_rx) = tokio::sync::watch::channel(Arc::new(HashMap::from([(
         user.id,
         RunnerEntry {
-            look: Look::random(&mut rng),
+            look: Look::random(1, &mut rng),
             level: 1,
         },
     )])));
@@ -837,7 +837,7 @@ async fn runner_at_the_railing(
     app.runner_looks = Arc::new(HashMap::from([(
         user.id,
         RunnerEntry {
-            look: Look::random(&mut rng),
+            look: Look::random(1, &mut rng),
             level: 1,
         },
     )]));
@@ -4065,7 +4065,7 @@ async fn the_first_descent_opens_the_guide_and_the_question_mark_reopens_it() {
         .await
         .expect("join lounge room");
     let mut rng = StdRng::seed_from_u64(7);
-    let look = Look::random(&mut rng);
+    let look = Look::random(1, &mut rng);
     // The claim is on the row, so the runner needs one.
     DeadchannelRunner::ensure_for_user(&client, user.id, &look.to_json())
         .await

@@ -48,8 +48,8 @@ pub fn handle_event(app: &mut App, event: &ParsedInput) -> bool {
                 app.city.open_panel(landmark);
                 app.fight.clear_till();
                 if landmark == Landmark::Tailor {
-                    let look = app.runner_looks.get(&app.user_id).map(|entry| entry.look);
-                    app.tailor.open(look);
+                    let runner = app.runner_looks.get(&app.user_id).copied();
+                    app.tailor.open(runner);
                 }
             }
             Enter::Line(landmark) => {

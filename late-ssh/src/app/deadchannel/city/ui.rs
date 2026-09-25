@@ -288,8 +288,10 @@ pub(crate) fn tint_rgb(tint: Tint) -> Rgb {
         Tint::Static => INK_DIM,
         Tint::Amber => neon_rgb(Neon::Amber),
         Tint::Phosphor => neon_rgb(Neon::Green),
-        Tint::White => INK_BRIGHT,
+        Tint::Cyan => neon_rgb(Neon::Cyan),
+        Tint::Magenta => neon_rgb(Neon::Magenta),
         Tint::Red => neon_rgb(Neon::Red),
+        Tint::White => INK_BRIGHT,
     }
 }
 

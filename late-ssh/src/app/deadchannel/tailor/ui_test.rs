@@ -20,9 +20,9 @@ fn text_of(lines: &[ratatui::text::Line<'_>]) -> String {
 #[test]
 fn the_mirror_shows_the_draft_with_the_cursor_row_and_its_rack() {
     let mut rng = StdRng::seed_from_u64(1);
-    let mut look = Look::random(&mut rng);
+    let mut look = Look::random(1, &mut rng);
     look.hood.tint = Tint::Amber;
-    let mut draft = Draft::new(look);
+    let mut draft = Draft::new(look, 1);
     draft.down();
     let screen = text_of(&mirror_lines(&MirrorView {
         draft: Some(&draft),
@@ -48,6 +48,19 @@ fn the_mirror_shows_the_draft_with_the_cursor_row_and_its_rack() {
     assert!(screen.contains(&format!("[{}]", look.mark)), "{screen}");
     assert!(screen.contains("[s] wear it"), "{screen}");
     assert!(screen.contains("the tailor turns the mirror."), "{screen}");
+    assert!(
+        screen.contains("level 4 opens 9 new pieces and phosphor."),
+        "the next unlock is named\n{screen}"
+    );
+
+    let top = Draft::new(look, 15);
+    let screen = text_of(&mirror_lines(&MirrorView {
+        draft: Some(&top),
+        word: None,
+        changed: false,
+        saving: false,
+    }));
+    assert!(screen.contains("the whole rack is yours."), "{screen}");
 
     let empty = text_of(&mirror_lines(&MirrorView {
         draft: None,

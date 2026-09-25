@@ -13,14 +13,18 @@ use super::svc::RunnerEntry;
 use crate::app::common::theme;
 
 /// The color a tint paints with, from the theme so it follows the palette.
-/// Gold (earned) is absent on purpose: not a tint a look can carry yet.
+/// The theme has no cyan or magenta, so those two are the city's neon,
+/// fixed. Gold (earned) is absent on purpose: not a tint a look can carry
+/// yet.
 pub fn tint_color(tint: Tint) -> Color {
     match tint {
         Tint::Static => theme::TEXT_DIM(),
         Tint::Amber => theme::AMBER(),
         Tint::Phosphor => theme::BONSAI_LEAF(),
-        Tint::White => theme::TEXT_BRIGHT(),
+        Tint::Cyan => Color::Rgb(38, 217, 255),
+        Tint::Magenta => Color::Rgb(255, 77, 204),
         Tint::Red => theme::ERROR(),
+        Tint::White => theme::TEXT_BRIGHT(),
     }
 }
 
@@ -31,16 +35,19 @@ pub fn badge_text(entry: &RunnerEntry) -> String {
     format!("{}{}", entry.look.mark, entry.level)
 }
 
-/// The band a level paints in: grey through the first four, amber to
-/// nine, phosphor to fourteen, white at the top of the ladder (fifteen,
-/// `fight::state::exp_to_advance` returns nothing past it). The bands are
-/// the tints a look can wear, so a badge never introduces a color the
-/// portrait beside it cannot.
+/// The band a level paints in: the newest tint the level has unlocked at
+/// the tailor, so a badge never shows a color the portrait beside it
+/// cannot wear. Grey to three (amber opens with it, the badge starts
+/// grey), then phosphor, cyan, magenta, red every three levels, white at
+/// the top of the ladder (fifteen, `fight::state::exp_to_advance` returns
+/// nothing past it).
 pub fn level_color(level: i32) -> Color {
     let tint = match level {
-        i32::MIN..=4 => Tint::Static,
-        5..=9 => Tint::Amber,
-        10..=14 => Tint::Phosphor,
+        i32::MIN..=3 => Tint::Static,
+        4..=6 => Tint::Phosphor,
+        7..=9 => Tint::Cyan,
+        10..=12 => Tint::Magenta,
+        13..=14 => Tint::Red,
         15..=i32::MAX => Tint::White,
     };
     tint_color(tint)
