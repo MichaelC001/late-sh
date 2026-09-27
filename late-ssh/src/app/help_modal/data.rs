@@ -1152,6 +1152,7 @@ fn lateania_help_lines() -> Vec<String> {
         "  n                 housing ledger",
         "  e                 appearance and bio",
         "  !                 leaderboard",
+        "  =                 the room side panel, full screen (handy on a phone)",
         "  '                 say to your room (local chat)",
         "  Enter             activate selected inventory/shop row",
         "  x                 sell selected inventory item at a shop",
