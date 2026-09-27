@@ -349,6 +349,20 @@ Chat badges and flags are rentals too, but they ride the chat label query rather
 - `HouseTableRegistry` (in `app/lobby/house/registry.rs`) owns the process-global fixed house tables behind the Lobby modal: one lazy singleton Poker/Blackjack/Asterion/Tron/Super Snake service (no DB rows), seeded permanent `chat_rooms(kind='game')` + voice channels per table, live occupancy for the modal, the house `SatDown` activity choke point, and the eager blackjack event feed the @dealer ghost subscribes to. Detailed contracts live in `late-ssh/src/app/lobby/house/CONTEXT.md`.
 - Events remain `broadcast` for all subscribers; targeted variants carry `user_id` and are filtered in UI state.
 
+**Personal bartender gifts:** `@bartender buy @user a drink` is an exact,
+AI-independent purchase for one named human, online or offline.
+`ChipService::buy_drink_for` charges 200 chips (`GIFT_DRINK_PRICE`, twice a
+round's head) as `ChipMove::DrinkGift` and grants one `drink_credits` row in
+the same transaction without pouring the buyer; the recipient's pour is the
+same 400 points a round buys. The profile ledger reads the gift's own reason
+as "bought a drink for @user", and `late_ssh_gift_drinks_*` count purchases,
+burn and refusals apart from the round's counters. The one table of what a
+tavern round, a gift and a Nightcap round cost and pour is in
+`late-ssh/src/app/chat/CONTEXT.md` §9d.
+The shared 24h expiry and three-open-credit cap apply; the recipient redeems
+it by ordering, and @bartender names the buyer of the credit actually spent.
+See `late-ssh/src/app/chat/CONTEXT.md` §9d.
+
 ### 2.5 TUI Rendering and State Architecture (Sync vs Async Boundary)
 
 To maintain a buttery-smooth 15-60 FPS over SSH, the architecture strictly separates synchronous UI rendering from asynchronous business logic:
@@ -1057,7 +1071,7 @@ the ids given, nothing else, after a preview and a confirmation prompt.
 make check
 ```
 
-The human owner may use narrower crate-specific `cargo test` / `cargo nextest run` commands ad hoc while iterating, but `make check` remains the canonical repo-level check. LLM agents must not run `cargo test`, `cargo nextest`, or `cargo clippy`; `cargo check`, `cargo build`, and `cargo fmt` are allowed. Keep checks scoped to first-party packages so vendored path dependencies are compiled as dependencies but are not treated as formatting/test owners. The check targets use `docker-compose.check.yml` for an isolated Postgres instance instead of the app `postgres` service.
+The human owner may use narrower crate-specific `cargo test` / `cargo nextest run` commands ad hoc while iterating, but `make check` remains the canonical repo-level check. LLM agents run targeted tests only through `make test-llm` (never raw `cargo test`/`cargo nextest`, and never `cargo clippy`); `cargo check`, `cargo build`, and `cargo fmt` are allowed. Keep checks scoped to first-party packages so vendored path dependencies are compiled as dependencies but are not treated as formatting/test owners. The check targets use `docker-compose.check.yml` for an isolated Postgres instance instead of the app `postgres` service.
 
 ### 10.4 Debugging checklist
 
