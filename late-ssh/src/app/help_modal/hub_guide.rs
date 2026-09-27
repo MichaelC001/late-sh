@@ -97,7 +97,8 @@ fn bar_sections() -> Vec<GuideSection> {
                     "{DRINK_PRICE_MIN}-{DRINK_PRICE_MAX} chips, never more than you can spend."
                 ),
                 "Your first ever drink is on the house.".to_string(),
-                "He only pours for you; say '@bartender buy @user a drink' to leave one".to_string(),
+                "He only pours for you; say '@bartender buy @user a drink' to leave one"
+                    .to_string(),
                 format!("on their tab for {GIFT_DRINK_PRICE} chips, claimed when they order."),
             ],
         },

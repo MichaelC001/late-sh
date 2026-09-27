@@ -2627,10 +2627,7 @@ type FoeCell = (u16, u16, ClickAction);
 /// same). Foes that do not fit are counted in a `+N` tail. Returns the line
 /// and each foe's `(column, width, action)` within it; `None` in a room with
 /// no foes.
-fn narrow_foes_line(
-    view: &PlayerView,
-    width: usize,
-) -> Option<(Line<'static>, Vec<FoeCell>)> {
+fn narrow_foes_line(view: &PlayerView, width: usize) -> Option<(Line<'static>, Vec<FoeCell>)> {
     const SEP: &str = " \u{00b7} ";
     if view.mobs.is_empty() {
         return None;

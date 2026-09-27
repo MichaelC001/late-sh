@@ -353,12 +353,11 @@ mod inner {
         DailyPuzzle, DailyWinPayout, DoorGame, FightBeat, FirstContactBeat, GalleryApplauseResult,
         GalleryHangResult, GalleryTakeDownResult, GateVerdict, GiftDrinkRefusal, GildRefusal,
         GildTier, JobsFetchResult, JobsPostResult, JobsPressResult, JobsReadResult,
-        NewsShareReward,
-        NightcapHouseFailure, NightcapOrderResult, OnlineTimeFlushResult, PaperOpenResult,
-        PaperPrintResult, PoolShotOutcome, PotRefusal, PotReminderOutcome, Presence, Refresh,
-        RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor, Screen, SessionStartStage,
-        SessionUser, SongQueueReward, SshRejectReason, SummaryResult, TailorBeat,
-        TranslationResult, VizWireBands,
+        NewsShareReward, NightcapHouseFailure, NightcapOrderResult, OnlineTimeFlushResult,
+        PaperOpenResult, PaperPrintResult, PoolShotOutcome, PotRefusal, PotReminderOutcome,
+        Presence, Refresh, RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor, Screen,
+        SessionStartStage, SessionUser, SongQueueReward, SshRejectReason, SummaryResult,
+        TailorBeat, TranslationResult, VizWireBands,
     };
     use super::{BonsaiAction, BonsaiActionResult};
     use crate::app::bonsai::state::BranchAction;
@@ -2147,12 +2146,11 @@ mod inner {
         DailyPuzzle, DailyWinPayout, DoorGame, FightBeat, FirstContactBeat, GalleryApplauseResult,
         GalleryHangResult, GalleryTakeDownResult, GateVerdict, GiftDrinkRefusal, GildRefusal,
         GildTier, JobsFetchResult, JobsPostResult, JobsPressResult, JobsReadResult,
-        NewsShareReward,
-        NightcapHouseFailure, NightcapOrderResult, OnlineTimeFlushResult, PaperOpenResult,
-        PaperPrintResult, PoolShotOutcome, PotRefusal, PotReminderOutcome, Presence, Refresh,
-        RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor, Screen, SessionStartStage,
-        SessionUser, SongQueueReward, SshRejectReason, SummaryResult, TailorBeat,
-        TranslationResult, VizWireBands,
+        NewsShareReward, NightcapHouseFailure, NightcapOrderResult, OnlineTimeFlushResult,
+        PaperOpenResult, PaperPrintResult, PoolShotOutcome, PotRefusal, PotReminderOutcome,
+        Presence, Refresh, RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor, Screen,
+        SessionStartStage, SessionUser, SongQueueReward, SshRejectReason, SummaryResult,
+        TailorBeat, TranslationResult, VizWireBands,
     };
     use super::{BonsaiAction, BonsaiActionResult};
 

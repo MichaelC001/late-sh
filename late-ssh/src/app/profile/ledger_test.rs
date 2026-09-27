@@ -145,7 +145,12 @@ fn every_pointer_kind_resolves_from_its_source() {
         usernames: HashMap::from([(alice, "alice".to_string()), (bob, "bob".to_string())]),
     };
     assert_eq!(
-        named_user_ids(&refs, &sources.gilds, &sources.deposed, &sources.gift_recipients),
+        named_user_ids(
+            &refs,
+            &sources.gilds,
+            &sources.deposed,
+            &sources.gift_recipients
+        ),
         vec![alice, stranger, alice, bob, stranger, bob, bob]
     );
 

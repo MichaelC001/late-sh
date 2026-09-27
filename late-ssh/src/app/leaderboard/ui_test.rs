@@ -297,19 +297,32 @@ fn value_column_is_set_by_the_widest_loaded_row_at_every_scroll() {
         })
         .collect();
     // Below the fold at the top: still the row that sets the column.
-    entries[5] = entry(6, "long-name-far-below-the-fold", Uuid::from_u128(106), 999_999);
+    entries[5] = entry(
+        6,
+        "long-name-far-below-the-fold",
+        Uuid::from_u128(106),
+        999_999,
+    );
 
     let top = super::scrolled_window_lines("monthly", &entries, board, viewer(), 3, 100, 0);
     let scrolled = super::scrolled_window_lines("monthly", &entries, board, viewer(), 3, 100, 1);
 
     // "  #6  " + name + two cells + "999,999", not the 100-cell area.
-    assert_eq!(text(&top[1]).chars().count(), 6 + 28 + 2 + 7, "{}", text(&top[1]));
+    assert_eq!(
+        text(&top[1]).chars().count(),
+        6 + 28 + 2 + 7,
+        "{}",
+        text(&top[1])
+    );
     // A rank renders the same whether it is seen at the top or after a scroll.
     assert_eq!(text(&top[2]), text(&scrolled[1]));
     assert_eq!(text(&top[3]), text(&scrolled[2]));
     let deeper = super::scrolled_window_lines("monthly", &entries, board, viewer(), 3, 100, 3);
     assert!(text(&deeper[3]).contains("long-name-far-below-the-fold  999,999"));
-    assert_eq!(text(&deeper[3]).chars().count(), text(&top[1]).chars().count());
+    assert_eq!(
+        text(&deeper[3]).chars().count(),
+        text(&top[1]).chars().count()
+    );
 }
 
 #[test]

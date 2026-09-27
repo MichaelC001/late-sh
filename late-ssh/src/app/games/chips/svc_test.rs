@@ -805,7 +805,10 @@ async fn a_personal_gift_only_pours_when_the_recipient_orders() {
         .await
         .unwrap();
     assert_eq!(ledger.get::<_, i64>("delta"), -GIFT_DRINK_PRICE);
-    assert_eq!(ledger.get::<_, &str>("source_ref"), gift.round_id.to_string());
+    assert_eq!(
+        ledger.get::<_, &str>("source_ref"),
+        gift.round_id.to_string()
+    );
 
     let poured = chips
         .cash_round_drink(recipient.id)
@@ -833,7 +836,10 @@ async fn personal_gifts_refuse_without_charging_at_the_cap_or_chip_floor() {
         chips.buy_drink_for(buyer.id, recipient.id).await,
         Err(GiftError::Refused(GiftRefusal::AllHolding))
     ));
-    assert_eq!(chips.open_round_credits(recipient.id).await.unwrap(), MAX_OPEN_CREDITS);
+    assert_eq!(
+        chips.open_round_credits(recipient.id).await.unwrap(),
+        MAX_OPEN_CREDITS
+    );
     assert_eq!(balance(&test_db.db, buyer.id).await, 400);
 
     let other = create_test_user(&test_db.db, "gift-floor-recipient").await;

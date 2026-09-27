@@ -1095,7 +1095,11 @@ impl GhostService {
             ),
             Some(recipient) => {
                 let who = mention_target_for_user(Some(&recipient.username), recipient.id);
-                match self.chip_service.buy_drink_for(buyer_id, recipient.id).await {
+                match self
+                    .chip_service
+                    .buy_drink_for(buyer_id, recipient.id)
+                    .await
+                {
                     Ok(purchase) => {
                         metrics::record_gift_drink_bought(GIFT_DRINK_PRICE);
                         tracing::info!(

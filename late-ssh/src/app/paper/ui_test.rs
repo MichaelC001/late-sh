@@ -148,7 +148,8 @@ fn a_frame_too_small_to_print_keeps_the_reading_position() {
 
     // Shrunk under the printable minimum, then a key, then grown back.
     let mut tiny = Terminal::new(TestBackend::new(20, 4)).unwrap();
-    tiny.draw(|frame| draw(frame, frame.area(), &modal)).unwrap();
+    tiny.draw(|frame| draw(frame, frame.area(), &modal))
+        .unwrap();
     modal.scroll(1);
     terminal
         .draw(|frame| draw(frame, frame.area(), &modal))

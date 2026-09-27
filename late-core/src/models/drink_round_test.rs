@@ -9,8 +9,14 @@ use crate::{
 
 #[test]
 fn only_an_exact_personal_gift_authorizes_a_purchase() {
-    assert_eq!(gift_drink_target("@bartender buy @alice a drink"), Some("alice"));
-    assert_eq!(gift_drink_target("  @BARTENDER BUY @Alice_2 A DRINK  "), Some("Alice_2"));
+    assert_eq!(
+        gift_drink_target("@bartender buy @alice a drink"),
+        Some("alice")
+    );
+    assert_eq!(
+        gift_drink_target("  @BARTENDER BUY @Alice_2 A DRINK  "),
+        Some("Alice_2")
+    );
     for message in [
         "@bartender can you buy @alice a drink?",
         "@bartender buy @alice a drink?",
