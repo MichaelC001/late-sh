@@ -13,7 +13,11 @@ fn the_card_picks_the_form_and_keeps_rows_for_the_messages() {
     assert_eq!(strip.height, LIVE_STRIP_HEIGHT);
     assert_eq!(rest.height, 30 - LIVE_STRIP_HEIGHT);
 
-    let (size, strip, _) = fit_live_strip(card(80, 14)).unwrap();
+    let (size, _, rest) = fit_live_strip(card(80, 21)).unwrap();
+    assert_eq!(size, StripSize::Full);
+    assert_eq!(rest.height, 12, "the messages keep the larger share");
+
+    let (size, strip, _) = fit_live_strip(card(80, 20)).unwrap();
     assert_eq!(
         size,
         StripSize::Compact,

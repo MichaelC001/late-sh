@@ -57,7 +57,7 @@ Going up or coming down changes the card's height, so it waits while the viewer 
 
 ## 6. The frame (`ui.rs`)
 
-The picture sits in a `PICTURE_COLS` column, centred in `PICTURE_ROWS`, with the words to its right, then the rule under them. Two fixed forms picked by the card's size and never by what is shown: the 9-row strip on a card at least 56 wide with 8 rows left for messages, else one row (`── live ── 8ball eggy v weslin`, `── live ── booth mat · Naima`), else nothing. The rule's label glows when the source says so: a cue up or a result in for a match, the track that is playing for the booth.
+The picture sits in a `PICTURE_COLS` column, centred in `PICTURE_ROWS`, with the words to its right, then the rule under them. Two fixed forms picked by the card's size and never by what is shown: the 9-row strip on a card at least 56 wide with 12 rows left for messages (so the chat keeps the larger share), else one row (`── live ── 8ball eggy v weslin`, `── live ── booth mat · Naima`), else nothing. The rule's label glows when the source says so: a cue up or a result in for a match, the track that is playing for the booth.
 
 `draw_live_strip` records `LiveState::hit` when what it drew opens something; `App::render` clears it before every draw.
 
