@@ -154,12 +154,12 @@ pub struct DashboardChatView<'a> {
     pub translation_hidden: &'a HashSet<Uuid>,
     pub active_room_effects: &'a [ActiveChatRoomEffect],
     pub active_poll: Option<&'a ActiveChatPoll>,
-    /// The #lounge live strip (`lobby/daily/live_strip.rs`): one daily
-    /// match something just happened to, drawn above the poll strip. `None`
-    /// when nothing is live; the card then looks as it always has.
-    pub live_strip: Option<crate::app::lobby::daily::live::LiveStripView<'a>>,
-    /// Receives the strip's rect and match for the click that opens it.
-    pub live_strip_hit: &'a std::cell::Cell<Option<(Rect, Uuid)>>,
+    /// The #lounge live strip (`app/live/`): one thing that just happened
+    /// in the house, drawn above the poll strip. `None` when nothing is
+    /// live; the card then looks as it always has.
+    pub live_strip: Option<crate::app::live::state::LiveStripView<'a>>,
+    /// Receives the strip's rect and source for the click that opens it.
+    pub live_strip_hit: &'a std::cell::Cell<Option<(Rect, crate::app::live::pick::LiveSource)>>,
     pub inline_images: &'a HashMap<Uuid, InlineImagePreview>,
     pub keep_composer_focused: bool,
     /// Cell that, when present, receives the composer block rect so mouse
@@ -1207,16 +1207,9 @@ pub fn draw_dashboard_chat_card(
     // The live strip takes its rows off the top, so the newest messages,
     // anchored at the bottom, stay where they are when it comes and goes.
     if let Some(strip) = &view.live_strip
-        && let Some((size, strip_area, rest)) =
-            crate::app::lobby::daily::live_strip::fit_live_strip(messages_area)
+        && let Some((size, strip_area, rest)) = crate::app::live::ui::fit_live_strip(messages_area)
     {
-        crate::app::lobby::daily::live_strip::draw_live_strip(
-            frame,
-            strip_area,
-            size,
-            strip,
-            view.live_strip_hit,
-        );
+        crate::app::live::ui::draw_live_strip(frame, strip_area, size, strip, view.live_strip_hit);
         messages_area = rest;
     }
     let (poll_area, messages_area) = split_poll_and_messages(messages_area, view.active_poll);
