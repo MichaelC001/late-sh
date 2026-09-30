@@ -311,6 +311,7 @@ struct DrawContext<'a> {
     show_hub_modal: bool,
     aquarium_state: &'a crate::app::hub::aquarium::state::AquariumState,
     aquarium_care: &'a crate::app::hub::aquarium::state::AquariumCare,
+    pet_state: &'a crate::app::pet::state::PetState,
     leaderboard_page: &'a crate::app::leaderboard::state::LeaderboardPageState,
     quest_state: &'a crate::app::hub::dailies::state::QuestState,
     shop_state: &'a crate::app::hub::shop::state::ShopState,
@@ -1394,6 +1395,7 @@ impl App {
                         show_hub_modal: self.show_hub_modal,
                         aquarium_state: &self.aquarium_state,
                         aquarium_care: &self.aquarium_care,
+                        pet_state: &self.pet_state,
                         leaderboard_page: &self.leaderboard_page,
                         quest_state: &self.quest_state,
                         shop_state: &self.shop_state,
@@ -2053,6 +2055,17 @@ impl App {
                     paired_client: ctx.paired_client,
                     eq_state: ctx.eq_state,
                     bonsai: ctx.bonsai,
+                    pet: ctx
+                        .shop_state
+                        .entitlements()
+                        .has_pet_companion()
+                        .then_some(ctx.pet_state),
+                    tank: ctx.shop_state.entitlements().has_aquarium().then_some(
+                        crate::app::common::sidebar::SidebarTank {
+                            aquarium: ctx.aquarium_state,
+                            hungry: ctx.aquarium_care.hungry(),
+                        },
+                    ),
                     clock_text: ctx.sidebar_clock,
                     queue_snapshot: &ctx.booth_snapshot,
                     youtube_source_count: ctx.youtube_source_count,
@@ -2121,7 +2134,15 @@ impl App {
         }
 
         if ctx.show_settings {
-            settings_modal::ui::draw(frame, inner, ctx.settings_modal_state);
+            settings_modal::ui::draw(
+                frame,
+                inner,
+                ctx.settings_modal_state,
+                crate::app::common::sidebar::SidebarOwnership {
+                    pet: ctx.shop_state.entitlements().has_pet_companion(),
+                    tank: ctx.shop_state.entitlements().has_aquarium(),
+                },
+            );
         }
 
         if ctx.show_mod_modal {
