@@ -89,7 +89,7 @@ Run each tick after the chat, daily and audio ticks (`app/tick.rs`): `pick_queue
 
 ## 6. The frame (`ui.rs`)
 
-The picture sits in a `PICTURE_COLS` column, centred in `PICTURE_ROWS`, with the words to its right, then the rule under them. The frame cuts every picture row to its column (`frame_lines`), so nothing a source draws can run into the words. Two fixed forms picked by the card's size and never by what is shown: the 9-row strip on a card at least 56 wide with 12 rows left for messages (so the chat keeps the larger share), else one row (`── live 8ball eggy v weslin`, `── live booth mat · Naima`, `── live news mat · Some Title`), else nothing. The rule's label glows when the source says so (§0).
+The picture sits in a `PICTURE_COLS` column, centred in `PICTURE_ROWS`, with the words to its right, then the rule under them. The frame cuts every picture row to its column (`frame_lines`), so nothing a source draws can run into the words. Two fixed forms picked by the card's size and never by what is shown: the 9-row strip on a card at least 56 wide with 10 rows left for messages (so the chat keeps the larger share), else one row (`── live 8ball eggy v weslin`, `── live booth mat · Naima`, `── live news mat · Some Title`), else nothing. The rule's label glows when the source says so (§0).
 
 `draw_live_strip` records `LiveState::hit` when what it drew opens something; `App::render` clears it before every draw.
 

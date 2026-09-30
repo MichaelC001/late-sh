@@ -46,7 +46,7 @@ const MIN_FULL_WIDTH: u16 = 56;
 /// Rows the messages keep under the full strip, more than the strip takes
 /// so the chat stays the larger share of a small card; under that the card
 /// takes the one-row form, and under `MIN_COMPACT_HEIGHT` nothing.
-const MESSAGE_ROWS_UNDER_FULL: u16 = 12;
+const MESSAGE_ROWS_UNDER_FULL: u16 = 10;
 const MIN_COMPACT_HEIGHT: u16 = LIVE_STRIP_COMPACT_HEIGHT + 4;
 /// Columns between the picture and the words.
 pub(crate) const GAP: u16 = 2;
