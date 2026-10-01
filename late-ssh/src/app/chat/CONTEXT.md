@@ -200,7 +200,7 @@ Slow modes:
 - `chat_slow_modes` is a per-user throttle, not a ban. `room_id` set means room-scoped; `room_id NULL` means server-scoped. Unique indexes enforce one row per `(room_id, target_user_id)` for room scope and one server row per target. Rows store `interval_secs`, nullable `expires_at` (`NULL` = permanent), actor, and reason.
 - Enforcement happens in `ChatService::send_message` after membership/room-ban checks and before insert. Room-slow is checked first; server-slow applies to non-DM chat rooms only, so DMs are not throttled. Admin sends bypass the throttle; moderators are not inherently exempt unless they are admins.
 - A slowed user keeps room membership. Early sends are rejected privately with a `Slow mode in #room: wait ...` banner; messages are not queued.
-- `/mod slow <server|#room> @user <interval> <duration|permanent> [reason...]` applies it, `/mod unslow <server|#room> @user [reason...]` removes it, and `/mod view slows [server|#room] [page]` lists active slow modes. Applying/removing slow mode uses targeted session toasts and writes moderation audit actions `room_slow` / `room_unslow` or `server_slow` / `server_unslow`.
+- `/mod slow <server|#room> @user <interval> <duration|perma> [reason...]` applies it, `/mod unslow <server|#room> @user [reason...]` removes it, and `/mod view slows [server|#room] [page]` lists active slow modes. Applying/removing slow mode uses targeted session toasts and writes moderation audit actions `room_slow` / `room_unslow` or `server_slow` / `server_unslow`.
 
 Gilds:
 - `chat_message_gilds` is append-only: no update path, no un-gild, `created` and no `updated`.
@@ -359,6 +359,9 @@ User commands:
 - `/list` lists public rooms.
 - `/members` lists selected-room members.
 - `/mod` opens the moderation command modal; `/mod ...` in chat is rejected because commands run only in the modal.
+  Artboard staff can also open the same console with `m`/`M` in a gallery list or full-piece view.
+  That entry point starts a fresh visible section with safety help and runs `artboard safety view`
+  for the selected full UUID; earlier output remains scrollable and any command draft stays intact.
 - `/paste-image` asks a paired `late` CLI with `clipboard_image` capability to read the local system clipboard image, sends it back over `/api/ws/pair`, uploads the PNG bytes through the normal image upload path, and inserts the resulting public URL into the composer. Pending clipboard requests time out after 15s so a dead paired client cannot wedge the command.
 - `/petname [name]` shows or sets the user's cat name; `/petname clear` removes it.
 - `/brb` sends this session away now instead of after 30 quiet minutes; the next key brings it back. No announcement message, no free-text note (trailing text gets a usage banner), no audio muting. Parsed in `submit_composer`, drained via `take_requested_brb` into `App::sent_away`. See away above.
@@ -419,26 +422,47 @@ Admin commands:
 - `/delete-room #room` deletes a permanent room.
 - `/fill-room #room` bulk-adds all users to an existing public room and flips `auto_join=true`; private rooms cannot be filled.
 
-Moderation modal commands:
+Moderation modal commands (default help groups them under Lounge, Artboard, Bans/kicks, and Help/Admin):
+
+The centered popup uses 80% of the available width and 93% of its height.
+
+Help uses bright command names, muted subcommands, shaded argument tokens with
+fainter brackets, pipes and ellipses, and emphasized section titles. A line is styled as a command only when its
+first word is in `ModCommandHead` (`moderation/command.rs`), the roster the parser
+dispatches on. Initial help
+and successful help command responses have their own log kind; request IDs keep that styling tied to the correct
+response even when commands complete out of order. Other success/error output
+retains its usual colors, and help colors follow the active theme at render time.
+
 - `rename-room <#oldname> <#newname>`
 - `rename-user <@oldname> <@newname>`
-- `view <@user|#room|bans|slows|audit|artboard|help> [pagenumber]`
+- `view <@user|#room|bans|slows|audit|art|help> [pagenumber]`
 - `artboard curate <live|YYYY-MM-DD> [reason...]`
 - `artboard restore [YYYY-MM-DD] [reason...]`
 - `artboard remove <piece-id-prefix> [reason...]` (takes a gallery piece down; the first 13 characters of the id are printed on the key line of the piece's full-frame view, 8+ are needed, must match one piece)
 - `artboard feature <piece-id-prefix>` (pins a piece as today's Sliding Puzzle art at once, `ArtboardPiece::feature_now`; the day's previous holder returns to the queue; same prefix rule as remove)
+- `artboard safety help` (advertised shortcut for NSFW/SFW command help; `help artboard safety` is an unadvertised alternative)
+- `artboard safety view [@user|piece-id-prefix]` (staff; no target shows gallery summary, today's splash and up to 20 review candidates; `@user` lists their newest 20 hanging pieces with safety counts; an ID prefix shows the full UUID on a dedicated `Art id:` line, effective verdict, source, counts, community voters by name and individual marks)
+  Review candidates use an aligned table: `art id | state | reason | summary | user | art title`.
+  Reasons are abbreviated `admin`, `mod`, `owner`, `commu.`; summaries use `staff disagree`,
+  `owner NS; no staff`, or `community NS; no staff`. IDs keep their first 13 characters,
+  user names omit `@`, and column widths use Ratatui's display measurements.
+- `artboard safety [admin] <nsfw|sfw|none> <piece-id-prefix> [reason...]` (staff; moderator tier by default even for admins, explicit `admin` selects admin tier; one mark per account and piece, replacing previous mark/tier; `none` clears only the selected tier; own art allowed)
+- `artboard safety none <piece-id-prefix> by <@user|user-id> [reason...]` (admin only; removes that actor's stored mark at either tier, another admin's included)
 - `artboard gallery <on|off>` (admin; the `artboard_gallery_enabled` switch)
 - `room-voice <#room> <on|off>`
-- `kick <server|voice|#room> @name [reason...]`
-- `ban <server|#room|artboard|audio> @name [duration] [reason...]`
-- `unban <server|#room|artboard|audio|voice> @name [reason...]`
-- `slow <server|#room> @name <interval> <duration|permanent> [reason...]`
+- `kick <server|voice|stream|#room> @name [reason...]`
+- `ban <server|#room|art|audio|stream> @name [duration] [reason...]`
+- `unban <server|#room|art|audio|voice|stream> @name [reason...]`
+- `slow <server|#room> @name <interval> <duration|perma> [reason...]`
 - `unslow <server|#room> @name [reason...]`
 - `admin`
 - `admin grant mod @name`
 - `admin revoke mod @name`
 
 Moderation list pages show 15 rows. Durations use positive `s/m/h/d` suffixes.
+`artboard` remains accepted as the long spelling of the `art` view/ban scope,
+and `permanent` is also accepted for `perma` slow-mode duration.
 
 Reply mode:
 - Captures `ReplyTarget { message_id, author, preview }`.

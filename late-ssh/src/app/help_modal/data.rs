@@ -1320,7 +1320,7 @@ fn overview_lines() -> Vec<String> {
         "  v then s          skip-vote the current YouTube track",
         "  v then 1..5       select stream/station in the active source",
         "  w, m, + / - and the v music prefix are off on the Artboard: that page",
-        "  spends those letters itself (v applauds a gallery piece)",
+        "  spends those letters itself (v applauds; m opens gallery moderation for staff)",
         "",
         "Home",
         "  click top bar     jump screens",
@@ -1623,6 +1623,9 @@ fn settings_help_lines() -> Vec<String> {
         "  Startup".to_string(),
         "    Land on                       where a session starts: Clubhouse (default), Home, or Zen; first sessions always start in the Clubhouse"
             .to_string(),
+        "    Show Gallery Art on Splash    SFW (default) / Always / Never; Never uses the coffee cup".to_string(),
+        "                                  SFW hides art determined NSFW; unmarked art is allowed".to_string(),
+        "    Daily paper at login          show or skip the daily paper pop after login".to_string(),
         "".to_string(),
         "Statusline tab".to_string(),
         "  The bottom-left border of the app frame is a status bar you arrange yourself."

@@ -120,10 +120,11 @@ pub(crate) enum TweakRow {
     ChatBadges,
     LandingPage,
     PaperAtLogin,
+    ArtSplash,
 }
 
 impl TweakRow {
-    pub(crate) const ALL: [TweakRow; 11] = [
+    pub(crate) const ALL: [TweakRow; 12] = [
         TweakRow::BackgroundColor,
         TweakRow::TextBrightness,
         TweakRow::RightSidebar,
@@ -135,6 +136,7 @@ impl TweakRow {
         TweakRow::ChatBadges,
         TweakRow::LandingPage,
         TweakRow::PaperAtLogin,
+        TweakRow::ArtSplash,
     ];
 }
 
@@ -1084,6 +1086,9 @@ impl SettingsModalState {
             TweakRow::LandingPage => {
                 self.draft.landing_page = self.draft.landing_page.cycle(true);
             }
+            TweakRow::ArtSplash => {
+                self.draft.art_splash_mode = self.draft.art_splash_mode.cycle(true);
+            }
             TweakRow::PaperAtLogin => {
                 self.draft.paper_at_login ^= true;
             }
@@ -1101,6 +1106,10 @@ impl SettingsModalState {
             TweakRow::TextBrightness => self.cycle_text_brightness_adjustment(forward),
             TweakRow::LandingPage => {
                 self.draft.landing_page = self.draft.landing_page.cycle(forward);
+                self.save();
+            }
+            TweakRow::ArtSplash => {
+                self.draft.art_splash_mode = self.draft.art_splash_mode.cycle(forward);
                 self.save();
             }
             TweakRow::TerminalImages => {
@@ -2468,6 +2477,7 @@ impl SettingsModalState {
                 start_with_music_muted: self.draft.start_with_music_muted,
                 landing_page: self.draft.landing_page,
                 paper_at_login: self.draft.paper_at_login,
+                art_splash_mode: self.draft.art_splash_mode,
                 terminal_images: self.draft.terminal_images,
                 hidden_award_categories: self.draft.hidden_award_categories.clone(),
                 show_flag_fallback: self.draft.show_flag_fallback,

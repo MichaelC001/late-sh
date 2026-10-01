@@ -10,18 +10,18 @@ use super::statusline::{
     StatusComponentSetting, default_statusline_components, statusline_components_json,
 };
 use super::user::{
-    LandingPage, RightSidebarComponentSetting, RightSidebarMode, RoomListMode, TerminalImagesMode,
-    User, extract_auto_translate, extract_bio, extract_country, extract_enable_background_color,
-    extract_favorite_room_ids, extract_favorite_theme_ids, extract_hidden_award_categories,
-    extract_ide, extract_keep_composer_focused, extract_landing_page, extract_langs,
-    extract_notify_bell, extract_notify_cooldown_mins, extract_notify_format, extract_notify_kinds,
-    extract_os, extract_paper_at_login, extract_right_sidebar_components,
-    extract_right_sidebar_mode, extract_room_list_mode, extract_show_flag_fallback,
-    extract_show_right_sidebar, extract_show_room_list_sidebar, extract_start_with_music_muted,
-    extract_statusline_components, extract_terminal, extract_terminal_images,
-    extract_text_brightness_adjustment, extract_theme_id, extract_timezone,
-    extract_translate_mine_to_en, extract_translate_to, normalize_right_sidebar_components,
-    normalize_text_brightness_adjustment,
+    ArtSplashMode, LandingPage, RightSidebarComponentSetting, RightSidebarMode, RoomListMode,
+    TerminalImagesMode, User, extract_art_splash_mode, extract_auto_translate, extract_bio,
+    extract_country, extract_enable_background_color, extract_favorite_room_ids,
+    extract_favorite_theme_ids, extract_hidden_award_categories, extract_ide,
+    extract_keep_composer_focused, extract_landing_page, extract_langs, extract_notify_bell,
+    extract_notify_cooldown_mins, extract_notify_format, extract_notify_kinds, extract_os,
+    extract_paper_at_login, extract_right_sidebar_components, extract_right_sidebar_mode,
+    extract_room_list_mode, extract_show_flag_fallback, extract_show_right_sidebar,
+    extract_show_room_list_sidebar, extract_start_with_music_muted, extract_statusline_components,
+    extract_terminal, extract_terminal_images, extract_text_brightness_adjustment,
+    extract_theme_id, extract_timezone, extract_translate_mine_to_en, extract_translate_to,
+    normalize_right_sidebar_components, normalize_text_brightness_adjustment,
 };
 
 #[derive(Clone, Debug)]
@@ -67,6 +67,7 @@ pub struct Profile {
     pub landing_page: LandingPage,
     /// Tweak: open The Late Edition once a day at login.
     pub paper_at_login: bool,
+    pub art_splash_mode: ArtSplashMode,
     pub terminal_images: TerminalImagesMode,
     pub hidden_award_categories: Vec<String>,
     /// Tweak: show text labels instead of flag emoji in the shop Flags tab.
@@ -119,6 +120,7 @@ impl Default for Profile {
             start_with_music_muted: false,
             landing_page: LandingPage::Clubhouse,
             paper_at_login: true,
+            art_splash_mode: ArtSplashMode::Sfw,
             terminal_images: TerminalImagesMode::Auto,
             hidden_award_categories: Vec::new(),
             show_flag_fallback: false,
@@ -158,6 +160,7 @@ pub struct ProfileParams {
     pub start_with_music_muted: bool,
     pub landing_page: LandingPage,
     pub paper_at_login: bool,
+    pub art_splash_mode: ArtSplashMode,
     pub terminal_images: TerminalImagesMode,
     pub hidden_award_categories: Vec<String>,
     pub show_flag_fallback: bool,
@@ -324,10 +327,11 @@ impl Profile {
                          'paper_at_login', $30::bool,
                          'terminal_images', $31::text,
                          'hidden_award_categories', $32::jsonb,
-                         'statusline_components', $33::jsonb
+                         'statusline_components', $33::jsonb,
+                         'art_splash_mode', $34::text
                      ),
                      updated = current_timestamp
-                 WHERE id = $34
+                 WHERE id = $35
                  RETURNING *",
                 &[
                     &params.username,
@@ -363,6 +367,7 @@ impl Profile {
                     &params.terminal_images.as_str(),
                     &hidden_award_categories_json,
                     &statusline_components_json,
+                    &params.art_splash_mode.as_str(),
                     &user_id,
                 ],
             )
@@ -399,6 +404,7 @@ impl Profile {
             start_with_music_muted: extract_start_with_music_muted(&user.settings),
             landing_page: extract_landing_page(&user.settings),
             paper_at_login: extract_paper_at_login(&user.settings),
+            art_splash_mode: extract_art_splash_mode(&user.settings),
             terminal_images: extract_terminal_images(&user.settings),
             hidden_award_categories: extract_hidden_award_categories(&user.settings),
             show_flag_fallback: extract_show_flag_fallback(&user.settings),
