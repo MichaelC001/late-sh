@@ -545,11 +545,22 @@ fn chips_help_lines() -> Vec<String> {
         format!("  A gift only goes through while it leaves you at or above {floor} chips."),
         "  Gifts move chips between players; they do not create new ones.".to_string(),
         "".to_string(),
+        "13. Inviting friends".to_string(),
+        "  Settings (Ctrl+O) > Account > Invites shows your own command: ssh invite-<code>@late.sh".to_string(),
+        "  A friend who joins with it is yours. Joined without it? Type the code there in your first week.".to_string(),
+        format!(
+            "  Once your friend becomes an active regular here, you get {} chips and they get a {} chip welcome bonus.",
+            thousands(crate::app::referral::state::INVITER_REWARD_CHIPS),
+            thousands(crate::app::referral::state::INVITEE_BONUS_CHIPS)
+        ),
+        "  The payout is announced in #lounge, naming you both.".to_string(),
+        "  Invite rewards do not count toward Top Chips.".to_string(),
+        "".to_string(),
         "What does not pay chips".to_string(),
         "  Chatting, showcases, profiles, voice, and the Artboard pay nothing. Sharing a link to News does pay, and so does queueing music; see 7 and 8 above.".to_string(),
         "  Monthly leaderboard awards are prestige only; the door feats above are the exception,".to_string(),
         "  and those pay again every time their gate reopens.".to_string(),
-        "  There is no login bonus, idle income, or daily stipend: chips come from playing, watering, quests, sharing news, and bringing music.".to_string(),
+        "  There is no login bonus, idle income, or daily stipend: chips come from playing, watering, quests, sharing news, bringing music, and inviting friends who stay.".to_string(),
         "".to_string(),
         "Where chips go".to_string(),
         "  The Shop (/shop) for badge, flag, title and name-effect rentals, the Bonsai Decay Shield, the pet companion, the Aquarium, and the Aquarium Shield that minds the tank while you are away.".to_string(),
@@ -564,7 +575,7 @@ fn chips_help_lines() -> Vec<String> {
         "  The crown (/crown take), which burns the whole price.".to_string(),
         format!("  Pot tickets (/pot buy N) at {} chips each, of which a fifth is burned at the draw.", thousands(POT_TICKET_PRICE)),
         "  Burn milestones and the two ultimate spells (1,000,000 each), the top of the Shop.".to_string(),
-        "  Monthly Top Chips counts what you earned: dailies, quests, doors, the arena, prizes, the pot, gilds received. Table bets and wins, gifts, the starting chips, and every kind of spending stay off it.".to_string(),
+        "  Monthly Top Chips counts what you earned: dailies, quests, doors, the arena, prizes, the pot, gilds received. Table bets and wins, gifts, invite rewards, the starting chips, and every kind of spending stay off it.".to_string(),
     ]
 }
 
@@ -1549,7 +1560,7 @@ fn settings_help_lines() -> Vec<String> {
             .to_string(),
         "  Statusline        arrange the bottom status bar and customize its components"
             .to_string(),
-        "  Account           link SSH keys across accounts, reset/revoke your IRC access token, or delete your account"
+        "  Account           invite friends, link SSH keys across accounts, reset/revoke your IRC access token, or delete your account"
             .to_string(),
         "  RSS               private RSS/Atom subscriptions".to_string(),
         "".to_string(),
@@ -1566,6 +1577,7 @@ fn settings_help_lines() -> Vec<String> {
         "  Statusline: bottom status bar components, their order, and display options".to_string(),
         "  private RSS/Atom subscriptions".to_string(),
         "  IRC access token for external IRC clients".to_string(),
+        "  who invited you, in your first week".to_string(),
         "".to_string(),
         "How to open it".to_string(),
         "  on login, the settings modal opens automatically".to_string(),
@@ -1582,8 +1594,19 @@ fn settings_help_lines() -> Vec<String> {
         "  Custom sidebar: Enter on Custom opens the three-page checklist".to_string(),
         "  Statusline: Space toggles a component; Enter opens its options"
             .to_string(),
-        "  Account: Enter opens Link Accounts or Delete Account".to_string(),
+        "  Account: Enter opens Invites, Link Accounts, IRC access token, or Delete Account"
+            .to_string(),
         "  ? opens this guide; Esc / q closes".to_string(),
+        "".to_string(),
+        "Invites".to_string(),
+        "  Settings > Account > Invites shows your own command: ssh invite-<code>@late.sh".to_string(),
+        "  A friend who connects with it for the first time is invited by you.".to_string(),
+        format!(
+            "  Once they become an active regular, you get {} chips and they get {}.",
+            thousands(crate::app::referral::state::INVITER_REWARD_CHIPS),
+            thousands(crate::app::referral::state::INVITEE_BONUS_CHIPS)
+        ),
+        "  Joined without the command? Type the code there during your first week.".to_string(),
         "".to_string(),
         "Account linking".to_string(),
         "  Use Settings > Account > Link Accounts when two SSH keys created separate late.sh accounts.".to_string(),
