@@ -89,7 +89,7 @@ Use this root file as the entry point. Before changing a domain, read the matchi
 | `CONTEXT.md` | Any task in this repo; cross-domain behavior; global contracts. | Repo architecture, test policy, service contracts, data model, telemetry, runbook, global screens/keybindings, and high-risk invariants. |
 | `late-cli/CONTEXT.md` | The `late` companion binary, local audio playback, SSH launch behavior, token acquisition, pairing, installers, or CLI env/flags. | CLI architecture, native/OpenSSH/old SSH modes, identity generation, token handshake, audio decode/output/analyzer, paired-client WebSocket behavior, logging, scripts, release artifacts, and fragile CLI invariants. |
 | `late-web/CONTEXT.md` | Public web pages, the `/listen` page, gallery/profiles, web route tests, templates/assets, web config, or `/stream`. | Axum app shape, routes, Askama templates, static assets, the listen-state proxy, audio stream proxy, gallery/profile DB contracts, web telemetry, and web-specific test placement. |
-| `late-ssh/src/app/audio/CONTEXT.md` | Icecast, now-playing, YouTube queue, Music Booth, visualizer, `/audio` commands, paired audio source switching, or the public `/listen` snapshot. | AudioService state machine, queue persistence, server-owned playback timers, fallback behavior, pair-WS audio messages, source-selection policy, skip-vote eligibility, and cross-crate audio touchpoints in CLI/Web. |
+| `late-ssh/src/app/audio/CONTEXT.md` | The radio station catalogue (`late_core::radio`), pinned slots, the Stations modal, house Icecast now-playing, YouTube queue, Music Booth, visualizer, `/audio` commands, paired audio source switching, or the public `/listen` snapshot. | AudioService state machine, queue persistence, server-owned playback timers, fallback behavior, pair-WS audio messages, source-selection policy, skip-vote eligibility, and cross-crate audio touchpoints in CLI/Web. |
 | `late-ssh/src/app/voice/CONTEXT.md` | LiveKit voice rooms, TUI voice controls/status, CLI voice media, or pair-WS voice messages. | VoiceService token/snapshot ownership, LiveKit grants, pair-WS voice protocol, native CLI voice runtime, pruning/heartbeat invariants, and current voice UX gaps. |
 | `late-ssh/src/app/hub/CONTEXT.md` | The `/shop` Shop modal, the Arcade quest strip's service, marketplace, pet/aquarium unlocks, or chip economy presentation. | Shop modal ownership, reward/economy rules, daily/weekly quest service, marketplace and entitlement projection, the Zen-only tank and pet surfaces, and known gaps. |
 | `late-ssh/src/app/leaderboard/CONTEXT.md` | The Leaderboards page (screen `6`), `LeaderboardService`, the board rosters/queries in `late-core/src/models/leaderboard.rs`, the door/Lateania boards, monthly profile awards, or the leaderboard seed script. | Refresh model (subscriber gate, seed-on-connect, query-count cost rules), roster-generated data model incl. the door board triples, **the cross-door log-pipe contract that fills them** (transport, cursors/idempotency, handle identity, lifetime grants, feed gating, deploy order, settled decisions), page rail/detail behavior, profile award machinery and badge collapse, `make seed-leaderboard`, and known gaps. |
@@ -622,10 +622,10 @@ late-sh/
 **SSH API (late-ssh, port 4000):**
 - `GET /api/health` - DB health check
 - `GET /api/now-playing?mount={chill|classical}` → `NowPlayingResponse { current_track, listeners_count, started_at_ts }` (`mount` defaults to `chill`)
-- `GET /api/radio-meta` → `{ "<station>": { artist, title }, ... }` - live Nightride station metadata; empty map while the SSE feed is down
+- `GET /api/radio-meta` → `{ "<station>": { artist, title }, ... }` - live third-party station metadata (Nightride SSE plus enabled polled providers); a station is absent while its feed is down
 - `GET /api/status` → `StatusResponse { online, message, version }`
 - `GET /api/ws/pair?token={token}` - WebSocket upgrade for paired CLI and webview-helper control plus helper player reports
-- `GET /api/listen` - public, unauthenticated, memory-only snapshot of both Icecast mounts, the Nightride stations, and the YouTube queue; backs late-web's `/listen` page
+- `GET /api/listen` - public, unauthenticated, memory-only snapshot of both Icecast mounts, the guest radio stations, and the YouTube queue; backs late-web's `/listen` page
 - `GET /api/stream/publish/{token}`, `POST /api/stream/publish/{token}/state`, `GET /api/stream/watch/{id}`, `GET /api/stream/watch/{id}/grant`, `POST /api/stream/watch/{id}/heartbeat` - "watch me" stream capability routes (registry-memory only, capability id in the URL is the whole auth), proxied by late-web's `/golive/{token}` and `/live/{id}` pages; see `late-ssh/src/app/stream/CONTEXT.md`
 
 **WS payloads (client → server):**
@@ -1297,7 +1297,8 @@ Content invariants worth preserving when editing `data.rs`:
 | `s` | Bonsai modal | Mark the selected tip to fork on the next growth wave |
 | `c` | Bonsai modal | Copy the share snippet to clipboard |
 | `?` | Bonsai modal | Open help modal on the Bonsai section |
-| `v` then `1`-`5` | Home | Select within the active audio source: Icecast streams chill / classical (`1`/`2`), Radio stations Chillsynth / Nightride / Datawave / Spacesynth / Ambient (`1`-`5`). |
+| `v` then `1`-`3` | Home | Play the radio station pinned in that slot (no-op while YouTube is the source). |
+| `v` then `r` | Home | Open the Stations modal (browse the catalogue, listen, pin to a slot). |
 | `v` then `v` | Home | Open the Music Booth (submit + queue votes + recently played history). |
 | Home chat keys | Home | See `late-ssh/src/app/chat/CONTEXT.md`. |
 | `Enter` | Arcade lobby | Launch selected game |

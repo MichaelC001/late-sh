@@ -6,6 +6,8 @@ use late_core::models::media_queue_item::SongQueueReward;
 use crate::app::activity::event::ActivityGame;
 use crate::app::arcade::share::ShareCardKind;
 use crate::app::arcade::sliding_puzzle::svc::SlidingPuzzleArtLoad;
+use crate::app::audio::radio_meta::polled::PolledFeed;
+use crate::app::audio::radio_meta::svc::PollOutcome;
 use crate::app::audio::svc::ThumbnailFetch;
 use crate::app::bonsai::state::BonsaiAction;
 use crate::app::bonsai::svc::BonsaiActionResult;
@@ -468,6 +470,7 @@ mod inner {
     };
     use super::{BonsaiAction, BonsaiActionResult};
     use super::{NewcomerMinuteResult, ReferralAttachOutcome, ReferralSettlement, ReferralSource};
+    use super::{PollOutcome, PolledFeed};
     use crate::app::bonsai::state::BranchAction;
     use crate::app::referral::state::AttachRefusal;
 
@@ -1150,6 +1153,16 @@ mod inner {
             meter()
                 .u64_counter("late_ssh_news_share_chips_paid_total")
                 .with_description("Chips minted as News share rewards")
+                .build()
+        })
+    }
+
+    fn radio_meta_polls_total() -> &'static Counter<u64> {
+        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
+        METRIC.get_or_init(|| {
+            meter()
+                .u64_counter("late_ssh_radio_meta_polls_total")
+                .with_description("Now-playing polls of third-party radio providers")
                 .build()
         })
     }
@@ -2002,6 +2015,29 @@ mod inner {
         }
     }
 
+    pub fn record_radio_meta_poll(feed: PolledFeed, outcome: PollOutcome) {
+        let feed = match feed {
+            PolledFeed::Plaza => "plaza",
+            PolledFeed::CodeRadio => "coderadio",
+            PolledFeed::ParadiseMellow => "paradise_mellow",
+            PolledFeed::FipJazz => "fip_jazz",
+            PolledFeed::SwissJazz => "swiss_jazz",
+            PolledFeed::SwissClassic => "swiss_classic",
+        };
+        let outcome = match outcome {
+            PollOutcome::Updated => "updated",
+            PollOutcome::NoTrack => "no_track",
+            PollOutcome::Failed => "failed",
+        };
+        radio_meta_polls_total().add(
+            1,
+            &[
+                KeyValue::new("feed", feed),
+                KeyValue::new("outcome", outcome),
+            ],
+        );
+    }
+
     pub fn record_booth_thumbnail(outcome: ThumbnailFetch) {
         booth_thumbnails_total().add(
             1,
@@ -2608,6 +2644,7 @@ mod inner {
     };
     use super::{BonsaiAction, BonsaiActionResult};
     use super::{NewcomerMinuteResult, ReferralAttachOutcome, ReferralSettlement, ReferralSource};
+    use super::{PollOutcome, PolledFeed};
 
     pub fn record_ssh_connection() {}
     pub fn record_ssh_connection_rejected(_reason: SshRejectReason) {}
@@ -2659,6 +2696,7 @@ mod inner {
     pub fn record_news_x_media_lookup(_lookup: XMediaLookup) {}
     pub fn record_song_queued(_reward: SongQueueReward) {}
     pub fn record_booth_thumbnail(_outcome: ThumbnailFetch) {}
+    pub fn record_radio_meta_poll(_feed: PolledFeed, _outcome: PollOutcome) {}
     pub fn record_gild_bought(_tier: GildTier) {}
     pub fn record_gild_refused(_refusal: GildRefusal) {}
     pub fn record_bonsai_action(_action: BonsaiAction, _result: BonsaiActionResult) {}
