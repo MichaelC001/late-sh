@@ -16,7 +16,8 @@ use crate::session::SessionMessage;
 /// The hot world-tick cadence (the classic 15fps): animations that earn
 /// full rate run here.
 pub(crate) const HOT_TICK: Duration = Duration::from_millis(66);
-/// Half-rate cadence (~7.5fps): Clubhouse ambience, riding the shared
+/// Half-rate cadence (~7.5fps): Clubhouse ambience and the ascii pieces
+/// (a drawn Zen ascii tile, the away screensaver), riding the shared
 /// `anim_half` /2 edge in tick().
 pub(crate) const ANIM_HALF_TICK: Duration = Duration::from_millis(132);
 /// Quarter-rate cadence (~3.8fps): the aquarium surfaces (the Zen tank
@@ -140,11 +141,13 @@ impl App {
             changed = true;
         }
         // Going away is not urgent to the millisecond, so this session's away
-        // flag rides the 1Hz edge. It only writes the roster on a change and
-        // paints nothing of its own: peers pick it up on their presence edge
-        // below, so an idle session still settles.
-        if one_hz {
-            self.sync_away();
+        // flag rides the 1Hz edge. It only writes the roster on a change, and
+        // paints nothing of its own unless the screensaver comes up with it:
+        // peers pick it up on their presence edge below, so an idle session
+        // with the Tweak off still settles. Coming back is input's, which
+        // syncs at once and repaints anyway.
+        if one_hz && self.sync_away() && self.screensaver().is_some() {
+            changed = true;
         }
         // UTC midnight rolls the Arcade dailies over. This rides the 1Hz edge
         // rather than an input path so a session parked in chat overnight is
@@ -315,7 +318,7 @@ impl App {
         // The AFK line: how long this terminal's keyboard has been quiet is
         // an `App` fact, mirrored into chat the same way the timezone is,
         // because chat is what knows which room is on screen to hang it on.
-        changed |= self.chat.sync_afk_line(self.last_input_at.elapsed());
+        changed |= self.chat.sync_afk_line(self.last_active_at.elapsed());
         let translate_to = self.profile_state.profile().translate_to;
         let auto_translate = self.profile_state.profile().auto_translate;
         changed |= self
@@ -1105,14 +1108,14 @@ impl App {
         // Hunger is the day's care read fresh each step, so the UTC
         // rollover sinks the fish without any event.
         self.aquarium_state.set_hungry(self.aquarium_care.hungry());
-        if self.screen == Screen::Zen && self.zen_status_row() != self.zen_row_bound {
-            self.sync_aquarium_bounds();
-            changed = true;
-        }
         if anim_quarter && self.aquarium_visible() {
             self.aquarium_state.tick();
             changed = true;
         }
+        // The ascii pieces (`app/ascii`) are pure functions of the shared
+        // clock: a new frame on every edge of a drawn piece's cadence, the
+        // half edge for the lively ones and the 1Hz edge for the slow.
+        changed |= self.ascii_edge(anim_half, one_hz);
         // The activity feed subscription survives the retired sidebar panel
         // for one job: edge-detecting a friend's arrivals — logging in, and
         // going live — for the banner + desktop notification. The public
@@ -1372,6 +1375,15 @@ impl App {
     /// clean tick, never a frame. Input, resize, and push wakes
     /// (RenderSignal) interrupt the sleep regardless.
     pub fn wake_hint(&self) -> Duration {
+        // The screensaver covers everything else, so nothing under it earns
+        // a faster tier, and the pointer moving over it never wakes it hot.
+        // The slow piece rides the idle floor's 1Hz edge.
+        if let Some(piece) = self.screensaver() {
+            return match crate::app::ascii::piece::cadence(piece) {
+                crate::app::ascii::piece::Cadence::Half => ANIM_HALF_TICK,
+                crate::app::ascii::piece::Cadence::Slow => IDLE_TICK,
+            };
+        }
         let hot = self.show_splash
             || self.haunt.breakthrough_playing()
             || self.last_input_at.elapsed() < POST_INPUT_HOT_WINDOW
@@ -1391,13 +1403,15 @@ impl App {
         // bonsai care modal and the profile's bonsai sway on the same edge as
         // the sidebar, which always carries the eq strip and that sway. A
         // Zen music or visualizer tile paints its eq on that edge too; left
-        // to the aquarium's quarter tier it drops to ~3.8fps.
+        // to the aquarium's quarter tier it drops to ~3.8fps. A drawn ascii
+        // tile plays its frames on this edge too.
         if self.screen == Screen::Clubhouse
             || self.screen == Screen::City
             || crate::app::door::hub::state::animates(self)
             || self.right_sidebar_visible()
             || (self.live_strip_shown() && self.live.aiming())
             || (self.screen == Screen::Zen && self.zen.shows_equalizer())
+            || self.lively_ascii_visible()
             || self.last_pet_frame.get().is_some()
             || self.show_bonsai_modal
             || (self.show_profile_modal && self.profile_modal_state.bonsai().is_some())
@@ -1410,6 +1424,38 @@ impl App {
             return ANIM_QUARTER_TICK;
         }
         IDLE_TICK
+    }
+
+    /// The ascii pieces on screen: the away screensaver's, or the Zen ascii
+    /// tiles' that are drawn (not zoomed away).
+    fn visible_pieces(&self) -> Vec<late_core::models::user::AsciiPiece> {
+        match (self.screensaver(), self.screen) {
+            (Some(piece), _) => vec![piece],
+            (None, Screen::Zen) => self.zen.drawn_pieces(),
+            (None, _) => Vec::new(),
+        }
+    }
+
+    /// Whether a piece on screen plays a new frame on this tick: the lively
+    /// ones on the half edge, the slow one on the 1Hz edge.
+    fn ascii_edge(&self, anim_half: bool, one_hz: bool) -> bool {
+        use crate::app::ascii::piece::{Cadence, cadence};
+        self.visible_pieces()
+            .into_iter()
+            .any(|piece| match cadence(piece) {
+                Cadence::Half => anim_half,
+                Cadence::Slow => one_hz,
+            })
+    }
+
+    /// Whether a piece on screen plays at the half tier, which earns it.
+    /// The slow piece asks for nothing: the idle floor already carries the
+    /// 1Hz edge it plays on.
+    fn lively_ascii_visible(&self) -> bool {
+        use crate::app::ascii::piece::{Cadence, cadence};
+        self.visible_pieces()
+            .into_iter()
+            .any(|piece| cadence(piece) == Cadence::Half)
     }
 
     /// Whether the reef is actually on screen: the Zen page draws it for
@@ -1502,7 +1548,7 @@ impl App {
             self.attention_spot = spot;
             crate::metrics::record_place_visit(self.screen, place);
         }
-        let presence = match self.last_input_at.elapsed() < ATTENTION_ACTIVE_WINDOW {
+        let presence = match self.last_active_at.elapsed() < ATTENTION_ACTIVE_WINDOW {
             true => crate::metrics::Presence::Active,
             false => crate::metrics::Presence::Idle,
         };

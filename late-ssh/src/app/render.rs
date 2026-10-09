@@ -371,6 +371,12 @@ struct DrawContext<'a> {
     show_ultimate_modal: bool,
     ultimate_state: &'a crate::app::ultimates::UltimateState,
     show_splash: bool,
+    /// The away screensaver: the piece that covers the whole frame while the
+    /// session is away (`App::screensaver`).
+    screensaver: Option<late_core::models::user::AsciiPiece>,
+    /// The shared clock every ascii piece is drawn at this frame
+    /// (`ascii::piece::clock_now`).
+    ascii_clock: u64,
     splash_ticks: usize,
     splash_hint: &'a str,
     /// The day's wall piece, hung over the splash when it fits; the
@@ -390,6 +396,7 @@ struct DrawContext<'a> {
     room_info_modal_state: &'a room_info_modal::state::RoomInfoModalState,
     directory_editor: &'a crate::app::directory::editor::state::EditorState,
     tag_picker: &'a crate::app::tag_picker::state::TagPickerState,
+    piece_picker: &'a crate::app::ascii::picker::state::PiecePickerState,
     /// The showcase feed, for the editor's projects page.
     showcase_items: &'a [chat::showcase::svc::ShowcaseFeedItem],
     booth_modal_open: bool,
@@ -468,6 +475,9 @@ impl App {
             self.live_games.others_watching(state.key(), self.user_id)
         });
         let games_hub_roster = HubGame::roster(self.is_runner());
+        // Away with the Tweak on: the piece covers everything this frame.
+        let screensaver = self.screensaver();
+        let ascii_clock = crate::app::ascii::piece::clock_now();
         // Clear last-frame mouse hit-test rects so screens that don't draw
         // them this frame can't leave a stale target behind.
         self.last_pet_rect.set(None);
@@ -1459,6 +1469,7 @@ impl App {
             || self.show_help
             || self.show_ultimate_modal
             || self.show_splash
+            || screensaver.is_some()
             || news_modal.is_some()
             || self.icon_picker_open
             || self.room_search_modal_state.is_open()
@@ -1480,6 +1491,7 @@ impl App {
             || self.show_help
             || self.show_ultimate_modal
             || self.show_splash
+            || screensaver.is_some()
             || news_modal.is_some()
             || self.icon_picker_open
             || self.room_search_modal_state.is_open()
@@ -1677,6 +1689,8 @@ impl App {
                         show_ultimate_modal: self.show_ultimate_modal,
                         ultimate_state: &self.ultimate_state,
                         show_splash: self.show_splash,
+                        screensaver,
+                        ascii_clock,
                         splash_ticks: self.splash_ticks,
                         splash_hint: &self.splash_hint,
                         splash_piece: self.splash_piece.as_ref(),
@@ -1696,6 +1710,7 @@ impl App {
                         room_info_modal_state: &self.room_info_modal_state,
                         directory_editor: &self.directory_editor,
                         tag_picker: &self.tag_picker,
+                        piece_picker: &self.piece_picker,
                         showcase_items: self.chat.showcase.all_items(),
                         booth_modal_open: self.booth_modal_state.is_open(),
                         booth_modal_state: &self.booth_modal_state,
@@ -1935,6 +1950,16 @@ impl App {
                     ctx.splash_ticks,
                 );
             }
+            return;
+        }
+
+        // Away: the screensaver covers the page, its frame, and every modal.
+        // Nothing under it is clickable, and the input that dismisses it is
+        // swallowed (`App::handle_input`).
+        if let Some(piece) = ctx.screensaver {
+            ctx.status_hits.borrow_mut().clear();
+            frame.render_widget(Clear, area);
+            crate::app::ascii::ui::draw_piece(frame, area, piece, ctx.ascii_clock);
             return;
         }
 
@@ -2370,8 +2395,7 @@ impl App {
                 // click target either.
                 let (_, row) = crate::app::zen::layout::rice_areas(
                     content_area,
-                    crate::app::zen::layout::rice_fits(content_area)
-                        && crate::app::statusline::bar::zen_row_shown(&ctx.statusline_components),
+                    crate::app::zen::layout::rice_fits(content_area),
                 );
                 let status_row = row.map(|row| {
                     crate::app::statusline::bar::build_zen_status_row(
@@ -2435,6 +2459,7 @@ impl App {
                         now: ctx.live_panel_now,
                     },
                     wall_tick: ctx.marquee_tick,
+                    ascii_clock: ctx.ascii_clock,
                 };
                 crate::app::zen::ui::draw_rice(frame, content_area, view, terminal_images);
             }
@@ -2748,6 +2773,11 @@ impl App {
         // whichever opened it.
         if ctx.tag_picker.is_open() {
             crate::app::tag_picker::ui::draw(frame, inner, ctx.tag_picker);
+        }
+
+        // Over the Zen page, from its ascii tile.
+        if ctx.piece_picker.is_open() {
+            crate::app::ascii::picker::ui::draw(frame, inner, ctx.piece_picker);
         }
 
         if ctx.booth_modal_open {

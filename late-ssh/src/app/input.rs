@@ -796,18 +796,6 @@ fn handle_parsed_input_inner(app: &mut App, event: ParsedInput) {
         app.apply_primary_device_attributes(attrs);
         return;
     }
-    // `/brb` holds "until your next key". A bare mouse move is not one: with
-    // any-event tracking on, the pointer merely crossing the terminal reports
-    // here, and must not bring the session back. Keys, clicks, drags and
-    // scrolls do; the 1Hz edge publishes it.
-    match &event {
-        ParsedInput::Mouse(MouseEvent {
-            kind: MouseEventKind::Moved,
-            ..
-        }) => {}
-        _ => app.sent_away = false,
-    }
-
     // The Late Edition sits above everything else: it is the first thing
     // a session sees after the splash and the tour.
     if app.paper.modal_visible() {
@@ -851,6 +839,12 @@ fn handle_parsed_input_inner(app: &mut App, event: ParsedInput) {
     // input ahead of both.
     if app.tag_picker.is_open() {
         crate::app::tag_picker::input::handle_input(app, event);
+        return;
+    }
+
+    // Over the Zen page, from its ascii tile.
+    if app.piece_picker.is_open() {
+        crate::app::ascii::picker::input::handle_input(app, event);
         return;
     }
 
@@ -2179,6 +2173,10 @@ fn dispatch_escape(app: &mut App) {
     // ahead of both, the same order `handle_parsed_input` gives its keys.
     if app.tag_picker.is_open() {
         crate::app::tag_picker::input::close(app);
+        return;
+    }
+    if app.piece_picker.is_open() {
+        crate::app::ascii::picker::input::close(app);
         return;
     }
     if app.show_settings {
@@ -3552,6 +3550,8 @@ pub(crate) fn open_message_search_modal_globally(app: &mut App, query: &str) {
 
 fn open_settings_modal_globally(app: &mut App) {
     clear_prefix_arms(app);
+    // A piece picker left open over Zen would take the modal's keys.
+    app.piece_picker.close();
     app.show_help = false;
     app.show_mod_modal = false;
     app.show_hub_modal = false;
@@ -3657,6 +3657,8 @@ fn open_bonsai_modal_globally(app: &mut App) {
 
 pub(crate) fn open_daily_modal_globally(app: &mut App) {
     clear_prefix_arms(app);
+    // A piece picker left open over Zen would take the modal's keys.
+    app.piece_picker.close();
     app.show_help = false;
     app.show_mod_modal = false;
     app.show_hub_modal = false;
@@ -3891,7 +3893,8 @@ fn handle_reserved_global_chord(app: &mut App, event: &ParsedInput) -> bool {
 fn focus_zen_tile_at(app: &mut App, x: u16, y: u16) {
     use crate::app::zen::layout as zen_layout;
     let (cols, rows) = app.size;
-    let (tiles_area, _) = zen_layout::rice_areas(Rect::new(0, 0, cols, rows), app.zen_status_row());
+    let page = Rect::new(0, 0, cols, rows);
+    let (tiles_area, _) = zen_layout::rice_areas(page, zen_layout::rice_fits(page));
     let zoomed = app.zen.zoomed.then_some(app.zen.focus);
     let rects = zen_layout::tile_rects(
         &app.zen.rice.root,
