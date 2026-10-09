@@ -150,7 +150,10 @@ fn event_len(data: &[u8]) -> Event {
         // OSC and DCS (a terminal's reply to a query): to BEL or ST.
         Some(b']' | b'P') => {
             let bel = body.iter().position(|b| *b == 0x07).map(|at| at + 1);
-            let st = body.windows(2).position(|w| w == b"\x1b\\").map(|at| at + 2);
+            let st = body
+                .windows(2)
+                .position(|w| w == b"\x1b\\")
+                .map(|at| at + 2);
             match (bel, st) {
                 (Some(a), Some(b)) => Event::Complete(1 + a.min(b)),
                 (Some(a), None) | (None, Some(a)) => Event::Complete(1 + a),
@@ -165,7 +168,7 @@ fn event_len(data: &[u8]) -> Event {
 /// How many bytes the UTF-8 character starting with `lead` takes.
 fn utf8_len(lead: u8) -> usize {
     match lead {
-        0x00..=0x7F | 0x80..=0xBF => 1,
+        0x00..=0xBF => 1,
         0xC0..=0xDF => 2,
         0xE0..=0xEF => 3,
         0xF0..=0xFF => 4,
