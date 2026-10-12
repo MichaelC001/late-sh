@@ -25,6 +25,7 @@ Read the details in [LICENSE](LICENSE), the plain-English policy in [LICENSING.m
 - The events board on `7`: anyone posts an event, everyone sees it, `i` says I'm in; your own events sit beside it, private. A post is a line in #lounge, the hour before a timed event it heads the Home `now` strip and the Live panel, an all-day event takes the #lounge topic row for its day, the start is a headline
 - Real-time global chat and shared activity feed
 - Audio streaming via Icecast/Liquidsoap, played by the paired CLI or the public `/listen` page
+- Animated ASCII scenes in Zen tiles and away screensavers, with random and five-minute randomer modes
 - Terminal games including 2048, Sudoku, Nonograms, Minesweeper, and Solitaire
 - Zork Trilogy door with an autosave and a manual save per edition
 - Web frontend for landing, profiles, and the token-less `/listen` page
