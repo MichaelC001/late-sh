@@ -97,14 +97,15 @@ fn screen_composes_chat(screen: Screen) -> bool {
             screen,
             Screen::Clubhouse
                 | Screen::Nightcap
-                // A roguelike's player composes into their own watch-chat
-                // room, opened by F2 or a click on its pane ahead of the
-                // game's passthrough (`App::handle_input`). The composer
-                // only opens from a running game, so with none open these
-                // screens behave as before.
+                // A watchable door's player composes into their own
+                // watch-chat room, opened by F2 or a click on its pane ahead
+                // of the game's passthrough (`App::handle_input`). The
+                // composer only opens from a running game, so with none open
+                // these screens behave as before.
                 | Screen::Nethack
                 | Screen::Dcss
                 | Screen::Brogue
+                | Screen::Zork
         )
 }
 
@@ -3494,6 +3495,17 @@ fn handle_modal_input(app: &mut App, ctx: InputContext, byte: u8) -> bool {
             state.dismiss_name_modal();
         } else {
             state.launcher_key(byte);
+        }
+        return true;
+    }
+    if ctx.screen == Screen::Zork
+        && let Some(state) = app.zork_state.as_mut()
+        && state.name_modal_visible()
+    {
+        if byte == 0x1B {
+            state.dismiss_name_modal();
+        } else {
+            state.name_key(byte);
         }
         return true;
     }
