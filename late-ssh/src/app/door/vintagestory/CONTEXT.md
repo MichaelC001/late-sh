@@ -29,7 +29,7 @@ Vintage Story is not a door. Nothing runs inside `late-ssh` and there is no prox
 
 - Pod: `kubernetes_deployment_v1.vintagestory`, image `local.vintagestory_image` (`ghcr.io/mpiorowski/late-sh/vintagestory:<game version>-<recipe revision>`). Requests 500m / 1536Mi, limits 3 CPU / 3Gi. Measured on agent-2: about 1.2 GiB and 40 s to first boot with nobody on.
 - `Recreate` strategy and 120 s termination grace, for the same reasons as Minecraft: one world, one RWO volume, one hostPort.
-- Probes are TCP checks on 42420; the startup probe allows 10 minutes for world generation or a version conversion.
+- Probes are TCP checks on 42420; the startup probe allows 10 minutes for world generation or a version conversion. The port opens while the spawn area is still loading, so the pod reports Ready up to about 20 s before `Dedicated Server now running`; a player joining in that window waits or retries.
 - Settings live in `local.vintagestory_config` and reach the server as `--withconfig` on every boot, which also writes them into `serverconfig.json`: `ServerName`, `WhitelistMode = "On"`, `VerifyPlayerAuth`, `AdvertiseServer = false`, `Upnp = false`, `MaxClients`, `AllowPvP`, `AllowFireSpread`, `PassTimeWhenEmpty = false`. A runtime `/serverconfig` change to one of those reverts on restart; every other key keeps the game default or a runtime change.
 - The world is the game's default: standard survival (`surviveandbuild`), default map size, no world border. Disk growth is bounded only by exploration.
 - Data: `/data` on the `vintagestory-data` PVC, 10Gi `local-path`, `prevent_destroy`, reclaim policy Delete. It holds `Saves/default.vcdbs` (the world), `Playerdata/` (including `playerswhitelisted.json`), `serverconfig.json`, `Logs/`, `Backups/`. **There is no off-node backup.** The PVC is a directory on `agent-2`'s disk; losing the node or deleting the claim loses the world.
@@ -50,7 +50,7 @@ Vintage Story is not a door. Nothing runs inside `late-ssh` and there is no prox
 
 ## Operations
 
-The server console reads stdin and the pod keeps stdin open (`stdin`, not `stdin_once`), so commands go in through `kubectl attach`, not `exec`. The answer lands in the pod log.
+The server console reads stdin and the pod keeps stdin open (`stdin`, not `stdin_once`), so commands go in through `kubectl attach`, not `exec`, one attach per command, as many in a row as needed. Commands sent while the world is still loading queue up and run once the console starts. The answer lands in the pod log.
 
 ```bash
 echo '/player NAME whitelist on' | kubectl attach -i deploy/vintagestory     # the server resolves NAME with Anego's auth server
