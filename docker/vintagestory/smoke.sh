@@ -36,7 +36,9 @@ wait_for_log() {
 
 wait_for_log "Dedicated Server now running on Port 42420"
 
-echo "/stats" | docker attach "$NAME" >/dev/null 2>&1 || true
+# `docker attach` streams the container's output until the container exits,
+# even after its stdin closes, so it is cut off once the line is delivered.
+echo "/stats" | timeout 10 docker attach "$NAME" >/dev/null 2>&1 || true
 wait_for_log "Handling Console Command /stats"
 
 docker stop -t 120 "$NAME" >/dev/null
