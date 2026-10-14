@@ -610,7 +610,7 @@ pub(crate) fn chat_help_lines(keep_composer_focused: bool) -> Vec<String> {
         "  /icons             open emoji / nerd font picker",
         "  /picker            open the room picker (same as Ctrl+/)",
         "  /petname [name]    show or set your pet's name",
-        "  /brb [reason]      post brb here, away until your next key (the screensaver covers the screen; Settings, Tweaks, Screensaver)",
+        "  /brb [reason]      away until your next key, a reason is posted here (the screensaver covers the screen; Settings, Tweaks, Screensaver)",
         "  /coffee            post a coffee cup",
         "  /tea               post a tea cup",
         "  /ultimate          open owned Ultimate Spells",
