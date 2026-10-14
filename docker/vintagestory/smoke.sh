@@ -10,7 +10,17 @@ NAME="vs-smoke"
 
 data=$(mktemp -d)
 chmod 777 "$data"
-trap 'docker rm -f "$NAME" >/dev/null 2>&1 || true; rm -rf "$data"' EXIT
+
+# The server writes the world as the image's uid 1654, which the calling user
+# cannot delete, so the files go through a root container. Cleanup never
+# decides the result.
+cleanup() {
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  docker run --rm --user 0 -v "$data:/data" --entrypoint sh "$IMAGE" \
+    -c 'rm -rf /data/* /data/.[!.]*' >/dev/null 2>&1 || true
+  rmdir "$data" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 docker run -d -i --name "$NAME" -v "$data:/data" "$IMAGE" \
   --dataPath /data \
