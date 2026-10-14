@@ -67,8 +67,8 @@ locals {
   # 26.x Paper builds. Whitelist and ops come from GitHub variables so player
   # names stay out of git; empty means nobody is seeded and the first names
   # go in through rcon-cli (README.md).
-  minecraft_image     = "itzg/minecraft-server:2026.9.1-java25"
-  minecraft_version   = "26.2"
+  minecraft_image     = "itzg/minecraft-server:2026.10.0-java25"
+  minecraft_version   = "26.3"
   minecraft_port      = 25565
   minecraft_heap      = "2G"
   minecraft_whitelist = join(",", compact([for name in split(",", var.MINECRAFT_WHITELIST) : trimspace(name)]))
