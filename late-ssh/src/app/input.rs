@@ -1432,6 +1432,7 @@ fn handle_games_hub_input(app: &mut App, event: &ParsedInput) -> bool {
                     HubGame::NightCity
                     | HubGame::Lateania
                     | HubGame::Minecraft
+                    | HubGame::VintageStory
                     | HubGame::Rebels
                     | HubGame::Nethack
                     | HubGame::Dcss
@@ -1569,9 +1570,9 @@ fn launch_games_hub_selection(app: &mut App, game: crate::app::door::hub::state:
             // characters to play is no longer a foregone conclusion.
             app.set_screen(Screen::Lateania);
         }
-        // Played from the Minecraft client, not the terminal: the landing
-        // says how to connect and there is nothing to launch.
-        HubGame::Minecraft => {}
+        // Played from the game client, not the terminal: the landing says
+        // how to connect and there is nothing to launch.
+        HubGame::Minecraft | HubGame::VintageStory => {}
         HubGame::Rebels => {
             if !app.rebels_enabled {
                 app.banner = Some(crate::app::common::primitives::Banner::error(
