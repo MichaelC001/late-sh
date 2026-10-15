@@ -48,14 +48,6 @@ pub(crate) fn lifetime_secs(kind: SpawnKind) -> i64 {
     }
 }
 
-/// A spawn's one cell on the composer.
-pub(crate) fn glyph(kind: SpawnKind) -> char {
-    match kind {
-        SpawnKind::Flicker => '▖',
-        SpawnKind::Howler => '╫',
-    }
-}
-
 /// What a kill pays each hitter, in the sheet's own closed set
 /// (`fight::state::Leavings`): a cache's worth of bits at the hitter's
 /// level for a flicker, a crystal for a howler. Never exp: the climb's
@@ -164,49 +156,74 @@ pub(crate) fn names(spawn: &Spawn) -> String {
     }
 }
 
-/// What the composer says about `spawn`, and whether the `/hit` key
-/// goes with it: lit while the spawn is live and the viewer has not hit
-/// it. The ui styles the key off the flag, never off the words.
+/// How long the scene plays a hit: the hitter's strike crosses to the
+/// glyph for this long after their hit landed.
+pub(crate) const STRIKE_MS: i64 = 5_000;
+
+/// Whether the scene has frames to play at `now_ms`: a hit within
+/// `STRIKE_MS`, or the glyph dissolving through the aftermath.
+pub(crate) fn animates(spawn: &Spawn, now_ms: i64) -> bool {
+    let striking = spawn
+        .hits
+        .last()
+        .is_some_and(|hit| now_ms < hit.at_ms + STRIKE_MS);
+    striking || spawn.ended_at_ms.is_some()
+}
+
+/// Whole seconds a live spawn has left at `now_ms`; `None` once it ended.
+pub(crate) fn left_secs(spawn: &Spawn, now_ms: i64) -> Option<i64> {
+    match spawn.ended_at_ms {
+        Some(_) => None,
+        None => Some((spawn.expires_at_ms - now_ms).max(0) / 1_000),
+    }
+}
+
+/// What the scene says about `spawn`: the headline, the detail under
+/// it, and whether the `/hit` key goes with them: lit while the spawn is
+/// live and the viewer has not hit it. The ui styles the key off the
+/// flag, never off the words.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ComposerText {
-    pub text: String,
+pub(crate) struct SceneText {
+    pub headline: String,
+    pub detail: String,
     pub hit_key: bool,
 }
 
-/// What the composer says about `spawn` to `viewer`, when no word of the
-/// viewer's own stands in for it.
-pub(crate) fn composer_text(spawn: &Spawn, viewer: Uuid) -> ComposerText {
+/// What the scene says about `spawn` to `viewer`, when no word of the
+/// viewer's own stands in for the detail.
+pub(crate) fn scene_text(spawn: &Spawn, viewer: Uuid) -> SceneText {
     let kind = spawn.kind.as_str();
     match spawn.outcome {
         Some(SpawnOutcome::Slain) => {
             let who = names(spawn);
-            let text = match pay_for(spawn.kind) {
-                Leavings::Cache => format!("the {kind} is down. {who} put it down."),
-                Leavings::Crystal => {
-                    format!("the {kind} is down. {who} put it down. a crystal each.")
-                }
+            let detail = match pay_for(spawn.kind) {
+                Leavings::Cache => format!("{who} put it down."),
+                Leavings::Crystal => format!("{who} put it down. a crystal each."),
             };
-            ComposerText {
-                text,
+            SceneText {
+                headline: format!("the {kind} is down."),
+                detail,
                 hit_key: false,
             }
         }
-        Some(SpawnOutcome::Slipped) => ComposerText {
-            text: format!("the {kind} slipped away."),
+        Some(SpawnOutcome::Slipped) => SceneText {
+            headline: format!("the {kind} slipped away."),
+            detail: match spawn.hits.is_empty() {
+                true => "nobody put it down.".to_string(),
+                false => format!("{} hit it. not enough.", names(spawn)),
+            },
             hit_key: false,
         },
         None => {
             let left = spawn.hits_left();
-            let text = match spawn.hits.last() {
-                None if left == 1 => format!("a {kind} is in the channel."),
-                None => format!("a {kind} is in the channel. {left} hits to put it down."),
-                Some(last) => format!(
-                    "a {kind} is in the channel. {} hit it. {left} to go.",
-                    last.username
-                ),
+            let detail = match spawn.hits.last() {
+                None if left == 1 => "one hit puts it down.".to_string(),
+                None => format!("{left} hits put it down."),
+                Some(last) => format!("{} hit it. {left} to go.", last.username),
             };
-            ComposerText {
-                text,
+            SceneText {
+                headline: format!("a {kind} is in the channel."),
+                detail,
                 hit_key: !spawn.hit_by(viewer),
             }
         }

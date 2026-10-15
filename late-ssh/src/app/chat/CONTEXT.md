@@ -377,16 +377,16 @@ User commands:
 - `/upload <url>` downloads a public image URL server-side, reuploads it to configured public file storage, and inserts the resulting URL into the composer for the user to send.
 
 Runner commands:
-- `/hit` hits the glyph on #lounge's composer (`deadchannel/lounge`).
+- `/hit` hits the glyph in the scene above #lounge's composer (`deadchannel/lounge`).
   Parsed in `submit_composer` **only when `is_runner`** (the flag the
   lounge tick keeps from the runner directory; parser in
   `deadchannel/lounge/state.rs`): swallowed and never posted for a
   runner, whatever is there to hit; for anyone else the line posts as
   plain text, and the room wondering is the point. Sets `requested_hit`,
   drained by `deadchannel::lounge::svc::tick`. The spawn itself is
-  chrome on the composer block (`ComposerBlockView.lounge`, the
-  placeholder while empty and the glyph in the title while typing),
-  never a message.
+  chrome above the composer (`DashboardChatView.lounge`, three rows
+  between the ticker and the composer that open while one shows; the
+  composer block itself never changes), never a message.
 
 Admin commands:
 - `/haunt [arm|glitch|name|replay|invite|reset|welcome]` controls the

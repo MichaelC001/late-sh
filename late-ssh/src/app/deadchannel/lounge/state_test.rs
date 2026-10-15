@@ -7,8 +7,8 @@ use rand::rngs::StdRng;
 use uuid::Uuid;
 
 use super::{
-    AFTERMATH_MS, ComposerText, Due, LoungeCommand, composer_text, due, hits_needed, is_stale,
-    lifetime_secs, minute_of_day, parse_lounge_command, roll_dice, shows,
+    AFTERMATH_MS, Due, LoungeCommand, STRIKE_MS, SceneText, animates, due, hits_needed, is_stale,
+    left_secs, lifetime_secs, minute_of_day, parse_lounge_command, roll_dice, scene_text, shows,
 };
 
 fn day() -> LoungeDay {
@@ -134,26 +134,31 @@ fn a_spawn_shows_while_live_and_for_the_aftermath() {
     assert!(!shows(&down, 5_000 + AFTERMATH_MS));
 }
 
-fn said(text: &str, hit_key: bool) -> ComposerText {
-    ComposerText {
-        text: text.to_string(),
+fn said(headline: &str, detail: &str, hit_key: bool) -> SceneText {
+    SceneText {
+        headline: headline.to_string(),
+        detail: detail.to_string(),
         hit_key,
     }
 }
 
 #[test]
-fn the_composer_reads_the_spawn_to_the_viewer() {
+fn the_scene_reads_the_spawn_to_the_viewer() {
     let viewer = Uuid::now_v7();
     let flicker = spawn(SpawnKind::Flicker, Vec::new());
     assert_eq!(
-        composer_text(&flicker, viewer),
-        said("a flicker is in the channel.", true)
+        scene_text(&flicker, viewer),
+        said(
+            "a flicker is in the channel.",
+            "one hit puts it down.",
+            true
+        )
     );
 
     let fresh = spawn(SpawnKind::Howler, Vec::new());
     assert_eq!(
-        composer_text(&fresh, viewer),
-        said("a howler is in the channel. 3 hits to put it down.", true)
+        scene_text(&fresh, viewer),
+        said("a howler is in the channel.", "3 hits put it down.", true)
     );
 
     let mine = SpawnHit {
@@ -164,21 +169,22 @@ fn the_composer_reads_the_spawn_to_the_viewer() {
     let hit_once = spawn(SpawnKind::Howler, vec![mine.clone()]);
     // The viewer hit it: no key offered.
     assert_eq!(
-        composer_text(&hit_once, viewer),
-        said("a howler is in the channel. tom hit it. 2 to go.", false)
+        scene_text(&hit_once, viewer),
+        said("a howler is in the channel.", "tom hit it. 2 to go.", false)
     );
     assert_eq!(
-        composer_text(&hit_once, Uuid::now_v7()),
-        said("a howler is in the channel. tom hit it. 2 to go.", true)
+        scene_text(&hit_once, Uuid::now_v7()),
+        said("a howler is in the channel.", "tom hit it. 2 to go.", true)
     );
 
     let mut down = spawn(SpawnKind::Howler, vec![mine, hit("dax"), hit("mira")]);
     down.ended_at_ms = Some(2_000);
     down.outcome = Some(SpawnOutcome::Slain);
     assert_eq!(
-        composer_text(&down, viewer),
+        scene_text(&down, viewer),
         said(
-            "the howler is down. tom, dax and mira put it down. a crystal each.",
+            "the howler is down.",
+            "tom, dax and mira put it down. a crystal each.",
             false
         )
     );
@@ -187,9 +193,44 @@ fn the_composer_reads_the_spawn_to_the_viewer() {
     slipped.ended_at_ms = Some(2_000);
     slipped.outcome = Some(SpawnOutcome::Slipped);
     assert_eq!(
-        composer_text(&slipped, viewer),
-        said("the howler slipped away.", false)
+        scene_text(&slipped, viewer),
+        said("the howler slipped away.", "nobody put it down.", false)
     );
+    slipped.hits.push(hit("tom"));
+    assert_eq!(
+        scene_text(&slipped, viewer),
+        said("the howler slipped away.", "tom hit it. not enough.", false)
+    );
+}
+
+#[test]
+fn the_scene_plays_a_hit_for_five_seconds_and_the_whole_aftermath() {
+    let quiet = spawn(SpawnKind::Howler, Vec::new());
+    assert!(!animates(&quiet, 50_000));
+
+    let mut struck = quiet.clone();
+    struck.hits.push(SpawnHit {
+        at_ms: 50_000,
+        ..hit("tom")
+    });
+    assert!(animates(&struck, 50_000 + STRIKE_MS - 1));
+    assert!(!animates(&struck, 50_000 + STRIKE_MS));
+
+    let mut down = quiet.clone();
+    down.ended_at_ms = Some(60_000);
+    down.outcome = Some(SpawnOutcome::Slipped);
+    assert!(animates(&down, 60_000 + AFTERMATH_MS - 1));
+}
+
+#[test]
+fn a_live_spawn_counts_its_seconds_down() {
+    let live = spawn(SpawnKind::Flicker, Vec::new());
+    assert_eq!(left_secs(&live, live.expires_at_ms - 61_500), Some(61));
+    assert_eq!(left_secs(&live, live.expires_at_ms + 5), Some(0));
+    let mut down = live.clone();
+    down.ended_at_ms = Some(5_000);
+    down.outcome = Some(SpawnOutcome::Slain);
+    assert_eq!(left_secs(&down, 5_000), None);
 }
 
 #[test]

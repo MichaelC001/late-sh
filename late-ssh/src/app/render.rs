@@ -862,18 +862,19 @@ impl App {
             late_core::models::user::AudioSource::Radio => radio_now_playing.as_deref(),
             late_core::models::user::AudioSource::Youtube => status_youtube_track.as_deref(),
         };
-        // The lounge's spawn (`deadchannel/lounge`), on the #lounge card,
-        // for a runner only.
+        // The lounge's spawn (`deadchannel/lounge`) as the scene above the
+        // #lounge card's composer, for a runner only.
         let dashboard_lounge = if home_selected && self.is_runner() {
-            self.lounge
-                .showing(crate::app::presence::svc::now_ms())
-                .map(|spawn| {
-                    crate::app::deadchannel::lounge::ui::line(
-                        spawn,
-                        self.lounge.word(),
-                        self.user_id,
-                    )
-                })
+            let now_ms = crate::app::presence::svc::now_ms();
+            self.lounge.showing(now_ms).map(|spawn| {
+                crate::app::deadchannel::lounge::ui::scene(
+                    spawn,
+                    self.lounge.word(),
+                    self.user_id,
+                    &self.runner_looks,
+                    now_ms,
+                )
+            })
         } else {
             None
         };
@@ -1494,7 +1495,6 @@ impl App {
             mention_selected: self.chat.mention_ac.selected,
             keep_composer_focused: self.profile_state.profile().keep_composer_focused,
             inert: chat::ui::ComposerInert::No,
-            lounge: None,
         });
         let (clubhouse_composer, nightcap_composer) = match screen {
             Screen::Clubhouse => (embedded_composer, None),

@@ -446,18 +446,26 @@ async fn announce(client: &tokio_postgres::Client, spawn: &Spawn) {
 /// answer to a hit are drawn), the hit it asked for, the spawn copy and
 /// the word. A frame is owed only where the line is drawn: Home with
 /// #lounge up.
-pub(crate) fn tick(app: &mut App) -> bool {
+pub(crate) fn tick(app: &mut App, anim_half: bool) -> bool {
     app.chat
         .set_hits_on(app.is_runner() && app.looking_at_lounge());
     let now_ms = crate::app::presence::svc::now_ms();
     if app.chat.take_requested_hit() {
         app.lounge.hit(now_ms);
     }
-    let tick = app.lounge.tick(now_ms);
+    let tick = app.lounge.tick(now_ms, anim_half);
     if tick.reload_sheet {
         app.fight.reload();
     }
     tick.changed && app.screen == Screen::Dashboard
+}
+
+/// Whether the scene on the #lounge card is playing frames: a strike or
+/// a dissolve, for a runner looking at it. The wake cadence's seam.
+pub(crate) fn animates(app: &App) -> bool {
+    app.is_runner()
+        && app.looking_at_lounge()
+        && app.lounge.animating(crate::app::presence::svc::now_ms())
 }
 
 #[cfg(test)]

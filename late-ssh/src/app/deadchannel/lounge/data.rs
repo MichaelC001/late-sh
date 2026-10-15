@@ -1,7 +1,8 @@
-//! The lounge's copy: what the wire says when a glyph goes down or slips
-//! away, and what the composer answers a hit. Placeholder copy at
-//! feed-template standards, design review pending with the rest of the
-//! phase 2 copy. Every noun passes the screenshot test.
+//! The lounge's copy and art: what the wire says when a glyph goes down
+//! or slips away, what the scene answers a hit, and the faces the scene
+//! draws. Placeholder copy at feed-template standards, design review
+//! pending with the rest of the phase 2 copy. Every noun passes the
+//! screenshot test.
 
 use late_core::models::deadchannel_spawn::{Spawn, SpawnKind};
 
@@ -34,7 +35,28 @@ pub(crate) fn slipped_line(spawn: &Spawn) -> String {
     format!("a {kind} slipped past the lounge. {who} hit it; it needed {needed}.")
 }
 
-/// The composer's answer to a hit that landed with `left` still to go.
+/// The spawn's face, three rows of nine cells: the big one the hitters
+/// stand against. The fight's foes of the same name are smaller and
+/// theirs.
+pub(crate) fn face(kind: SpawnKind) -> [&'static str; 3] {
+    match kind {
+        SpawnKind::Flicker => [" ▘  ▝  ▘ ", "▗▖ ▚▞ ▗▖ ", " ▖  ▗  ▖ "],
+        SpawnKind::Howler => ["▚▞▚▞▚▞▚▞▚", "▐▓▒▓█▓▒▓▌", "▞▚▞▚▞▚▞▚▞"],
+    }
+}
+
+/// A hitter's seat with nobody in it yet: a hit still owed.
+pub(crate) const EMPTY_SEAT: [&str; 3] = [" ┄┄┄ ", "┆   ┆", " ┄┄┄ "];
+
+/// A hitter whose look the directory does not hold (they left the row
+/// since): a shape where the portrait would be.
+pub(crate) const GHOST_PORTRAIT: [&str; 3] = ["  ▚  ", " ▐█▌ ", "  ▞  "];
+
+/// The strike crossing the lane from a hitter to the face, one frame
+/// per cell it has travelled.
+pub(crate) const STRIKE_FRAMES: [&str; 5] = ["━╸   ", " ━╸  ", "  ━╸ ", "   ━╸", "    ━"];
+
+/// The scene's answer to a hit that landed with `left` still to go.
 pub(crate) fn hit_line(weapon: &str, kind: SpawnKind, left: i32) -> String {
     let kind = kind.as_str();
     match left {

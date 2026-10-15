@@ -315,8 +315,9 @@ impl App {
         changed |= self.fight.tick();
         changed |= self.tailor.tick();
         // The lounge spawns (`app/deadchannel/lounge`): the spawn copy, a
-        // runner's `/hit`, and the word it came back with.
-        changed |= crate::app::deadchannel::lounge::svc::tick(self);
+        // runner's `/hit`, the word it came back with, and the scene's
+        // strike and countdown frames.
+        changed |= crate::app::deadchannel::lounge::svc::tick(self, anim_half);
         changed |= self.guide.tick();
         changed |= self.tick_pot();
         // News state is ticked inside chat.tick()
@@ -1460,6 +1461,7 @@ impl App {
         if self.screen == Screen::Clubhouse
             || self.screen == Screen::City
             || crate::app::door::hub::state::animates(self)
+            || crate::app::deadchannel::lounge::svc::animates(self)
             || self.right_sidebar_visible()
             || (self.live_strip_shown() && self.live.aiming())
             || (self.screen == Screen::Zen && self.zen.shows_equalizer())

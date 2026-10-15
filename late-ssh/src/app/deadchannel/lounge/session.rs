@@ -32,6 +32,9 @@ pub(crate) struct LoungeSession {
     /// The slain spawn the mirror was last re-read for, so one kill
     /// reloads once.
     reloaded_for: Option<Uuid>,
+    /// The seconds-left the scene last painted, so the countdown owes a
+    /// frame once a second and no more.
+    painted_left: Option<i64>,
     user_id: Uuid,
     username: String,
     svc: LoungeService,
@@ -50,6 +53,7 @@ impl LoungeSession {
             word: None,
             hit_in_flight: false,
             reloaded_for: None,
+            painted_left: None,
             user_id,
             username: username.clone(),
             svc,
@@ -72,9 +76,20 @@ impl LoungeSession {
     }
 
     /// Copy the shared spawn if it moved, drain the hit's answer, let the
-    /// word expire.
-    pub(crate) fn tick(&mut self, now_ms: i64) -> LoungeTick {
+    /// word expire, and owe a frame when the scene's countdown moved or a
+    /// strike is playing on the half edge (`anim_half`).
+    pub(crate) fn tick(&mut self, now_ms: i64, anim_half: bool) -> LoungeTick {
         let mut tick = LoungeTick::default();
+        let left = self
+            .showing(now_ms)
+            .and_then(|spawn| super::state::left_secs(spawn, now_ms));
+        if left != self.painted_left {
+            self.painted_left = left;
+            tick.changed = true;
+        }
+        if anim_half && self.animating(now_ms) {
+            tick.changed = true;
+        }
         if self.spawn_rx.has_changed().unwrap_or(false) {
             self.spawn = self.spawn_rx.borrow_and_update().clone();
             tick.changed = true;
@@ -115,6 +130,13 @@ impl LoungeSession {
         self.spawn
             .as_ref()
             .filter(|spawn| super::state::shows(spawn, now_ms))
+    }
+
+    /// Whether the scene has frames to play at `now_ms`: a strike, or the
+    /// face dissolving.
+    pub(crate) fn animating(&self, now_ms: i64) -> bool {
+        self.showing(now_ms)
+            .is_some_and(|spawn| super::state::animates(spawn, now_ms))
     }
 
     /// The session's own word while it stands.

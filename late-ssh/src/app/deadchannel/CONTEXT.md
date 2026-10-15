@@ -14,8 +14,8 @@
   till, the lockers, the bits machine, the step off the ledge, crystals
   and the bright glyph, the bar's glass, the blade shop; §3c), the
   tailor in `tailor/` (the mirror as the look's editor, the look's writer
-  after the join; §3b), and the lounge spawns in `lounge/` (a glyph on
-  #lounge's composer for runners to put down together, over
+  after the join; §3b), and the lounge spawns in `lounge/` (a glyph in a scene
+  above #lounge's composer for runners to put down together, over
   `deadchannel_spawns` and the `deadchannel_spawn` channel; §3d,
   `lounge/CONTEXT.md`). Built for
   several replicas (root CONTEXT.md, multi-replica rule); staff only
@@ -123,11 +123,11 @@ number of replicas spend one AI call per text.
 | `guide/session.rs` | `GuideSession`: the `state`, `descend` (the claim), `tick` (opens the guide on `FirstDescent`). Decides nothing. |
 | `guide/input.rs` | Keys while the guide is open: `j`/`k` and the arrows scroll a line, PageUp/PageDown a screen, Enter, `q` and `?` close it; digits and Tab stay global, everything else is swallowed. `opens` names the key (`?`). |
 | `guide/ui.rs` | `draw`: the box over the street in the city's palette, each section under a neon `▚ heading ───` rule, each block drawn its own way (the loop joined by arrows, the prize in a rounded amber box, keys as amber chips in as many columns as fit and one wrapped column when narrow, figures bright beside their meaning, rules as bullets with a hanging indent, the marks read into chips and bright spans), wrapped here through `common/markdown::wrap_spans` so the row count is the page the scroll holds against; the keys under; `body_lines`. Pure. |
-| `lounge/state.rs` | Pure: `due`, `roll_dice`, `hits_needed` / `lifetime_secs` / `glyph` per `SpawnKind`, `pay_for` (as the sheet's `Leavings`), `parse_lounge_command`, `shows`, `is_stale`, `names`, `composer_text` (`ComposerText`: the words and whether the `/hit` key goes with them). No I/O, no clock. `lounge/CONTEXT.md`. |
-| `lounge/data.rs` | The copy: the wire's slain and slipped lines, the composer's answers to a hit. |
-| `lounge/svc.rs` | `LoungeService`: the spawner and sweeper on every replica, the notify worker into a process-shared `watch<Option<Spawn>>`, `hit_task` / `hit` (the settled sheet, one conditional update, the pay through `FightService::pocket` before the slain row is announced), `announce` (a failed `pg_notify` logged and counted), and `tick(app)` (the session's side; writes chat's `hits_on`). The metric and the log line per outcome. `lounge/CONTEXT.md`. |
-| `lounge/session.rs` | `LoungeSession`: the tick copy of the spawn, the session's own word and its expiry, one hit in flight, `showing`. Decides nothing. |
-| `lounge/ui.rs` | `LoungeLine` and `line` (the glyph, the words, the `hit_key`), `placeholder` (the row in the composer). Pure; `chat/ui.rs::draw_composer_block` draws it. |
+| `lounge/state.rs` | Pure: `due`, `roll_dice`, `hits_needed` / `lifetime_secs` per `SpawnKind`, `pay_for` (as the sheet's `Leavings`), `parse_lounge_command`, `shows`, `is_stale`, `names`, `scene_text` (`SceneText`: the headline, the detail, and whether the `/hit` key goes with them), `animates`, `left_secs`. No I/O, no clock. `lounge/CONTEXT.md`. |
+| `lounge/data.rs` | The copy and the art: the wire's slain and slipped lines, the scene's answers to a hit, the faces, the seats, the strike frames. |
+| `lounge/svc.rs` | `LoungeService`: the spawner and sweeper on every replica, the notify worker into a process-shared `watch<Option<Spawn>>`, `hit_task` / `hit` (the settled sheet, one conditional update, the pay through `FightService::pocket` before the slain row is announced), `announce` (a failed `pg_notify` logged and counted), `tick(app, anim_half)` (the session's side; writes chat's `hits_on`, owes the scene's frames), and `animates(app)` (the wake cadence's seam). The metric and the log line per outcome. `lounge/CONTEXT.md`. |
+| `lounge/session.rs` | `LoungeSession`: the tick copy of the spawn, the session's own word and its expiry, one hit in flight, `showing`, `animating`, the countdown's last painted second. Decides nothing. |
+| `lounge/ui.rs` | `LoungeScene` and `scene` (three rows: the hitters' seats, the lane and its strike, the face, the words), `SCENE_HEIGHT`. Pure; `chat/ui.rs::draw_dashboard_chat_card` draws it above the composer. |
 | `tailor/ui.rs` | `mirror_lines` for the city's panel: the draft as a portrait with the mark under it, four rack rows beside it (the cursor, the label, the tint's name, a window of up to five pieces around the worn one, bracketed, the whole rack once while it is shorter; the mark alphabet on the mark row), the keys (`[s] wear it` lit only when the draft differs from what is worn), what the next unlock level opens. Pure; `city/ui.rs::draw_panel` puts the tailor's word at the panel's foot. |
 
 Root integration is deliberately thin: `App.haunt` (the one field),
@@ -162,11 +162,14 @@ payload, and parse), and `metrics::record_first_contact_beat` /
 `record_first_contact_bio_screen`.
 
 The lounge's seams: `App.lounge` (the session), one tick line in
-`tick.rs` (`lounge::svc::tick`), `looking_at_lounge` on the presence
+`tick.rs` (`lounge::svc::tick`, with the half animation edge) and one
+in its wake cadence (`lounge::svc::animates`, the half tier while a
+strike or a dissolve plays), `looking_at_lounge` on the presence
 record (`App::sync_presence`: Home with the #lounge card up, the
 `lounge` flag in `models/presence.rs`), `dashboard_lounge` in
-`render.rs` (the line for a runner on the #lounge card, handed to the
-dashboard's composer block), chat's `requested_hit` slot and `hits_on`
+`render.rs` (the scene for a runner on the #lounge card, built off the
+spawn and the runner directory's looks, handed to the dashboard card
+for the rows above its composer), chat's `requested_hit` slot and `hits_on`
 flag (`submit_composer` swallows `/hit` while a runner is looking at
 #lounge and lets it fall through to the unknown-command banner anywhere
 else and for anyone else;
@@ -861,13 +864,13 @@ so (`Undercity · f road · p patch · ? guide`,
   board's standing orders, and the tailor's bought rack (chips, seasonal
   stock).
 
-## 3d. The lounge (the snack: a glyph on the composer)
+## 3d. The lounge (the snack: a glyph above the composer)
 
 GAME.md, "The lounge pass": the first shared world object, a flicker or
-a howler on #lounge's composer that runners put down together with
+a howler in a scene above #lounge's composer that runners put down together with
 `/hit`, three flickers and a howler a day by dice, paid through the
 sheet's one writer. The contract (the day row and its claims, when one
-lands, the hit, the pay before the kill is told, the wire, the composer,
+lands, the hit, the pay before the kill is told, the wire, the scene,
 the copy on the channel, the beats) is `lounge/CONTEXT.md`; the file
 roles are in §2.
 
