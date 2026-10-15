@@ -1048,7 +1048,7 @@ pub fn play_turn(sheet: &mut Sheet, rules: &Rules, hand: Hand, rng: &mut StdRng)
             .applied
         {
             Applied::Played { card } => played.push(card),
-            ended @ (Applied::Won { .. } | Applied::Slain { .. }) => {
+            ended @ (Applied::Won { .. } | Applied::Slain { .. } | Applied::Ambushed { .. }) => {
                 return TurnPlayed {
                     applied: ended,
                     played,

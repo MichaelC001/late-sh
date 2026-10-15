@@ -3,11 +3,11 @@ use uuid::Uuid;
 
 use super::{
     AMBIENT, Bench, CAREFUL, Climb, Day, Event, Hand, Journal, KEEN, Ledger, NEGLECTFUL, Player,
-    RECKLESS, Start, builds, climb, date, play_turn, summary,
+    RECKLESS, Start, builds, climb, date, odds_rival, play_turn, summary,
 };
 use crate::app::deadchannel::fight::cards::DRAFTS;
 use crate::app::deadchannel::fight::data::RULES;
-use crate::app::deadchannel::fight::state::{Applied, Command, Pick, Sheet};
+use crate::app::deadchannel::fight::state::{Applied, Command, Pick, Prey, Rival, Sheet};
 
 /// Seeded climbs per player: enough for a stable median, few enough to
 /// stay a unit test.
@@ -543,6 +543,33 @@ fn the_sims_auto_turn_is_the_auto_keys_turn() {
         }
     }
     panic!("a fight always ends");
+}
+
+/// A crossing the cards end before the turn does: the sleeper goes down
+/// to a played card, and the threat word reads it as a win instead of
+/// taking the session down with it.
+#[test]
+fn a_rival_put_down_by_a_card_reads_as_a_sure_crossing() {
+    let mut sheet = Sheet::fresh(Uuid::nil(), date(1));
+    sheet.level = 9;
+    sheet.signal = sheet.max_signal();
+    sheet.weapon_tier = 8;
+    sheet.armor_tier = 8;
+    let prey = Prey {
+        rival: Rival {
+            user_id: Uuid::from_u128(7),
+            username: "tom".to_string(),
+            level: 1,
+            ambush_id: Uuid::nil(),
+            answer: false,
+            portrait: [String::new(), String::new(), String::new()],
+        },
+        signal: 1,
+        attack: 0,
+        defense: 0,
+        stake: 50,
+    };
+    assert_eq!(odds_rival(&sheet, &prey, 20), Some(1.0));
 }
 
 /// The second climb on the key is never slower than the first, and every
