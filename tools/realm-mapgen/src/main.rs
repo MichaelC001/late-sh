@@ -9,12 +9,12 @@
 //!   curl -sL -o tmp/realm/ne_50m.geojson \
 //!     https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson
 //! Run:
-//!   cargo run -p realm-mapgen --release -- \
+//!   cargo run --manifest-path tools/realm-mapgen/Cargo.toml --release -- \
 //!     --input tmp/realm/ne_50m.geojson --out late-ssh/assets/realm
 //!   # finer map (~5km/cell, roughly 4x the asset size):
-//!   cargo run -p realm-mapgen --release -- \
+//!   cargo run --manifest-path tools/realm-mapgen/Cargo.toml --release -- \
 //!     --input tmp/realm/ne_50m.geojson --out late-ssh/assets/realm --width 8192
-//!   cargo run -p realm-mapgen --release -- --check --out late-ssh/assets/realm
+//!   cargo run --manifest-path tools/realm-mapgen/Cargo.toml --release -- --check --out late-ssh/assets/realm
 
 use std::collections::BTreeMap;
 use std::fs;
