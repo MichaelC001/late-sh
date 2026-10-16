@@ -1,7 +1,9 @@
-# usermap — `/map`
+# usermap — the Map section of People (`/map`)
 
 ## Metadata
-- Owner surface: a modal, opened only by typing `/map` (no chord).
+- Owner surface: the first section of the People page (screen `5`, hosted by
+  `app/directory`), which the page opens on; `]` steps on to Profiles and
+  Jobs, and `/map` typed into a composer lands here from anywhere.
 - Depends on: `common::worldmap` (the atlas and the painter),
   `profile::svc::ProfileService` (who is online, and where they said they are).
 
@@ -9,7 +11,7 @@
 
 `/active` answers "who is online" as a list of names. This answers "where are
 they", shading the Earth by how many people are in each country — in three
-slices, walked with Tab:
+slices, walked with `m`:
 
 | mode | what it counts |
 | --- | --- |
@@ -26,7 +28,7 @@ two. `Recent` and `Everyone` are both `User::country_counts_since` with and
 without a cutoff, counted in SQL (`last_seen` is what makes "this month"
 mean anything).
 
-Each mode caches its last result, so Tab is instant after the first look, and
+Each mode caches its last result, so `m` is instant after the first look, and
 a load carries its mode there and back — switching tabs while a slow query is
 in flight must not paint one slice's numbers under another slice's title.
 
@@ -72,27 +74,34 @@ lightness, so "more people" reads without the legend.
 
 ## 4. Keys and mouse
 
-The key map is `input.rs` here (`handle_input`), reached from `app/input.rs`
-while the modal is open; the opener (`open_usermap_globally`) stays with the
-other `open_*_globally` entry points at the root, since closing the rest of
-the modal stack is the root's business.
+The key map is `input.rs` here (`handle_byte`, `handle_arrow`,
+`handle_mouse`), called by the People page's own input (`app/directory`)
+while its Map section is up; the page keeps what is the page's (`[`/`]`
+between sections, the section row, the page keys) and hands the rest here. The
+page's tick glue (`app/tick.rs`) calls `show` when the shelf comes on screen
+and `hide` when it leaves, so counts are asked for on arrival and nothing
+runs for a shelf nobody is looking at. `/map` typed into a composer goes
+through `open_usermap_globally` at the root, which closes the modal stack and
+lands on the shelf.
 
-`tab` walks the three slices. All four arrows pan; `j`/`k` walk the country list, and picking a country
-frames it on the map (finding Luxembourg by hand on a world view is not a
-thing to ask of anyone). `+`/`-` zoom, `f` refits, `r` re-counts, `esc`/`q`
-closes.
+The draw (`ui::draw`) takes the body and paints the title line, the map and
+the list; the page's footer row prints `ui::hints` (the keys that do
+something right now). The three slices are drawn by the page, as the
+section's filters on the right of its section row.
+
+`m` walks the three slices. All four arrows pan; `j`/`k` walk the country
+list, and picking a country frames it on the map (finding Luxembourg by hand
+on a world view is not a thing to ask of anyone). `+`/`-` zoom, `f` refits,
+`r` re-counts. Clicking `online`, `month` or `all` on the section row picks
+that slice.
 
 Mouse: wheel zooms over the map and scrolls over the list, left-drag pans
 (the map follows the hand), a press that does not move picks the country
 under it, and a click in the list picks that row. The draw records where the
 map and the list ended up (`record_geometry`) because nothing else knows.
 
-Two things that were wrong on the first cut, both worth not repeating:
+One thing that was wrong on the first cut, worth not repeating:
 
-- **Esc has to be handled in `input::dispatch_escape`, not only in the
-  modal's own key match.** A lone Esc never reaches the modal stack — it is
-  held as `pending_escape` and flushed on a later tick — so a modal that only
-  answers `Byte(0x1B)` where its other keys live cannot be closed with Esc.
 - **Arrows pan; do not give two of them to the list.** Up/down were bound to
   the country list, which reads as half the arrow keys being broken. And at
   most zooms the whole map *height* already fits (the world is 2:1, a
@@ -112,3 +121,7 @@ Two things that were wrong on the first cut, both worth not repeating:
   picker and the map have not drifted apart.
 - `ui_test`: draws at several sizes — while still counting, with tallies (the
   rung colours have to actually reach the screen), and with nothing to show.
+- The host side: `directory/ui_test` draws the page opening on the Map
+  section (section row with the slices, title, world, footer) and checks the
+  slices are click targets, and `input_flow_test` walks `/map` onto the
+  section, sees the tick turn the counts on, and `]` turn them off.

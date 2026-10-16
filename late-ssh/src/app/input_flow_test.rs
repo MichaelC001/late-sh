@@ -233,7 +233,7 @@ async fn artboard_disclaimer_tour_choice_keeps_account_settings() {
     app.set_screen(Screen::Artboard);
     let frame = render_plain(&mut app);
     assert!(
-        frame.contains("[S] show · [Enter] skip: the profiles"),
+        frame.contains("[S] show · [Enter] skip: the people"),
         "frame={frame:?}"
     );
     assert!(!frame.contains("Artboard may contain NSFW content"));
@@ -254,7 +254,7 @@ async fn artboard_disclaimer_tour_choice_keeps_account_settings() {
     wait_for_render_contains(&mut app, "Mode       view").await;
     let frame = render_plain(&mut app);
     assert!(
-        frame.contains("[Enter] next: the profiles"),
+        frame.contains("[Enter] next: the people"),
         "frame={frame:?}"
     );
     assert!(!frame.contains("Artboard may contain NSFW content"));
@@ -1052,7 +1052,7 @@ async fn screen_number_keys_switch_between_pages_including_profiles() {
     wait_for_render_contains(&mut app, "Mode       view").await;
 
     app.handle_input(b"5");
-    wait_for_render_contains(&mut app, " Profiles ").await;
+    wait_for_render_contains(&mut app, " People ").await;
 
     app.handle_input(b"1");
     wait_for_render_contains(&mut app, " Home ").await;
@@ -1091,7 +1091,9 @@ async fn profiles_page_keys_drive_the_merged_feed() {
     let mut app = make_app(test_db.db.clone(), user.id, "profiles-feed-flow-it");
 
     app.handle_input(b"5");
-    wait_for_render_contains(&mut app, " Profiles ").await;
+    wait_for_render_contains(&mut app, " People ").await;
+    // The page opens on the map; the feed keys live one section on.
+    app.handle_input(b"]");
 
     // `i` opens the profile editor on a blank project form. The form's first
     // row is already being typed into, so one Esc stops typing and a second
@@ -1228,7 +1230,7 @@ async fn shift_tab_cycles_screens_backwards() {
     wait_for_render_contains(&mut app, " Leaderboards ").await;
 
     app.handle_input(b"\x1b[Z");
-    wait_for_render_contains(&mut app, "Profiles").await;
+    wait_for_render_contains(&mut app, " People ").await;
 
     app.handle_input(b"\x1b[Z");
     wait_for_render_contains(&mut app, "Artboard may contain NSFW content").await;
@@ -1270,7 +1272,7 @@ async fn tab_cycles_screens_forward_through_all_including_profiles() {
     wait_for_render_contains(&mut app, "Mode       view").await;
 
     app.handle_input(b"\t");
-    wait_for_render_contains(&mut app, " Profiles ").await;
+    wait_for_render_contains(&mut app, " People ").await;
 
     app.handle_input(b"\t");
     wait_for_render_contains(&mut app, " Leaderboards ").await;
@@ -1642,6 +1644,74 @@ async fn realm_keeps_the_originating_page_when_switching_games_or_visiting_zen()
     assert_eq!(app.screen, Screen::Zen);
     app.handle_input(b"\x06");
     assert_eq!(app.screen, Screen::Profiles);
+}
+
+/// The realm board is a stop on the backtick cycle like a detached
+/// roguelike: the key hops out with the board kept open, and from Home the
+/// same key hops back onto it.
+#[tokio::test]
+async fn the_realm_board_is_a_backtick_stop() {
+    use crate::app::common::primitives::Screen;
+
+    let test_db = new_test_db().await;
+    let user = create_test_user(&test_db.db, "realm-hop").await;
+    let mut app = make_app(test_db.db.clone(), user.id, "realm-hop-it");
+
+    app.set_screen(Screen::Dashboard);
+    app.realm.open_board(uuid::Uuid::new_v4(), Screen::Games);
+    app.set_screen(Screen::Realm);
+
+    app.handle_input(b"`");
+    assert_eq!(app.screen, Screen::Dashboard, "a hop out lands on the base");
+    assert!(app.realm.board.is_some(), "with the board kept open");
+
+    app.handle_input(b"`");
+    assert_eq!(
+        app.screen,
+        Screen::Realm,
+        "and the next hop comes back to it"
+    );
+}
+
+/// A lone Esc never reaches the realm board's own keys: it is held as a
+/// pending escape and flushed later. It still has to put the colour picker
+/// away before it puts the board away, and a picker left open when the board
+/// closes does not come back with the next board.
+#[tokio::test]
+async fn a_lone_esc_puts_the_realm_colour_picker_away_first() {
+    use crate::app::common::primitives::Screen;
+    use crate::app::door::realm::state::RealmJoinDraft;
+
+    let test_db = new_test_db().await;
+    let user = create_test_user(&test_db.db, "realm-esc-picker").await;
+    let mut app = make_app(test_db.db.clone(), user.id, "realm-esc-picker-it");
+    let game_id = uuid::Uuid::new_v4();
+    let picker = || RealmJoinDraft {
+        game_id,
+        game_name: "Season 1".to_string(),
+        color: 0,
+        taken: Vec::new(),
+    };
+
+    app.set_screen(Screen::Games);
+    app.realm.open_board(game_id, Screen::Games);
+    app.set_screen(Screen::Realm);
+    app.realm.join_draft = Some(picker());
+
+    app.handle_input(b"\x1b");
+    app.pending_escape_started_at = Some(std::time::Instant::now() - Duration::from_secs(1));
+    crate::app::input::flush_pending_escape(&mut app);
+    assert!(app.realm.join_draft.is_none(), "the picker is put away");
+    assert_eq!(app.screen, Screen::Realm, "and the board stays up");
+    assert!(app.realm.board.is_some());
+
+    app.realm.join_draft = Some(picker());
+    crate::app::door::realm::input::close_board(&mut app);
+    app.realm.open_board(game_id, Screen::Games);
+    assert!(
+        app.realm.join_draft.is_none(),
+        "a closed board takes its picker with it"
+    );
 }
 
 #[tokio::test]
@@ -3712,7 +3782,7 @@ async fn forced_tour_can_skip_artboard_without_viewing_it() {
         "frame={frame:?}"
     );
     assert!(
-        frame.contains("[S] show · [Enter] skip: the profiles"),
+        frame.contains("[S] show · [Enter] skip: the people"),
         "frame={frame:?}"
     );
     assert!(!frame.contains("Mode       view"));
@@ -6879,6 +6949,8 @@ async fn profiles_mouse_search_selects_person_and_profile_popup_owns_input() {
     let mut app = make_app(db.db.clone(), user.id, "profiles-mouse-search");
     app.resize(80, 24).unwrap();
     app.set_screen(Screen::Profiles);
+    app.directory_state
+        .set_shelf(crate::app::directory::state::Shelf::Profiles);
     wait_for_render_contains(&mut app, "@profiles-mouse-author").await;
     app.interaction_mode = InteractionMode::Hybrid;
     app.render().unwrap();
@@ -6980,13 +7052,14 @@ async fn zen_swallows_the_key_after_the_live_prefix_from_a_focused_inbox() {
     );
 }
 
-/// `/map` opens a modal that owns the keyboard, and Esc has to be the
-/// way out. A lone Esc never reaches the modal stack where the other keys are
-/// handled — it arrives later through `flush_pending_escape` — so a modal
-/// that only answers `Byte(0x1B)` there cannot be closed with the key
-/// everybody presses. That is exactly how this shipped.
+/// `/map` typed into a composer lands on the People page, on its Map
+/// section, and the tick turns the counts on for exactly as long as the
+/// section is on screen. `]` steps on to Profiles and the map goes quiet.
 #[tokio::test]
-async fn the_usermap_opens_from_its_command_and_closes_on_escape() {
+async fn the_map_command_lands_on_the_profiles_map_shelf() {
+    use crate::app::common::primitives::Screen;
+    use crate::app::directory::state::Shelf;
+
     let test_db = new_test_db().await;
     let user = create_test_user(&test_db.db, "usermap-it").await;
     let client = test_db.db.get().await.expect("db client");
@@ -7000,11 +7073,23 @@ async fn the_usermap_opens_from_its_command_and_closes_on_escape() {
     wait_for_render_contains(&mut app, "lounge").await;
 
     app.handle_input(b"/map\r");
-    assert!(app.usermap.is_open(), "the command has to open it");
+    assert_eq!(
+        app.screen,
+        Screen::Profiles,
+        "the command lands on the page"
+    );
+    assert_eq!(app.directory_state.shelf(), Shelf::Map, "on its map shelf");
+    app.tick();
+    assert!(app.usermap.is_shown(), "the tick asks for the counts");
     wait_for_render_contains(&mut app, "where everyone is").await;
 
-    app.handle_input(b"\x1b");
-    wait_for_esc_effect(&mut app, |app| !app.usermap.is_open(), "active map").await;
+    app.handle_input(b"]");
+    assert_eq!(app.directory_state.shelf(), Shelf::Profiles);
+    app.tick();
+    assert!(
+        !app.usermap.is_shown(),
+        "a shelf nobody looks at counts nothing"
+    );
     wait_for_render_not_contains(&mut app, "where everyone is").await;
 }
 

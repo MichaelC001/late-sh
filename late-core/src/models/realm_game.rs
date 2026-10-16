@@ -1,27 +1,31 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use deadpool_postgres::GenericClient;
 use serde_json::Value;
-use tokio_postgres::Client;
+use tokio_postgres::{Client, error::SqlState};
 use uuid::Uuid;
 
 /// The notify channel a row-level trigger (migration 241) fires on every
-/// write to `realm_games`. Every replica re-reads its Lobby snapshot on it;
+/// write to `realm_games`. Every replica re-reads its realm snapshot on it;
 /// the payload is empty and never trusted.
 pub const REALM_GAME_CHANGED_CHANNEL: &str = "realm_game_changed";
 
-// One realm game. `name` is the creator's label for it (empty means the
-// service fills in "<creator>'s realm"); `reset_hour_utc` (0-23) is when this game's action points
-// refill, picked at creation so a game can run on its players' clock rather
-// than a global midnight; `last_resolved_day` is the last realm day the
-// sweeper closed out (log archived, idle clocks checked); `payout` is what
-// the pot did once a finished game was settled (`paid`, `unearned`,
-// `dissolved`), NULL until it has been.
+// One realm game: a season of the house's standing world. `season` numbers
+// the worlds in order (0 on rows from before the house opened them);
+// `name` is the label player-made realms carried, blank on house worlds
+// (read as "Season N"); `reset_hour_utc` (0-23) is when its action
+// points refill; `last_resolved_day` is the last realm day the sweeper
+// closed out (log archived, idle clocks checked); `payout` is what the pot
+// did once a finished game was settled (`paid`, `unearned`, `dissolved`),
+// NULL until it has been. At most one row is open or active at a time
+// (`realm_games_one_live`).
 crate::model! {
     table = "realm_games";
     params = RealmGameParams;
     struct RealmGame {
         @data
         pub status: String,
+        pub season: i32,
         pub creator_id: Uuid,
         pub name: String,
         pub ruleset_id: String,
@@ -69,51 +73,87 @@ impl RealmGame {
     pub const PAYOUT_UNEARNED: &'static str = "unearned";
     pub const PAYOUT_DISSOLVED: &'static str = "dissolved";
 
-    pub async fn create_game(
-        client: &Client,
+    /// Insert the next world, already live: the row lands active, so there
+    /// is no second write to promote it and nothing between two writes that
+    /// can strand it. The caller holds the opening claim
+    /// (`try_lock_season_opening`) and passes the season it read under it.
+    /// `None` when a world is already standing: the partial unique index
+    /// `realm_games_one_live` refuses a second open or active row, whatever
+    /// path the write came by.
+    pub async fn open_season(
+        client: &impl GenericClient,
+        season: i32,
         creator_id: Uuid,
-        name: &str,
         ruleset_id: &str,
         reset_hour_utc: i16,
         last_resolved_day: i32,
         state: &Value,
-    ) -> Result<Self> {
-        let row = client
+    ) -> Result<Option<Self>> {
+        let inserted = client
             .query_one(
                 "INSERT INTO realm_games
-                     (status, creator_id, name, ruleset_id, reset_hour_utc,
+                     (status, season, creator_id, ruleset_id, reset_hour_utc,
                       last_resolved_day, state)
                  VALUES ($1, $2, $3, $4, $5, $6, $7)
                  RETURNING *",
                 &[
-                    &Self::STATUS_OPEN,
+                    &Self::STATUS_ACTIVE,
+                    &season,
                     &creator_id,
-                    &name,
                     &ruleset_id,
                     &reset_hour_utc,
                     &last_resolved_day,
                     state,
                 ],
             )
-            .await?;
-        Ok(Self::from(row))
+            .await;
+        match inserted {
+            Ok(row) => Ok(Some(Self::from(row))),
+            Err(error) if error.code() == Some(&SqlState::UNIQUE_VIOLATION) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
     }
 
-    /// Open or active games the user is a member of (creator or joined) —
-    /// the entry-cap input. Membership lives in the state JSONB's players
-    /// array; `@>` with a partial object matches on user_id alone.
-    pub async fn count_active_memberships(client: &Client, user_id: Uuid) -> Result<i64> {
+    /// Claim the opening of the next season, for the length of the caller's
+    /// transaction. `false` when another replica holds it: that one is
+    /// opening the world, and this one spends nothing on it (CONTEXT.md,
+    /// once-only actions). Released when the transaction ends, committed or
+    /// not, so an opening that dies half way leaves no claim behind.
+    pub async fn try_lock_season_opening(client: &impl GenericClient) -> Result<bool> {
         let row = client
             .query_one(
-                "SELECT COUNT(*)::bigint AS count
-                 FROM realm_games
-                 WHERE status IN ('open', 'active')
-                   AND state->'players' @> jsonb_build_array(jsonb_build_object('user_id', $1::uuid))",
-                &[&user_id],
+                "SELECT pg_try_advisory_xact_lock(hashtextextended('realm_season_opening', 0))
+                     AS claimed",
+                &[],
             )
             .await?;
-        let count: i64 = row.get("count");
-        Ok(count)
+        Ok(row.get("claimed"))
+    }
+
+    /// The number the next world will carry: one past the highest so far.
+    /// Read under the opening claim, so it is handed out once.
+    pub async fn next_season(client: &impl GenericClient) -> Result<i32> {
+        let row = client
+            .query_one(
+                "SELECT (COALESCE(MAX(season), 0) + 1)::int AS season FROM realm_games",
+                &[],
+            )
+            .await?;
+        Ok(row.get("season"))
+    }
+
+    /// The standing world: the one open or active row, if there is one.
+    pub async fn live(client: &impl GenericClient) -> Result<Option<Self>> {
+        let row = client
+            .query_opt(
+                "SELECT * FROM realm_games
+                 WHERE status IN ('open', 'active')
+                 ORDER BY created DESC, id DESC
+                 LIMIT 1",
+                &[],
+            )
+            .await?;
+        Ok(row.map(Self::from))
     }
 
     pub async fn list_open(client: &Client) -> Result<Vec<Self>> {
@@ -142,8 +182,8 @@ impl RealmGame {
 
     /// Recently finished games, bounded like the daily unseen-result window so
     /// the snapshot can show fresh results without pinning rows forever.
-    /// Games that finished within the last `hours` — what the Lobby still
-    /// shows so the result can be read. The rows live on either way; this is
+    /// Games that finished within the last `hours` — what the hub card and
+    /// the live strip still show so the result can be read. The rows live on either way; this is
     /// only about what is worth listing.
     pub async fn list_finished_recent(client: &Client, hours: i64) -> Result<Vec<Self>> {
         let rows = client
@@ -222,7 +262,7 @@ impl RealmGame {
     /// Replace the state JSONB while the game is open or active. Guarded by
     /// the stored-revision compare-and-swap: a concurrent writer advanced the
     /// revision, this touches 0 rows, and the caller reloads instead of
-    /// clobbering. Used by join/leave and any pre-start mutation.
+    /// clobbering. Used by join and leave.
     pub async fn update_state_cas(
         client: &Client,
         game_id: Uuid,
@@ -241,42 +281,6 @@ impl RealmGame {
                     Self::stored_revision_eq_sql("$3")
                 ),
                 &[&game_id, state, &expected_revision],
-            )
-            .await?;
-        Ok(updated)
-    }
-
-    /// Start an open game: flip to active, set the resolution day floor, and
-    /// persist the spawn-populated state. Creator-guarded and CAS-guarded.
-    pub async fn start_cas(
-        client: &Client,
-        game_id: Uuid,
-        creator_id: Uuid,
-        last_resolved_day: i32,
-        state: &Value,
-        expected_revision: i64,
-    ) -> Result<u64> {
-        let updated = client
-            .execute(
-                &format!(
-                    "UPDATE realm_games
-                     SET status = 'active',
-                         last_resolved_day = $3,
-                         state = $2,
-                         updated = current_timestamp
-                     WHERE id = $1
-                       AND status = 'open'
-                       AND creator_id = $4
-                       AND {}",
-                    Self::stored_revision_eq_sql("$5")
-                ),
-                &[
-                    &game_id,
-                    state,
-                    &last_resolved_day,
-                    &creator_id,
-                    &expected_revision,
-                ],
             )
             .await?;
         Ok(updated)

@@ -913,11 +913,6 @@ fn handle_parsed_input_inner(app: &mut App, event: ParsedInput) {
     }
     // Reserved global chords have already had first claim. Otherwise the
     // existing modal stack owns input.
-    if app.usermap.is_open() {
-        crate::app::usermap::input::handle_input(app, event);
-        return;
-    }
-
     if app.show_help {
         help_modal::input::handle_input(app, event);
         return;
@@ -1454,6 +1449,7 @@ fn handle_games_hub_input(app: &mut App, event: &ParsedInput) -> bool {
                     // will, but the match still has to be exhaustive.
                     HubGame::NightCity
                     | HubGame::Lateania
+                    | HubGame::Realm
                     | HubGame::Minecraft
                     | HubGame::VintageStory
                     | HubGame::Rebels
@@ -1593,6 +1589,10 @@ fn launch_games_hub_selection(app: &mut App, game: crate::app::door::hub::state:
             // characters to play is no longer a foregone conclusion.
             app.set_screen(Screen::Lateania);
         }
+        // The standing world, play or watch alike: the board is the same
+        // and joining happens from it (`j`), after seeing the map. Nothing
+        // to open between seasons, which lasts a sweeper tick at most.
+        HubGame::Realm => crate::app::door::realm::input::open_realm(app),
         // Played from the game client, not the terminal: the landing says
         // how to connect and there is nothing to launch.
         HubGame::Minecraft | HubGame::VintageStory => {}
@@ -2029,7 +2029,7 @@ fn handle_dedicated_screen_input(app: &mut App, ctx: InputContext, event: &Parse
         if door_games_allows_global_help(event) {
             return false;
         }
-        return crate::app::lobby::realm::input::handle_event(app, event);
+        return crate::app::door::realm::input::handle_event(app, event);
     }
 
     if ctx.screen == Screen::Scratchpad {
@@ -2211,15 +2211,6 @@ fn input_dismisses_key_modal(event: &ParsedInput) -> bool {
 }
 
 fn dispatch_escape(app: &mut App) {
-    // The active map owns input while it is up, so it owns Esc too. This arm
-    // is not optional decoration: a lone Esc never reaches the modal stack in
-    // `handle_parsed_input` — it arrives here through the pending-escape
-    // flush — so a modal that only handles `Byte(0x1B)` there cannot be
-    // closed with the key everybody reaches for.
-    if app.usermap.is_open() {
-        app.usermap.close();
-        return;
-    }
     // A lone Esc never reaches the swallow-everything gate in
     // `handle_parsed_input` (it dispatches here via the pending-escape flush
     // instead), so this arm is the stream URL modal's only way out and comes
@@ -2443,16 +2434,19 @@ fn dispatch_escape(app: &mut App) {
         crate::app::lobby::daily::board_input::close_board(app);
         return;
     }
-    // Esc from the realm screen drops back to the Lobby modal. There is
+    // Esc from the realm board drops back to the Games hub. There is
     // nothing to confirm on the way out: closing the board is not leaving
     // the game, because a running realm cannot be left at all.
     if ctx.screen == Screen::Realm {
-        // The results card peels first: Esc should put the news away before
-        // it puts the whole board away.
+        // The colour picker peels first, then the results card: Esc puts
+        // away what is on top before it puts the whole board away.
+        if app.realm.join_cancel() {
+            return;
+        }
         if app.realm.close_results() {
             return;
         }
-        crate::app::lobby::realm::input::close_board(app);
+        crate::app::door::realm::input::close_board(app);
         return;
     }
     // Esc from a house table mirrors the daily board: peel chat selection
@@ -3710,10 +3704,9 @@ fn open_settings_modal_globally(app: &mut App) {
     app.show_settings = true;
 }
 
-/// Open the active map from anywhere. It has no chord — it is
-/// `/map` typed into a composer — so this is its one entry point, and
-/// it closes the rest of the modal stack the same way every other opener
-/// does.
+/// `/map` typed into a composer: land on the Profiles page, on its map
+/// shelf. It closes the modal stack the same way every other opener does,
+/// since a modal left up would cover the page it just went to.
 pub(crate) fn open_usermap_globally(app: &mut App) {
     clear_prefix_arms(app);
     app.show_help = false;
@@ -3733,8 +3726,9 @@ pub(crate) fn open_usermap_globally(app: &mut App) {
     app.chat.close_overlay();
     app.chat.close_news_modal();
     app.chat.cancel_room_jump();
-    let profile = app.profile_state.service().clone();
-    app.usermap.open(&profile);
+    app.set_screen(Screen::Profiles);
+    app.directory_state
+        .set_shelf(crate::app::directory::state::Shelf::Map);
 }
 
 /// Shared Shop entry point for Ctrl+S, `/shop`, and locked-feature nudges.
@@ -3836,7 +3830,7 @@ pub(crate) fn open_daily_modal_globally(app: &mut App) {
     app.chat.close_overlay();
     app.chat.close_news_modal();
     app.chat.cancel_room_jump();
-    app.lobby.mark_seen(&app.daily, &app.realm);
+    app.lobby.mark_seen(&app.daily);
     app.show_lobby_modal = true;
 }
 

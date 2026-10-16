@@ -22,6 +22,7 @@ use super::map_ui::compact;
 use super::resolver::RealmPlayerStatus;
 use super::state::{RealmState, player_color};
 use super::svc::{FinalPlace, final_table};
+use super::ui::truncate;
 
 /// Rendered over the board, so the map stays visible around the edges — the
 /// world you were just fighting over is the right backdrop for the result.
@@ -234,15 +235,6 @@ fn place_line(
     Line::from(spans)
 }
 
-fn truncate(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        return text.to_string();
-    }
-    let mut out: String = text.chars().take(width.saturating_sub(1)).collect();
-    out.push('…');
-    out
-}
-
 fn centered(width: u16, height: u16, area: Rect) -> Rect {
     let x = area.x + (area.width.saturating_sub(width)) / 2;
     let y = area.y + (area.height.saturating_sub(height)) / 2;
@@ -252,15 +244,15 @@ fn centered(width: u16, height: u16, area: Rect) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::lobby::realm::resolver::{RealmGameState, RealmPlayer};
-    use crate::app::lobby::realm::rulesets::STANDARD;
+    use crate::app::door::realm::resolver::{RealmGameState, RealmPlayer};
+    use crate::app::door::realm::rulesets::STANDARD;
     use std::collections::BTreeMap;
     use unicode_width::UnicodeWidthStr;
     use uuid::Uuid;
 
     fn state_with(players: &[(u128, &str, RealmPlayerStatus, u16)]) -> RealmGameState {
         RealmGameState {
-            version: crate::app::lobby::realm::resolver::STATE_VERSION,
+            version: crate::app::door::realm::resolver::STATE_VERSION,
             revision: 2,
             ruleset: (&STANDARD).into(),
             players: players
@@ -286,6 +278,7 @@ mod tests {
             last_day: None,
             start_player_count: players.len() as u8,
             start_day: 20_000,
+            news: None,
         }
     }
 

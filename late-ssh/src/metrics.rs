@@ -19,12 +19,12 @@ use crate::app::clubhouse::nightcap::svc::{NightcapHouseFailure, NightcapOrderRe
 use crate::app::common::primitives::Screen;
 use crate::app::crown::svc::CrownRefusal;
 use crate::app::deadchannel::haunt::state::GateVerdict;
+use crate::app::door::realm::svc::{RealmPayout, RealmSeasonOpen, RealmSnapshotRowError};
 use crate::app::door::zork::protocol::{Action as ZorkAction, Edition as ZorkEdition};
 use crate::app::games::chips::svc::{GiftDrinkRefusal, RoundRefusal};
 use crate::app::leaderboard::svc::AwardAnnouncementOutcome;
 use crate::app::live::input::Origin as LiveOrigin;
 use crate::app::lobby::daily::svc::{DailyWinPayout, PoolShotOutcome, SnapshotRowError};
-use crate::app::lobby::realm::svc::{RealmPayout, RealmSnapshotRowError};
 use crate::app::pot::svc::{PotRefusal, PotReminderOutcome};
 use crate::app::referral::svc::{NewcomerMinuteResult, ReferralAttachOutcome, ReferralSettlement};
 use crate::ircd::conn::{IrcHistoryOutcome, IrcHistoryRequest};
@@ -400,6 +400,7 @@ pub enum Place {
     Home(HomeRoom),
     /// The open Arcade board or House Table game.
     Game(ActivityGame),
+    MapShelf,
     PeopleShelf,
     JobsShelf,
     ArtboardCanvas,
@@ -590,9 +591,10 @@ mod inner {
         NewsShareReward, NightcapHouseFailure, NightcapOrderResult, OldSignalPayout,
         OnlineTimeFlushResult, PaperOpenResult, PaperPrintResult, Place, PoolShotOutcome,
         PotRefusal, PotReminderOutcome, Presence, PresenceScope, PresenceWire, RealmPayout,
-        RealmSnapshotRowError, Refresh, RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor,
-        Screen, SessionStartStage, SessionUser, SnapshotRowError, SongQueueReward, SshRejectReason,
-        SummaryResult, TailorBeat, ThumbnailFetch, TranslationResult, VizWireBands, WatchDoor,
+        RealmSeasonOpen, RealmSnapshotRowError, Refresh, RefreshOutcome, RenderReason,
+        RoundRefusal, RunnerDoor, Screen, SessionStartStage, SessionUser, SnapshotRowError,
+        SongQueueReward, SshRejectReason, SummaryResult, TailorBeat, ThumbnailFetch,
+        TranslationResult, VizWireBands, WatchDoor,
     };
     use super::{BonsaiAction, BonsaiActionResult};
     use super::{CalendarAnnouncement, CalendarOp, CalendarRefusalKind, CalendarWrite, LiveOrigin};
@@ -1347,6 +1349,18 @@ mod inner {
                 .u64_counter("late_ssh_realm_payouts_total")
                 .with_description(
                     "Realm pot settlements by outcome: one per place paid (or found already paid, on a retry), one per game that had nothing to pay, one per credit that failed and is left for the sweeper",
+                )
+                .build()
+        })
+    }
+
+    fn realm_seasons_total() -> &'static Counter<u64> {
+        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
+        METRIC.get_or_init(|| {
+            meter()
+                .u64_counter("late_ssh_realm_seasons_total")
+                .with_description(
+                    "Realm season openings by the sweeper, by outcome: opened, standing (another replica opened it first), failed",
                 )
                 .build()
         })
@@ -2121,6 +2135,7 @@ mod inner {
             Place::Whole => "none",
             Place::Home(room) => home_room_label(room),
             Place::Game(game) => game_label(game),
+            Place::MapShelf => "map",
             Place::PeopleShelf => "people",
             Place::JobsShelf => "jobs",
             Place::ArtboardCanvas => "canvas",
@@ -2304,6 +2319,21 @@ mod inner {
 
     pub fn record_realm_payout(payout: RealmPayout) {
         realm_payouts_total().add(1, &[KeyValue::new("outcome", realm_payout_label(payout))]);
+    }
+
+    fn realm_season_open_label(outcome: RealmSeasonOpen) -> &'static str {
+        match outcome {
+            RealmSeasonOpen::Opened => "opened",
+            RealmSeasonOpen::Standing => "standing",
+            RealmSeasonOpen::Failed => "failed",
+        }
+    }
+
+    pub fn record_realm_season_open(outcome: RealmSeasonOpen) {
+        realm_seasons_total().add(
+            1,
+            &[KeyValue::new("outcome", realm_season_open_label(outcome))],
+        );
     }
 
     fn realm_snapshot_row_rejected_label(error: &RealmSnapshotRowError) -> &'static str {
@@ -3241,9 +3271,10 @@ mod inner {
         NewsShareReward, NightcapHouseFailure, NightcapOrderResult, OldSignalPayout,
         OnlineTimeFlushResult, PaperOpenResult, PaperPrintResult, Place, PoolShotOutcome,
         PotRefusal, PotReminderOutcome, Presence, PresenceScope, PresenceWire, RealmPayout,
-        RealmSnapshotRowError, Refresh, RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor,
-        Screen, SessionStartStage, SessionUser, SnapshotRowError, SongQueueReward, SshRejectReason,
-        SummaryResult, TailorBeat, ThumbnailFetch, TranslationResult, VizWireBands, WatchDoor,
+        RealmSeasonOpen, RealmSnapshotRowError, Refresh, RefreshOutcome, RenderReason,
+        RoundRefusal, RunnerDoor, Screen, SessionStartStage, SessionUser, SnapshotRowError,
+        SongQueueReward, SshRejectReason, SummaryResult, TailorBeat, ThumbnailFetch,
+        TranslationResult, VizWireBands, WatchDoor,
     };
     use super::{BonsaiAction, BonsaiActionResult};
     use super::{CalendarAnnouncement, CalendarOp, CalendarRefusalKind, CalendarWrite, LiveOrigin};
@@ -3309,6 +3340,7 @@ mod inner {
     pub fn record_pool_shot(_outcome: PoolShotOutcome) {}
     pub fn record_daily_snapshot_row_rejected(_error: &SnapshotRowError) {}
     pub fn record_realm_payout(_payout: RealmPayout) {}
+    pub fn record_realm_season_open(_outcome: RealmSeasonOpen) {}
     pub fn record_realm_snapshot_row_rejected(_error: &RealmSnapshotRowError) {}
     pub fn record_irc_history(_request: IrcHistoryRequest, _outcome: IrcHistoryOutcome) {}
     pub fn record_news_shared(_reward: NewsShareReward) {}

@@ -520,6 +520,7 @@ impl App {
             &self.chat.live_streams,
             &self.live_games.live_rows(),
             &self.calendar,
+            &self.realm,
             reading,
             picture_settings,
         );
@@ -533,8 +534,21 @@ impl App {
         if daily_tick.own_loss {
             self.pet_state.note_loss(Instant::now());
         }
-        // The active map's counts arrive from a task; nothing else would ask
-        // for the frame that shows them.
+        // The map counts only while the Profiles page shows its shelf, and
+        // leaving drops it so coming back asks again. Its counts arrive from
+        // a task; nothing else would ask for the frame that shows them.
+        let map_shown =
+            self.screen == Screen::Profiles && self.directory_state.shelf() == Shelf::Map;
+        if map_shown != self.usermap.is_shown() {
+            match map_shown {
+                true => {
+                    let profile = self.profile_state.service().clone();
+                    self.usermap.show(&profile);
+                }
+                false => self.usermap.hide(),
+            }
+            changed = true;
+        }
         changed |= self.usermap.tick();
         let realm_tick = self.realm.tick();
         changed |= realm_tick.changed;
@@ -543,7 +557,7 @@ impl App {
             changed = true;
         }
         // Modal cursor, pending claim, and glow follow the daily snapshot.
-        self.lobby.sync(&self.daily, &self.realm);
+        self.lobby.sync(&self.daily);
         // The match chat room id only becomes known once the board's row
         // loads, so the one-time idempotent join and the visible-room sync
         // (read marker + tail) both key off the loaded detail here rather
@@ -968,16 +982,19 @@ impl App {
             // actually moves, or every second would invalidate every cached
             // chat row.
             if let Some(active_users) = &self.active_users {
-                let (online_count, away_user_ids, active_friends) = {
+                let (online_ids, away_user_ids, active_friends) = {
                     let roster = active_users.lock_recover();
                     (
-                        crate::state::online_human_count(&roster),
+                        crate::state::online_human_ids(&roster),
                         crate::app::common::away::away_user_ids(&roster),
                         self.chat.active_friends(&roster),
                     )
                 };
-                if online_count != self.online_count {
-                    self.online_count = online_count;
+                if online_ids.len() != self.online_count {
+                    self.online_count = online_ids.len();
+                    changed = true;
+                }
+                if crate::app::directory::input::presence_changed(self, online_ids) {
                     changed = true;
                 }
                 if away_user_ids != self.away_user_ids {
@@ -1655,7 +1672,8 @@ impl App {
                 None => Place::Whole,
             },
             Screen::Profiles => match self.directory_state.shelf() {
-                Shelf::People => Place::PeopleShelf,
+                Shelf::Map => Place::MapShelf,
+                Shelf::Profiles => Place::PeopleShelf,
                 Shelf::Jobs => Place::JobsShelf,
             },
             Screen::Artboard => match &self.dartboard_state {

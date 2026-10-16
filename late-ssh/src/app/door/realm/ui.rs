@@ -204,6 +204,10 @@ pub fn draw(frame: &mut Frame, area: Rect, realm: &RealmState) {
     if board.results_open {
         draw_results(frame, area, realm);
     }
+    // And the way in goes over the map, once a visitor has asked for it.
+    if let Some(draft) = realm.join_draft.as_ref() {
+        super::join_ui::draw_join_overlay(frame, area, draft);
+    }
 
     // Footer.
     let hints = if role.acts() {
@@ -230,8 +234,12 @@ pub fn draw(frame: &mut Frame, area: Rect, realm: &RealmState) {
     {
         "r results · arrows/drag pan · tab view · q back".to_string()
     } else {
-        // Nothing here acts, so nothing here offers to.
+        // Nothing here acts, so nothing here offers to, except the way in
+        // while the gates are open.
         match board.view {
+            RealmView::Map if realm.can_join() => {
+                "j take your spot · arrows/drag pan · +/- zoom · tab view · q back".to_string()
+            }
             RealmView::Map => {
                 "watching · arrows/drag pan · +/- zoom · tab view · q back".to_string()
             }
@@ -256,6 +264,16 @@ pub fn draw(frame: &mut Frame, area: Rect, realm: &RealmState) {
         )),
         footer,
     );
+}
+
+/// `text` cut to `width` characters, an ellipsis standing in for the rest.
+/// Every realm renderer cuts names and labels the same way.
+pub(crate) fn truncate(text: &str, width: usize) -> String {
+    if text.chars().count() <= width {
+        return text.to_string();
+    }
+    let keep: String = text.chars().take(width.saturating_sub(1)).collect();
+    format!("{keep}\u{2026}")
 }
 
 #[cfg(test)]
