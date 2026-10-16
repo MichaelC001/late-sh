@@ -233,7 +233,7 @@ pub(crate) fn bartender_app_context() -> String {
     - Screens: 0 Clubhouse (this room, the Late Lounge tavern), 1 Home (chat + music), 2 The Arcade (single-player games, daily quests at the top), 3 Games hub (Lateania, NetHack, DCSS, Brogue, Usurper, Green Dragon, A Dark Room, dopewars, CodeKeep, BashQuest, Rebels, Zork Trilogy, Minecraft, Vintage Story), 4 Artboard (shared ASCII canvas), 5 Profiles (the people: their projects and open-to-work cards), 6 Leaderboards (every board, monthly and all-time), 7 Calendars (the events board: anyone posts, i says I'm in; your own private events beside it).\n\
     - Tab / Shift+Tab cycles screens; number keys 0-7 jump straight to one.\n\
     - Ctrl+F opens Zen from anywhere and the same chord hands you back (Esc does not leave it): Rice, your bonsai, the reef (live for everyone, fish once the Shop unlocks them), pet, the room Home has selected, music, a clock, and the lobby as tiles you arrange yourself: Tab and the arrows focus, space opens the tile picker for a tile, S splits, X closes, < > change width and { } height, F flips, z zooms it over the whole screen, b g t restyle borders, gaps, and titles, R resets, ? opens the Zen guide, the layout is saved per account; each tile names its own keys on the right of its title; up to ten chat tiles each bound to a room ([ ] rebind the focused one, Ctrl+/ or /picker picks its room from the list, i or Enter write in it, j k select in it; the focused chat is the active one, the others watch), w opens Bonsai Care as on every page, a feeds the tank (the first feed of the day pays 100 chips); the pet has no key: click it to pet it (the first pet of the day pays 100 chips), and it reads the rest of your session itself).\n\
-    - Ctrl+O opens Settings from anywhere. Ctrl+G opens the Lobby (daily correspondence games plus the fixed house tables: Poker, Blackjack, Asterion, Tron, Super Snake). Ctrl+S opens the Shop (active games, profile/job editors, and Artboard input keep their local binding); /shop is its typed fallback.\n\
+    - Ctrl+O opens Settings from anywhere. Ctrl+G opens the Lobby (daily correspondence games, Realm territory-conquest games where each action resolves instantly, plus the fixed house tables: Poker, Blackjack, Asterion, Tron, Super Snake). Ctrl+S opens the Shop (active games, profile/job editors, and Artboard input keep their local binding); /shop is its typed fallback.\n\
     - The top of the #lounge chat on Home is the now strip (its `── now ──` rule), up whenever something just happened in the house; it cannot be turned off. Things take turns in the order they happened, links shared to News ahead of the rest: a link stays five minutes (o opens it, r replies to it in #lounge; shares are not posted into the chat itself), a track queued in the YouTube booth at least two, a daily move or result at least one, and with nothing waiting the last one stays up to five. A pool player lining up a shot is shown over anything but a link while the cue moves. o or a click on a match opens it; on a track it tunes you in to YouTube, or opens the booth if you are already there.\n\
     - When a terminal swallows a chord, the composer has a typed fallback that does the same thing: /settings (Ctrl+O), /lobby (Ctrl+G), /zen (Ctrl+F), /redraw (Ctrl+R), /guide (?).\n\
     - Ctrl+/ opens jump search across rooms and DMs (/picker types it); typing ?query searches messages.\n\
@@ -630,6 +630,7 @@ pub(crate) fn chat_help_lines(keep_composer_focused: bool) -> Vec<String> {
         "  /leave             leave the current room",
         "  /dm @user          open a direct message",
         "  /active            list active users",
+        "  /map               where people are, on a world map",
         "  /gift @user <n>    send chips, with an optional note after the amount",
         "  /crown             who wears the crown; /crown take buys it",
         "  /pot               the weekly pot; /pot buy N buys N tickets",
@@ -669,7 +670,7 @@ pub(crate) fn chat_help_lines(keep_composer_focused: bool) -> Vec<String> {
         "",
         "Global chat keys",
         "  Ctrl+O             open your settings modal anywhere",
-        "  Ctrl+G             open / close the Lobby (daily games + house tables)",
+        "  Ctrl+G             open / close the Lobby (daily games + realm + house tables)",
         "  Ctrl+F             open / close Zen (your bonsai, tank, lobby, chat, and clock as tiles)",
         "  Ctrl+R             redraw the screen if something outside late.sh scribbled on it",
         "  Ctrl+S / /shop     open the Shop (games keep controls; editors save/post; Artboard keeps slot 2)",
@@ -1091,11 +1092,21 @@ fn lobby_help_lines() -> Vec<String> {
     [
         "Lobby",
         "",
-        "The Lobby (Ctrl+G) is the front door for multiplayer play: async daily matches plus the fixed house tables, with paired embedded chat.",
+        "The Lobby (Ctrl+G) is the front door for multiplayer play: async daily matches, Realm (a world-conquest game: a few actions a day, each resolved the moment you take it), plus the fixed house tables, with paired embedded chat.",
         "  Ctrl+G            open / close the Lobby",
         "  j / k or \u{2191} / \u{2193}   move through matches and house tables",
         "  Enter             claim / open a match, or sit at a house table",
         "  Esc               close the Lobby",
+        "",
+        "Realm",
+        "  n                 start a realm game; pick the rules, the hour its points refill each day, then name it",
+        "  Enter             join or play the selected realm · w watches one without joining",
+        "  a handful of actions a day, resolved on the spot, first come first served",
+        "  a point can dig in on land you hold instead (f), which makes it dearer to take — but taking ground is always worth more",
+        "  miss a day and most of it banks; miss several and it stops banking, and your empire starts to crumble",
+        "  no quitting once it starts, and winning takes seven days of real play",
+        "  odds fall hard the further a target is from your land; no attacks at all on day one, and only on your own borders for the first few days",
+        "  the board is Tab-cycled map / targets / overview / log; n walks your own territories, g shows a list row on the map",
         "",
         "The now strip heads #lounge on Home with one thing happening in the house:",
         "  a link shared to News, a daily match move or result (yours included), or a track queued in the YouTube booth",
@@ -1418,7 +1429,7 @@ fn overview_lines() -> Vec<String> {
         "  ?                 open this guide",
         "  q                 open quit confirm (press q again to leave)",
         "  Ctrl+O            open Settings",
-        "  Ctrl+G            open / close the Lobby (daily games + house tables)",
+        "  Ctrl+G            open / close the Lobby (daily games + realm + house tables)",
         "  Ctrl+F            open / close Zen",
         "  Ctrl+R            redraw the screen after outside terminal damage",
         "  /settings /lobby  typed fallbacks for Ctrl+O, Ctrl+G, Ctrl+F, Ctrl+R,",

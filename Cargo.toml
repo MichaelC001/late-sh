@@ -13,6 +13,7 @@ members = [
     "late-web",
     "late-webview",
     "late-zork",
+    "tools/realm-mapgen",
 ]
 resolver = "2"
 

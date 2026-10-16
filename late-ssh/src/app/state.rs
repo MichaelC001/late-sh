@@ -256,6 +256,7 @@ pub struct SessionConfig {
     pub greendragon_service: crate::app::door::greendragon::svc::GreenDragonService,
     pub darkroom_service: crate::app::door::darkroom::svc::DarkroomService,
     pub daily_service: crate::app::lobby::daily::svc::DailyService,
+    pub realm_service: crate::app::lobby::realm::svc::RealmService,
     pub house_registry: crate::app::lobby::house::registry::HouseTableRegistry,
     /// Shared in-proc dartboard server handle. Each session only connects,
     /// consuming a color slot and showing up in `peer_count`, when the user actually
@@ -808,6 +809,7 @@ pub struct App {
     pub(crate) shop_state: crate::app::hub::shop::state::ShopState,
     pub(crate) ultimate_service: crate::app::ultimates::UltimateService,
     pub(crate) ultimate_state: crate::app::ultimates::UltimateState,
+    pub(crate) usermap: crate::app::usermap::state::UserMapState,
 
     /// Arcade Hub
     pub(crate) game_selection: usize,
@@ -955,6 +957,8 @@ pub struct App {
     pub(crate) lobby: crate::app::lobby::state::LobbyState,
     /// Daily correspondence games: sidebar panel and board state.
     pub(crate) daily: crate::app::lobby::daily::state::DailyState,
+    /// Realm territory-conquest games: per-session snapshot + board state.
+    pub(crate) realm: crate::app::lobby::realm::state::RealmState,
     /// The live strip at the top of the #lounge card.
     pub(crate) live: crate::app::live::state::LiveState,
     /// House tables: the fixed multiplayer tables behind the Lobby modal.
@@ -1835,6 +1839,7 @@ impl App {
             quest_state,
             shop_state,
             ultimate_service: config.ultimate_service,
+            usermap: Default::default(),
             ultimate_state: crate::app::ultimates::UltimateState::with_cooldowns(
                 config.initial_ultimate_cooldowns,
             ),
@@ -1919,6 +1924,11 @@ impl App {
             repaint_signal: None,
             lobby: crate::app::lobby::state::LobbyState::new(&daily),
             daily,
+            realm: crate::app::lobby::realm::state::RealmState::new(
+                config.realm_service.clone(),
+                config.user_id,
+                username.clone(),
+            ),
             live: crate::app::live::state::LiveState::new(),
             house: crate::app::lobby::house::state::HouseState::new(
                 config.user_id,
@@ -1989,6 +1999,11 @@ impl App {
         app.chat
             .set_favorite_room_ids(app.profile_state.profile().favorite_room_ids.clone());
         app.chat
+            .set_viewer_tz(crate::app::profile::svc::parse_account_tz(
+                app.profile_state.profile().timezone.as_deref(),
+            ));
+        // Realm writes every hour in both clocks, so it needs the same zone.
+        app.realm
             .set_viewer_tz(crate::app::profile::svc::parse_account_tz(
                 app.profile_state.profile().timezone.as_deref(),
             ));

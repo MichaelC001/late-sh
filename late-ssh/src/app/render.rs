@@ -372,9 +372,13 @@ struct DrawContext<'a> {
     show_lobby_modal: bool,
     lobby: &'a crate::app::lobby::state::LobbyState,
     daily: &'a crate::app::lobby::daily::state::DailyState,
+    realm: &'a crate::app::lobby::realm::state::RealmState,
     paper_modal: Option<&'a crate::app::paper::state::PaperModal>,
     stream_modal: Option<&'a crate::app::state::StreamModal>,
     show_help: bool,
+    /// `/map`, when it is open. Mutable because drawing is what tells
+    /// the view how big the map area is.
+    usermap: Option<&'a mut crate::app::usermap::state::UserMapState>,
     help_modal_state: &'a help_modal::state::HelpModalState,
     show_ultimate_modal: bool,
     ultimate_state: &'a crate::app::ultimates::UltimateState,
@@ -1532,6 +1536,7 @@ impl App {
             || screensaver.is_some()
             || news_modal.is_some()
             || self.icon_picker_open
+            || self.usermap.is_open()
             || self.room_search_modal_state.is_open()
             || self.booth_modal_state.is_open()
             || self.stations_modal_state.is_open()
@@ -1754,9 +1759,11 @@ impl App {
                         show_lobby_modal: self.show_lobby_modal,
                         lobby: &self.lobby,
                         daily: &self.daily,
+                        realm: &self.realm,
                         paper_modal: self.paper.modal.as_ref(),
                         stream_modal: self.stream_modal.as_ref(),
                         show_help: self.show_help,
+                        usermap: self.usermap.is_open().then_some(&mut self.usermap),
                         help_modal_state: &self.help_modal_state,
                         show_ultimate_modal: self.show_ultimate_modal,
                         ultimate_state: &self.ultimate_state,
@@ -2587,6 +2594,7 @@ impl App {
                 terminal_images,
                 ctx.daily_chat_view.take(),
             ),
+            Screen::Realm => crate::app::lobby::realm::ui::draw(frame, content_area, ctx.realm),
             Screen::HouseTable => crate::app::lobby::house::ui::draw(
                 frame,
                 content_area,
@@ -2683,7 +2691,10 @@ impl App {
             // leading space (1) + icon (2) + message + border padding (4)
             let msg_w = (banner.message.len() as u16) + 7;
             let toast_w = msg_w.max(20).min(inner.width);
-            let toast_x = inner.x + inner.width.saturating_sub(toast_w);
+            // Centred, not right-aligned: screens with a right-hand info rail
+            // (the realm board's territory/points panel, for one) had their
+            // most important column covered by every toast.
+            let toast_x = inner.x + inner.width.saturating_sub(toast_w) / 2;
             let toast_area = Rect::new(toast_x, inner.y, toast_w, 3);
             frame.render_widget(Clear, toast_area);
             let notif_block = Block::default()
@@ -2765,6 +2776,7 @@ impl App {
                 inner,
                 ctx.lobby,
                 ctx.daily,
+                ctx.realm,
                 ctx.house,
                 tour_header.as_ref(),
             );
@@ -2841,6 +2853,10 @@ impl App {
 
         if ctx.show_help {
             help_modal::ui::draw(frame, inner, ctx.help_modal_state, ctx.listen_url);
+        }
+
+        if let Some(usermap) = ctx.usermap {
+            crate::app::usermap::ui::draw(frame, inner, usermap);
         }
 
         if ctx.show_ultimate_modal {
@@ -3101,6 +3117,7 @@ fn app_frame_title(screen: Screen, ctx: &DrawContext<'_>) -> Line<'static> {
         Screen::City => "Undercity",
         Screen::DailyMatch => "Daily Match",
         Screen::HouseTable => "House Table",
+        Screen::Realm => "Realm",
         Screen::Scratchpad => "Scratchpad",
         Screen::Zen => "Zen",
     };

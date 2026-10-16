@@ -1599,6 +1599,7 @@ async fn ctrl_s_stays_in_native_games() {
         Screen::Darkroom,
         Screen::DailyMatch,
         Screen::HouseTable,
+        Screen::Realm,
         Screen::City,
     ] {
         app.set_screen(screen);
@@ -1622,6 +1623,25 @@ async fn ctrl_s_stays_in_native_games() {
     app.set_screen(Screen::Games);
     app.handle_input(b"\x13");
     assert!(app.show_hub_modal);
+}
+
+#[tokio::test]
+async fn realm_keeps_the_originating_page_when_switching_games_or_visiting_zen() {
+    use crate::app::common::primitives::Screen;
+    use crate::app::lobby::modal_input::return_screen_for_opening;
+
+    let test_db = new_test_db().await;
+    let user = create_test_user(&test_db.db, "realm-return-origin").await;
+    let mut app = make_app(test_db.db.clone(), user.id, "realm-return-origin-it");
+
+    app.set_screen(Screen::Profiles);
+    app.realm.open_board(uuid::Uuid::new_v4(), Screen::Profiles);
+    app.set_screen(Screen::Realm);
+    assert_eq!(return_screen_for_opening(&app), Screen::Profiles);
+    app.handle_input(b"\x06");
+    assert_eq!(app.screen, Screen::Zen);
+    app.handle_input(b"\x06");
+    assert_eq!(app.screen, Screen::Profiles);
 }
 
 #[tokio::test]
@@ -6958,4 +6978,90 @@ async fn zen_swallows_the_key_after_the_live_prefix_from_a_focused_inbox() {
         !app.live_prefix_armed,
         "j is swallowed and spends the prefix"
     );
+}
+
+/// `/map` opens a modal that owns the keyboard, and Esc has to be the
+/// way out. A lone Esc never reaches the modal stack where the other keys are
+/// handled — it arrives later through `flush_pending_escape` — so a modal
+/// that only answers `Byte(0x1B)` there cannot be closed with the key
+/// everybody presses. That is exactly how this shipped.
+#[tokio::test]
+async fn the_usermap_opens_from_its_command_and_closes_on_escape() {
+    let test_db = new_test_db().await;
+    let user = create_test_user(&test_db.db, "usermap-it").await;
+    let client = test_db.db.get().await.expect("db client");
+    let lounge = ChatRoom::ensure_lounge(&client)
+        .await
+        .expect("ensure lounge room");
+    ChatRoomMember::join(&client, lounge.id, user.id)
+        .await
+        .expect("join lounge room");
+    let mut app = make_app(test_db.db.clone(), user.id, "usermap-flow-it");
+    wait_for_render_contains(&mut app, "lounge").await;
+
+    app.handle_input(b"/map\r");
+    assert!(app.usermap.is_open(), "the command has to open it");
+    wait_for_render_contains(&mut app, "where everyone is").await;
+
+    app.handle_input(b"\x1b");
+    wait_for_esc_effect(&mut app, |app| !app.usermap.is_open(), "active map").await;
+    wait_for_render_not_contains(&mut app, "where everyone is").await;
+}
+
+/// All four arrows pan. Up and down used to walk the country list instead,
+/// which read as two of the four arrows being broken — and the map was pinned
+/// to the top of its box, so even after the binding was fixed there was
+/// nothing above the equator to pan to.
+#[tokio::test]
+async fn the_usermap_pans_with_every_arrow() {
+    let test_db = new_test_db().await;
+    let user = create_test_user(&test_db.db, "usermap-pan-it").await;
+    let client = test_db.db.get().await.expect("db client");
+    let lounge = ChatRoom::ensure_lounge(&client)
+        .await
+        .expect("ensure lounge room");
+    ChatRoomMember::join(&client, lounge.id, user.id)
+        .await
+        .expect("join lounge room");
+    let mut app = make_app(test_db.db.clone(), user.id, "usermap-pan-flow-it");
+    wait_for_render_contains(&mut app, "lounge").await;
+
+    app.handle_input(b"/map\r");
+    wait_for_render_contains(&mut app, "where everyone is").await;
+
+    // Zoom in until there is somewhere to go on both axes. Fitted, the whole
+    // world is on screen and every arrow is correctly a no-op; the map is
+    // twice as wide as it is tall, so the vertical room arrives last.
+    let map = app.usermap.map().expect("earth");
+    for _ in 0..12 {
+        let view = app.usermap.view().expect("a view once drawn");
+        if view.can_pan_vertically(&map) && view.can_pan_horizontally(&map) {
+            break;
+        }
+        app.handle_input(b"+");
+        // A draw is what applies the new scale to the view.
+        let _ = render_plain(&mut app);
+    }
+    let view = app.usermap.view().expect("view");
+    assert!(
+        view.can_pan_vertically(&map) && view.can_pan_horizontally(&map),
+        "zooming in should eventually leave room to pan: {view:?}"
+    );
+    let start = view;
+
+    app.handle_input(b"\x1b[C"); // right
+    let right = app.usermap.view().expect("view");
+    assert!(right.vx > start.vx, "right arrow should pan east");
+
+    app.handle_input(b"\x1b[B"); // down
+    let down = app.usermap.view().expect("view");
+    assert!(down.vy > start.vy, "down arrow should pan south");
+
+    app.handle_input(b"\x1b[A"); // up
+    let up = app.usermap.view().expect("view");
+    assert!(up.vy < down.vy, "up arrow should pan back north");
+
+    app.handle_input(b"\x1b[D"); // left
+    let left = app.usermap.view().expect("view");
+    assert!(left.vx < right.vx, "left arrow should pan back west");
 }
