@@ -19,7 +19,9 @@ use crate::app::clubhouse::nightcap::svc::{NightcapHouseFailure, NightcapOrderRe
 use crate::app::common::primitives::Screen;
 use crate::app::crown::svc::CrownRefusal;
 use crate::app::deadchannel::haunt::state::GateVerdict;
-use crate::app::door::realm::svc::{RealmPayout, RealmSeasonOpen, RealmSnapshotRowError};
+use crate::app::door::realm::svc::{
+    RealmChatRoomAttach, RealmPayout, RealmSeasonOpen, RealmSnapshotRowError,
+};
 use crate::app::door::zork::protocol::{Action as ZorkAction, Edition as ZorkEdition};
 use crate::app::games::chips::svc::{GiftDrinkRefusal, RoundRefusal};
 use crate::app::leaderboard::svc::AwardAnnouncementOutcome;
@@ -590,8 +592,8 @@ mod inner {
         JobsFetchResult, JobsPostResult, JobsPressResult, JobsReadResult, LoungeBeat,
         NewsShareReward, NightcapHouseFailure, NightcapOrderResult, OldSignalPayout,
         OnlineTimeFlushResult, PaperOpenResult, PaperPrintResult, Place, PoolShotOutcome,
-        PotRefusal, PotReminderOutcome, Presence, PresenceScope, PresenceWire, RealmPayout,
-        RealmSeasonOpen, RealmSnapshotRowError, Refresh, RefreshOutcome, RenderReason,
+        PotRefusal, PotReminderOutcome, Presence, PresenceScope, PresenceWire, RealmChatRoomAttach,
+        RealmPayout, RealmSeasonOpen, RealmSnapshotRowError, Refresh, RefreshOutcome, RenderReason,
         RoundRefusal, RunnerDoor, Screen, SessionStartStage, SessionUser, SnapshotRowError,
         SongQueueReward, SshRejectReason, SummaryResult, TailorBeat, ThumbnailFetch,
         TranslationResult, VizWireBands, WatchDoor,
@@ -1361,6 +1363,30 @@ mod inner {
                 .u64_counter("late_ssh_realm_seasons_total")
                 .with_description(
                     "Realm season openings by the sweeper, by outcome: opened, standing (another replica opened it first), failed",
+                )
+                .build()
+        })
+    }
+
+    fn realm_chat_room_attachments_total() -> &'static Counter<u64> {
+        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
+        METRIC.get_or_init(|| {
+            meter()
+                .u64_counter("late_ssh_realm_chat_room_attachments_total")
+                .with_description(
+                    "Chat rooms the sweeper attached to a standing realm world from before rooms were born with it, by outcome: attached, failed",
+                )
+                .build()
+        })
+    }
+
+    fn realm_chat_rooms_reaped_total() -> &'static Counter<u64> {
+        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
+        METRIC.get_or_init(|| {
+            meter()
+                .u64_counter("late_ssh_realm_chat_rooms_reaped_total")
+                .with_description(
+                    "Realm chat rooms hard-deleted by the sweeper 30 days after their world ended",
                 )
                 .build()
         })
@@ -2336,6 +2362,27 @@ mod inner {
         );
     }
 
+    fn realm_chat_room_attach_label(outcome: RealmChatRoomAttach) -> &'static str {
+        match outcome {
+            RealmChatRoomAttach::Attached => "attached",
+            RealmChatRoomAttach::Failed => "failed",
+        }
+    }
+
+    pub fn record_realm_chat_room_attach(outcome: RealmChatRoomAttach) {
+        realm_chat_room_attachments_total().add(
+            1,
+            &[KeyValue::new(
+                "outcome",
+                realm_chat_room_attach_label(outcome),
+            )],
+        );
+    }
+
+    pub fn record_realm_chat_rooms_reaped(deleted: u64) {
+        realm_chat_rooms_reaped_total().add(deleted, &[]);
+    }
+
     fn realm_snapshot_row_rejected_label(error: &RealmSnapshotRowError) -> &'static str {
         match error {
             RealmSnapshotRowError::UnreadableState(_) => "unreadable_state",
@@ -3270,8 +3317,8 @@ mod inner {
         JobsFetchResult, JobsPostResult, JobsPressResult, JobsReadResult, LoungeBeat,
         NewsShareReward, NightcapHouseFailure, NightcapOrderResult, OldSignalPayout,
         OnlineTimeFlushResult, PaperOpenResult, PaperPrintResult, Place, PoolShotOutcome,
-        PotRefusal, PotReminderOutcome, Presence, PresenceScope, PresenceWire, RealmPayout,
-        RealmSeasonOpen, RealmSnapshotRowError, Refresh, RefreshOutcome, RenderReason,
+        PotRefusal, PotReminderOutcome, Presence, PresenceScope, PresenceWire, RealmChatRoomAttach,
+        RealmPayout, RealmSeasonOpen, RealmSnapshotRowError, Refresh, RefreshOutcome, RenderReason,
         RoundRefusal, RunnerDoor, Screen, SessionStartStage, SessionUser, SnapshotRowError,
         SongQueueReward, SshRejectReason, SummaryResult, TailorBeat, ThumbnailFetch,
         TranslationResult, VizWireBands, WatchDoor,
@@ -3341,6 +3388,8 @@ mod inner {
     pub fn record_daily_snapshot_row_rejected(_error: &SnapshotRowError) {}
     pub fn record_realm_payout(_payout: RealmPayout) {}
     pub fn record_realm_season_open(_outcome: RealmSeasonOpen) {}
+    pub fn record_realm_chat_room_attach(_outcome: RealmChatRoomAttach) {}
+    pub fn record_realm_chat_rooms_reaped(_deleted: u64) {}
     pub fn record_realm_snapshot_row_rejected(_error: &RealmSnapshotRowError) {}
     pub fn record_irc_history(_request: IrcHistoryRequest, _outcome: IrcHistoryOutcome) {}
     pub fn record_news_shared(_reward: NewsShareReward) {}
