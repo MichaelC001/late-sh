@@ -105,7 +105,12 @@ a fight is on the row. A lookout that fails to read is logged and
 counted (`lookout_failed`) and the session gets the empty one: the
 answer that landed is never reported failed for it. The road draws the
 lookout under the legend and the threat words come from
-`sim::odds_rival`.
+`sim::odds_rival`. The news is read once a connection: the session
+(`news_read`) remembers the fight it told of when the runner acts on the
+road (a step, the crossing, the answer, a draft) or goes back to the
+street, and strips that fight from every later lookout (`adopt`); a
+newer fight is news again, and so is the same one on the next
+connection. The token stays as long as the answer is owed.
 
 ## The wire and the beats
 
