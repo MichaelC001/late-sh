@@ -85,13 +85,13 @@ the gear curve instead, so tier-5 cells matter as much at the top as in the band
   power ceiling and the crafting system's endgame consumer.
 - Scrap keeps the dry state playable but honest, and it stings twice: x0.90 on
   the multiplier, and Physical is the only school the world never rewards.
-  Post-pass census (test-enforced, no drift possible): nothing anywhere is
+  Census with the pass in place (test-enforced, no drift possible): nothing anywhere is
   weak to Physical, no regular anywhere resists it, and Physical resist
   lives on exactly 14 bosses (the Elder Treant - the game's first crown -
   the Fallen Paladin, and Aelunor's twelve). So scrap is safe on trash but
   worst-in-class everywhere: it misses the weakness every one of the 126
-  themed zones now carries, and it halves against the walls that matter.
-- Why lightning as the brand holds up, post-pass: Lightning is the widest
+  themed zones carries, and it halves against the walls that matter.
+- Why lightning as the brand holds up with the pass in place: Lightning is the widest
   weak lane in the world (25 of 126 themed zones - the coasts, the lakes,
   the glass countries) against 6 Storm-zone resists. The brand school is
   also the best default cell, which keeps storm affinity honest.
@@ -139,11 +139,11 @@ only pays where fights matter - and it is paid per bandolier, never once.
 
 ## 5. The Ledger
 
-Field notes, **keyed by zone, not by species** - and since the world pass
+Field notes, **keyed by zone, not by species** - and with the world pass
 this is the enforced data model, not a design bet: every generated zone's
 regulars share one `ZoneTheme` profile, guaranteed by
 `every_generated_zone_spawn_wears_its_zone_theme`. A zone key therefore
-captures every regular in the land, and since the boss-weakness pass it
+captures every regular in the land, and with the boss-weakness pass it
 captures the zone boss's weakness too (same test: a zone boss wears the
 theme's weak and no resist). The **authored crowns** are the deliberate
 deviation and are **not** ledger rows: a crown is read the hard way, every
@@ -273,16 +273,15 @@ comparison.
 The spread is the design contract: unambiguous #1 while fueled and informed,
 Druid's neighborhood while dry.
 
-Two post-pass caveats on this table, both re-verified at ship time:
+Two caveats on this table, with the resist/weak pass and the coats in place:
 
-- **The bar is the oiled Ranger, and the oil no longer lapses.** The 382
-  figure predates the coats; a matched one is worth ~+6.5%, so in exactly the
-  zones where prepared players live the bar is ~405. That was once an average
-  over a coat that ran dry and got forgotten; with `COAT_CHARGES` strikes and a
+- **The bar is the oiled Ranger, and the oil does not lapse.** The 382
+  figure is the uncoated Ranger; a matched coat is worth ~+6.5%, so in exactly the
+  zones where prepared players live the bar is ~405. With `COAT_CHARGES` strikes and a
   one-keystroke re-application it is the **sustained** state for anyone who
   bothers. Measure against ~405 always, never against 382, or the stated gaps
   silently shrink by a third.
-- **The top row's uptime is now standard, not a spike.** Every zone carries
+- **The top row's uptime is standard, not a spike.** Every zone carries
   a weakness and auto-chamber loads it in known land, so "known weakness
   chambered" is his *sustained* state wherever the ledger reaches. Judge
   the +15-20% ceiling as an hourly rate, not a lucky matchup.

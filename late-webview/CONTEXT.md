@@ -1,6 +1,6 @@
 # late-webview Context
 
-The helper process that hosts the official YouTube IFrame Player for the paired `late` CLI. The server side of YouTube playback (queue, sources, booth) is `../late-ssh/src/app/audio/CONTEXT.md`; the CLI side of pairing is `../late-cli/CONTEXT.md` §6.
+The helper process that hosts the official YouTube IFrame Player for the paired `late` CLI. The server side of YouTube playback (queue, sources, booth) is `../late-ssh/src/app/audio/CONTEXT.md`; the CLI side of pairing is `../late-cli/PAIRING.md`.
 
 ## YouTube in the CLI: the embedded webview
 
@@ -51,7 +51,7 @@ The connect-time read (`api::read_device_audio`) distinguishes a failed read fro
 
 Two consequences worth knowing. A session whose SSH key is unknown (`fingerprint_for` returns `None`) has no device identity, so its audio is memory-only for that session and nothing is stored. And two `late` processes on one machine share a fingerprint, so the last one to change mute or volume wins the row.
 
-The CLI holds up its end of this when the socket dies. Its pair-WS retry loop (`late-cli`'s `PairRetryPolicy`, `../late-cli/CONTEXT.md` §6) may release its boot mute only when the server never registered the session at all; once the server has sent the session a frame (which it does right after `register`, before reading the buffered `client_state`), the running mute is the user's and a reconnect outage leaves it alone. A socket this handler accepts and then drops unread (the per-IP pair limit and the per-token capacity are both checked after the upgrade) never sends a frame, so the CLI still counts it as not established. Silence is the safe failure mode: unmuting because the socket dropped would start music mid-SSH in a muted session. The loop also never abandons pairing, it slows to a 60s retry, so a redeploy cannot strand a live session unpaired and uncontrollable, and a session that did release its boot mute still receives the stored value on the reconnect, since the once-per-token alignment was never claimed.
+The CLI holds up its end of this when the socket dies. Its pair-WS retry loop (`late-cli`'s `PairRetryPolicy`, `../late-cli/PAIRING.md`) may release its boot mute only when the server never registered the session at all; once the server has sent the session a frame (which it does right after `register`, before reading the buffered `client_state`), the running mute is the user's and a reconnect outage leaves it alone. A socket this handler accepts and then drops unread (the per-IP pair limit and the per-token capacity are both checked after the upgrade) never sends a frame, so the CLI still counts it as not established. Silence is the safe failure mode: unmuting because the socket dropped would start music mid-SSH in a muted session. The loop also never abandons pairing, it slows to a 60s retry, so a redeploy cannot strand a live session unpaired and uncontrollable, and a session that did release its boot mute still receives the stored value on the reconnect, since the once-per-token alignment was never claimed.
 
 ### Runtime support / troubleshooting
 

@@ -6,7 +6,7 @@ playlists, mixed evenly; the `lofi` station) and `/classical`.
 Every track is CC0, CC-BY or public domain; the public `/listen` page links
 here for attribution. Third-party stations (Nightride, Plaza, Radio Paradise,
 ...) are never restreamed; they are listed in the station catalogue
-(`late-ssh/src/app/audio/CONTEXT.md`).
+(`late-ssh/src/app/audio/STATIONS.md`).
 
 How the library ships:
 

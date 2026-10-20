@@ -1,6 +1,6 @@
 # late-cli video watch
 
-A YouTube News story played in the user's own terminal through `mpv` (`src/video.rs`): the protocol, the mpv child, and what the CLI owns. Part of the CLI's pairing protocol (`CONTEXT.md` §6); the server side is `late-ssh/src/app/chat/news/CONTEXT.md`.
+A YouTube News story played in the user's own terminal through `mpv` (`src/video.rs`): the protocol, the mpv child, and what the CLI owns. Part of the CLI's pairing protocol (`PAIRING.md`); the server side is `late-ssh/src/app/chat/news/CONTEXT.md`.
 
 A YouTube story in News plays in the user's own terminal through their `mpv` (kitty graphics output, shared-memory frames) and the `yt-dlp` mpv's ytdl hook calls. No media crosses SSH. The TUI decides the rectangle, paints it black, and keeps every key; `src/video.rs` owns the mpv child and its IPC socket.
 

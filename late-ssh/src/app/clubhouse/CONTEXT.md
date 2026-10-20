@@ -89,7 +89,7 @@ room is the chat surface, and the full history lives in #lounge on Home.
   presence, so recent drinkers who logged out keep tinting their chat
   history until they decay.
 - **Name flair:** a bought Name Glow/Gradient/Shimmer, 24h or 30-day tier (see
-  `hub/CONTEXT.md`) paints the name-label foreground per character
+  `hub/shop/CONTEXT.md`) paints the name-label foreground per character
   (`put_label_styled` in `ui.rs`, flair from `ClubhouseView.name_flair` =
   `App.name_flair`, resolved ~1/s in `App::tick` from the process-shared
   flair directory). Composes with the drunk bg tint; does not touch the

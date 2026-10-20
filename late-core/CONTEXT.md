@@ -19,7 +19,7 @@ late-core/
     test_utils.rs      test_db(), create_test_user(), shared fixtures
     telemetry.rs       init_telemetry(), HTTP span middleware, TracedExt
     rate_limit.rs      sliding-window per-IP limiter
-    radio.rs           station catalogue, RADIO_SLOTS (see app/audio/CONTEXT.md)
+    radio.rs           station catalogue, RADIO_SLOTS (see app/audio/STATIONS.md)
     vocab.rs           the tag vocabulary (skills, langs)
     nonogram.rs        pack schema, clue derivation, daily selection
     icecast.rs audio.rs ascii.rs api_types.rs shutdown.rs

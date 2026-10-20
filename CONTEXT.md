@@ -141,8 +141,9 @@ Every chip movement is a `ChipMove` variant written through
 `UserChips::apply` with a `source_ref`; repeatable game prizes go through
 `GamePayout::grant_multi`. `late-core/CONTEXT.md` has the ledger rules,
 `app/leaderboard/CONTEXT.md` what counts on Top Chips and the door milestone
-prizes, `app/hub/CONTEXT.md` the Shop and quest amounts, and each mechanic's
-own context its numbers (gilds, the crown, the round, the pot, invites).
+prizes, `app/hub/CONTEXT.md` the quest amounts, `app/hub/shop/CONTEXT.md`
+the Shop prices, and each mechanic's own context its numbers (gilds, the
+crown, the round, the pot, invites).
 
 ## 4. Pages
 
@@ -178,11 +179,11 @@ otherwise.
 | `late-ssh/CONTEXT.md` | Session shell: SSH lifecycle, render loop, terminal output, pair WS, per-device settings, config, activity feed, notifications, presence, sidebar, global keys |
 | `late-core/CONTEXT.md` | Model rules, migrations, users and keys, the chip ledger, test DB helpers |
 | `late-web/CONTEXT.md` | Web routes, templates, `/listen`, stream proxy, gallery and profile pages |
-| `late-cli/CONTEXT.md` | The `late` binary: SSH modes, token handshake, audio pipeline, pairing, voice, installers |
+| `late-cli/CONTEXT.md` | The `late` binary: SSH modes, token handshake, audio pipeline, voice (the pair protocol in `PAIRING.md`, installers in `DISTRIBUTION.md`, terminal video in `VIDEO.md`) |
 | `late-webview/CONTEXT.md` | The YouTube helper process: lifecycle, mute/volume, troubleshooting, the Linux spectrum capture |
 | `late-ssh/src/ircd/CONTEXT.md` | Embedded IRC server: token auth, room/DM projection, IRCv3 caps, history, moderation |
 | `DESIGN_GUIDE.md` | TUI conventions: layout, spacing, text roles, palette, modals, forms, hit geometry |
-| `chat` | Rooms, DMs, composer, message actions, Showcase/Work feeds; the composer, every slash command and key in `COMMANDS.md`, rendering in `RENDERING.md`, read marks in `MARKS.md` |
+| `chat` | Rooms, DMs, composer, message actions, Showcase/Work feeds; the composer, every slash command and key in `COMMANDS.md`, rendering in `RENDERING.md`, read marks in `MARKS.md`, room data and the rail in `ROOMS.md` |
 | `ai` | The model calls: ghost bots (@bot, @graybeard, @bartender) and the round, text screening, translation, `/summary` |
 | `chat/gild` | Gilds: chips paid to mark another user's message |
 | `chat/news` | Shared links, the News room, the reader, the YouTube watch player |
@@ -202,12 +203,12 @@ otherwise.
 | `zen` | Zen (`Ctrl+F`): the tiling layout, the pet and tank tiles |
 | `ascii` | The animated ascii pieces, the Zen ascii tile, the away screensaver |
 | `bonsai` | The bonsai: branch graph, care modal, daily chips; the per-user state reference |
-| `hub` | The Shop (`Ctrl+S`), rentals and flair, quests, the aquarium, pet unlock |
+| `hub` | The Shop (`Ctrl+S`), quests, pet unlock (the marketplace, rentals and flair in `shop/CONTEXT.md`, the reef in `aquarium/CONTEXT.md`) |
 | `games` | Shared game primitives: cards, the chips service, `chess_core`, `pool_core` |
 | `arcade` | The Arcade: solo games, daily puzzles, high scores |
 | `leaderboard` | Leaderboards page, board rosters, the door log pipe contract, monthly awards |
 | `lobby` | The `Ctrl+G` Lobby modal |
-| `lobby/daily` | Daily correspondence games: roster, matches, boards, deadlines (pool in `POOL.md`) |
+| `lobby/daily` | Daily correspondence games: roster, matches, boards, deadlines (per-game rules and adding a game in `GAMES.md`, surfaces in `UI.md`, pool in `POOL.md`) |
 | `lobby/house` | House tables: poker, blackjack, Asterion, Tron, Super Snake |
 | `workspace` | The backtick cycle across live games |
 | `pot` | The weekly pot |
@@ -223,9 +224,9 @@ otherwise.
 | `deadchannel/lounge` | The #lounge spawns |
 | `door` | The Games hub and the door family; each door has its own context below it |
 | `door/lateania` | Lateania, the shared world RPG (the lands and content in `WORLD.md`, combat and items in `COMBAT.md`, keys and panels in `UI.md`, land numbers and the balance audit in `PROGRESSION.md`, the maps in `WORLDMAP.md`) |
-| `door/realm` | The Realm, the standing conquest world |
-| `door/greendragon`, `door/darkroom` | Native remakes (LoGD-style RPG, A Dark Room) |
-| `door/nethack`, `door/dcss`, `door/brogue`, `door/usurper`, `door/dopewars`, `door/bashquest`, `door/codekeep`, `door/zork` | PTY doors and their host crates |
+| `door/realm` | The Realm, the standing conquest world (rules and payouts in `RULES.md`, Earth and drawn worlds in `MAPS.md`, screens in `UI.md`) |
+| `door/greendragon`, `door/darkroom` | Native remakes (LoGD-style RPG with its systems in `MECHANICS.md` and support digest in `PLAYERS.md`; A Dark Room) |
+| `door/nethack`, `door/dcss`, `door/brogue`, `door/usurper`, `door/dopewars`, `door/bashquest`, `door/codekeep`, `door/zork` | PTY doors and their host crates (NetHack's build and deploy in `nethack/DEPLOY.md`) |
 | `door/spectate` | Watching live door games |
 | `door/minecraft`, `door/vintagestory` | Info-only cards for the game servers, and the servers' operations |
 

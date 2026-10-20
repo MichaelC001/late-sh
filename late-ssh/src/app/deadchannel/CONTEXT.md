@@ -133,7 +133,7 @@ no face; every other room renders exactly as before.
 
 ## 3c. The road and the round
 
-`fight/CONTEXT.md`: the day's road, the cards, the round, the crossing, and the `fight/` files (money, crystals and balance in the docs beside it).
+`fight/CONTEXT.md`: the day's road, the service and the wire, the armorer and patch, the crossing, and the `fight/` files (the round, the cards and the screens in `fight/MACHINE.md`; money, crystals and balance in the docs beside it).
 
 ## 3d. The lounge (the snack: a glyph above the composer)
 

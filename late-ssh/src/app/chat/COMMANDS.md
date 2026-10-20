@@ -61,7 +61,7 @@ Autocomplete:
 - Arrow keys move selection.
 - Tab/Enter confirms.
 - Esc dismisses popup without leaving compose mode.
-- Pressing `/` while not composing on Home starts command compose for the active room, except on News where `/` is a synthetic-entry filter toggle. Directory Profiles/Projects use `/` as the mine-only filter inside page 7.
+- Pressing `/` while not composing on Home starts command compose for the active room, except on News where `/` is a synthetic-entry filter toggle. Directory Profiles/Projects use `/` as the mine-only filter inside page 5.
 
 Image uploads and inline rendering:
 - File-upload storage is optional per profile: `Config.files` is `Some(FilesConfig)` in prod (endpoint/bucket/URL literals plus `LATE_FILES_S3_ACCESS_KEY_ID`/`LATE_FILES_S3_SECRET_ACCESS_KEY` env secrets). Dev is `None` unless both R2 credentials are set in `.env.local`, which opts uploads into the prod bucket; a half-set pair is a startup error.
@@ -117,7 +117,7 @@ User commands:
 - `/coffee` and `/tea` post a small ASCII-cup chat message to the current room as a coffee/tea-break ritual. No arguments. Steam pattern rotates per invocation through `CUP_VARIANT_COUNT` variants tracked on `ChatState::next_cup_variant` (session-local, not persisted). Routes through the normal `send_message_with_reply_task` send path — the body is a regular chat message subject to the same length/visibility rules.
 - `/private #room` creates a private topic room and joins the caller.
 - `/profile [@user]` opens a user's read-only profile modal. Bare `/profile` opens the caller's own profile as others see it. `@username` autocompletion is available after `/profile `. `/chips [@user]` is the same modal opened on its chips ledger (`ProfileSection::Chips` rides on `OpenProfileResolved` and the `requested_open_profile` handoff; the modal scrolls there on its first measured draw).
-- `/onboard` starts the first-visit tour again from the tavern door (`app/clubhouse/CONTEXT.md` `CONTEXT.md` §5).
+- `/onboard` starts the first-visit tour again from the tavern door (`app/clubhouse/CONTEXT.md` §5).
 - `/public #room` (alias `/join #room`) opens or creates an opt-in public room for the caller only (`auto_join=false`).
 - `/sheet [@user]` (room-scoped to `#dnd`) opens the character sheet modal: bare form opens your own sheet editable (name + freeform body, saved per user per room on field submit via `ChatService::save_sheet_task`); targeted form opens another user's sheet read-only, or banners if they have none. Resolution and fetch happen in `ChatService::open_sheet_task`; saves and reads validate the shared `RoomScopedCommand` metadata plus room membership in `ChatService::ensure_room_scoped_command_access`; the modal lives in `app/sheet_modal`.
 - `/settings` opens settings.

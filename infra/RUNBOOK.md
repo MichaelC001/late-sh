@@ -138,7 +138,7 @@ the ids given, nothing else, after a preview and a confirmation prompt.
 8. Music missing from PVC → Dispatch the `sync_music` workflow for the environment (syncs from R2; manual only, never part of an infra deploy). For manual recovery: `aws s3 sync s3://$MUSIC_BUCKET/ ./music/ --endpoint-url $S3_ENDPOINT` then `kubectl cp` each genre dir individually into the pod.
 9. Repeated Postgres `role "root" does not exist` lines in GitHub Actions are often service-log noise, not the failure. They’re misleading because Actions prints service container logs after a job fails. Generally check for other errors before stopping to try and fix this probable red-herring.
 10. `service-ssh`/Postgres OOM with low user count → work through the incident log (below): Lateania furniture amplification first, then the per-session pair/WS amplifiers from the 2026-07 OOMs.
-11. NetHack door dead for everyone with `Too many hacks running now` → orphaned getlock slots; see the NetHack entry below and `late-ssh/src/app/door/nethack/CONTEXT.md` §9.
+11. NetHack door dead for everyone with `Too many hacks running now` → orphaned getlock slots; see the NetHack entry below and `late-ssh/src/app/door/nethack/DEPLOY.md`, Operations.
 
 ## Releases and deploys
 
@@ -286,4 +286,4 @@ WHERE jsonb_array_length(coalesce(data->'house_furniture', '[]'::jsonb)) > 0;
 - **Symptom:** every launch fails with `Too many hacks running now`; the door is dead for all users.
 - **Cause:** SIGKILL-while-live orphans a getlock slot; once all `MAXPLAYERS` slots are orphaned, `getlock()` fails for everyone.
 - **Emergency fix:** `rm -f $VAR_PLAYGROUND/?lock.*` in the late-nethack pod (safe only while no games are live).
-- **Fixes shipped:** SIGHUP hangup-save teardown before any SIGKILL, plus a boot-time orphan-lock sweep. Details and invariants in `late-ssh/src/app/door/nethack/CONTEXT.md` §9.
+- **Fixes shipped:** SIGHUP hangup-save teardown before any SIGKILL, plus a boot-time orphan-lock sweep. Details in `late-ssh/src/app/door/nethack/DEPLOY.md` (Operations) and the invariants in its `CONTEXT.md` §7.
