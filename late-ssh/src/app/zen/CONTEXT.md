@@ -55,7 +55,7 @@ rows. It replaced the presence tile, and a stored `presence` reads as
 newest first; see §3 for its keys), headlines (News articles and the
 viewer's RSS entries merged newest first, two rows each (the title with
 its source and age, then the link), an entry shared to News listed once,
-as the article), live (the Live panel's rows, `../live/CONTEXT.md` §1:
+as the article), live (the Live panel's rows, `../live/PANEL.md`:
 the same four rows the sidebar's panel draws, each with its `s1`-`s4`
 key, wider so less is cut; `nobody playing` while nothing is on), blank. The look (border style, gap, titles) is
 part of the layout.

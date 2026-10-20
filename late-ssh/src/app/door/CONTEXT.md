@@ -70,7 +70,7 @@ license boundary.
   cleared file) to the host as one SSH env request.
 - `ingest/`: the door log pipe that turns host log lines into leaderboard
   rows and milestone payouts. The contract (transport, cursors, idempotency,
-  award sink) lives in `app/leaderboard/CONTEXT.md`.
+  award sink) lives in `ingest/CONTEXT.md`.
 - `spectate/`: watching someone else's live game.
 - Session state for the doors still sits in `app/state.rs`; moving it into
   this domain is listed in `SCALE.md`, Small Debts, "Root-file thinning".

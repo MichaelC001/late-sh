@@ -23,7 +23,7 @@ late-ssh/src/app/chat/
 |-- ui.rs                        # Home room rail/chat center, dashboard-lounge view, embedded room chat, composer, row cache
 |-- ui_text.rs                   # Message/news/reaction wrapping into ratatui Lines
 |-- list_ui.rs                   # Shared "mine only" filtered-list layout and status line for the synthetic entries
-|-- slur.rs                      # Pure drunk-text transform applied to outgoing public-room messages (never touches a spending phrase, `../ai/CONTEXT.md` The Round)
+|-- slur.rs                      # Pure drunk-text transform applied to outgoing public-room messages (never touches a spending phrase, `../ai/ROUND.md`)
 |-- special_badges.rs            # Hardcoded per-username badges in author labels (allowlist, edit and redeploy)
 |-- cyberspace/                  # Cyberspace rail section: personal client for cyberspace.online, incl. their chat (cIRC)
 |-- discover/                    # Synthetic Discover entry: public rooms not yet joined
@@ -183,7 +183,7 @@ Selection deltas are message-based, not row-based. Positive means older, negativ
 
 - Gilds, the paid name colour for a public message: `gild/CONTEXT.md`.
 - The Crown, the one-holder 💎 slot bought with `/crown take`: `../crown/CONTEXT.md`. Chat owns only the command and the glyph.
-- The Round, a drink or a whole-bar round from @bartender (the chips, the pour, the drunk points, the trigger phrase): `../ai/CONTEXT.md`, beside the bartender that runs it.
+- The Round, a drink or a whole-bar round from @bartender (the chips, the pour, the drunk points, the trigger phrase): `../ai/ROUND.md`, beside the bartender that runs it.
 
 ## 10. Reactions, Ignores
 
@@ -332,7 +332,7 @@ Scroll-driven room history (`history_modal/`), opened by `/history` or by a sear
 3. `/roominfo` opens the same form for the selected room. Authority is decided once in `ChatService::set_room_info`: mods for any room, otherwise the derived owner of a private topic room. `ChatState::room_info_authority` mirrors the rule for what the UI offers (and what the refusal banner says); DMs and game rooms have no info at all. A successful write broadcasts `RoomInfoUpdated`, which banners for the editor and refreshes the room list of every session sitting in that room, so no header waits on the 10s snapshot.
 4. `/rules` shows the selected room's rules in the shared overlay (`Overlay`, the same surface `/active` uses), titled `#slug rules`, one entry per stored line: rules are multi-line and a banner is one line. A room with no rules answers with a banner instead of an empty overlay.
 5. `/kick @user` runs the moderation service's room action (`ModerationService::room_command` then `room_action`), so membership removal, voice removal, audit log and the target's live session behave exactly as from the mod surface. A private room's owner is granted `Caps::KICK_FROM_ROOM` for that one room via `Permissions::as_room_owner`, which leaves the tier alone so staff stay out of reach. Chat-originated room actions name the room by id (`RoomRef::Id`), never by slug: slugs are only unique per namespace (a topic room and a stream room can share one), so the id is the only exact name of the room the actor is sitting in. The mod surface still resolves its typed slug.
-6. `/ban @user [duration] [reason]` and `/unban @user` run the same room action with `RoomModAction::Ban`/`Unban`. Staff act by rank anywhere; a streamer additionally holds the `STREAM_OWNER` grant (kick + ban + unban) inside their own stream room only — the full story, including why ban rather than kick and the voice-ticket refusal, lives in `stream/CONTEXT.md` §6. When the grant comes from ownership rather than rank, an *active* ban placed by another actor refuses both the unban and a re-ban, so a streamer can never lift or soften a staff decision on their room; expired bans are history and do not block.
+6. `/ban @user [duration] [reason]` and `/unban @user` run the same room action with `RoomModAction::Ban`/`Unban`. Staff act by rank anywhere; a streamer additionally holds the `STREAM_OWNER` grant (kick + ban + unban) inside their own stream room only — the full story, including why ban rather than kick and the voice-ticket refusal, lives in `stream/MODERATION.md`. When the grant comes from ownership rather than rank, an *active* ban placed by another actor refuses both the unban and a re-ban, so a streamer can never lift or soften a staff decision on their room; expired bans are history and do not block.
 7. `/invite @user` requires caller membership and rejects DMs.
 8. `/leave` rejects permanent rooms.
 9. Admin `/fill-room #room` works only for public rooms, bulk-adds all users, and sets `auto_join=true`.

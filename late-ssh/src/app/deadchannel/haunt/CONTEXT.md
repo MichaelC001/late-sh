@@ -43,6 +43,55 @@ bio verdict), `ProfileService`'s first-contact tasks (the row claims),
 payload, and parse), and `metrics::record_first_contact_beat` /
 `record_first_contact_bio_screen`.
 
+## The ladder and the gate
+
+First contact onboards a person through haunting instead of a tutorial.
+The chain is the spec, and the ladder never skips a rung:
+three clock bursts quiet
+the clock and open stage 2, the third name hit arms the stage-3 whisper
+(it fires on the next fresh connect, and once more on a later day: two
+doors, two different lines), and 20 hours after the second delivered
+whisper the next own send plays the stage-4 breakthrough, which carries
+the invitation DM in. The daily caps, not the dice, do the pacing, and
+the ladder is built for a person who connects once a day: day 1 two
+bursts, day 2 the third burst and the first name hit, days 3 and 4 the
+other two, day 5 the first door, day 6 the second, day 7 the breakthrough
+and the DM. The
+day-scale gaps (whisper gap, invitation delay) are 20 hours rather than
+24 so evening-to-evening connects at different times never slip a day.
+
+Who is haunted (GAME.md, "the eligibility gate is a whisper campaign"):
+**stage 1 is universal, stages 2-4 need the gate.** Stage 1 arms for
+staff (admins and moderators) and nobody else, a rule in code rather than
+a switch, so nothing fires for real users while copy and thresholds await
+design review; opening it up is a code change. Stages 2-4
+arm when the gate passes: at least `ACTIVE_MIN_HOURS` (8) of lifetime
+connected time (`user_online_time.total_milliseconds`, the
+online-time leaderboard's table, one primary-key read at bootstrap;
+account age is not tenure, hours spent here are), at least
+`TOUCHED_SETTINGS_MIN` (2) keys from the
+closed `TOUCHED_SETTINGS_KEYS` list in late-core `user.rs`, and a bio of
+at least `BIO_MIN_CHARS` (100) that the AI screen passed (the length is
+only the floor under which no screen is spent; the screen decides
+whether it reads as a person). The gate is
+evaluated once at session bootstrap (`svc::bootstrap_gate`: the user row
+that already loads plus the one online-time read, which fails closed to
+zero hours) and is never stored: filling
+your bio tonight means the static can find you tomorrow. The free legs
+come first: the bio screen (a paid AI call) is only claimed once the
+hours and the touched settings already pass. Eligibility
+gates entering the funnel, never continuing it: any stage-2 hit on
+record arms stages 2-4 whatever the bio later becomes. All three
+thresholds are placeholders pending design review.
+
+**Replica rule.** The daily and lifetime caps are enforced by conditional
+claims on the user row (`User::claim_first_contact_glitch_burst`,
+`claim_first_contact_name_hit`): a machine decides *when to ask*, holds
+its schedule, and the beat shows on the tick the claim comes back won.
+The whisper stamp and the invitation are claims. The bio screen is a
+claim keyed on a hash of the bio text, so any number of sessions on any
+number of replicas spend one AI call per text.
+
 ## The four stages (behavior contract)
 
 1. **Clock glitch (deniable).** The sidebar clock (pinned core block,
@@ -218,3 +267,100 @@ Drained by `haunt::svc::tick`.
 - `/haunt reset` - wipe every mark; the chain starts over.
 - `/haunt welcome` - post the runner's welcome on the wire for this user
   now, exactly what a fresh invited join posts; nothing else changes.
+
+## Persistence (`users.settings`, late-core `User`)
+
+- `first_contact_glitch_hits` (int) + `first_contact_glitch_day`
+  (YYYY-MM-DD) + `first_contact_glitch_day_hits` (int): stage-1 bursts.
+  `claim_first_contact_glitch_burst` increments all three in one
+  conditional `UPDATE` (lifetime under `total`, today's under `daily`,
+  the day rolling in the same statement) and returns `Won { hits }` or
+  `Capped { hits }`; `record_first_contact_glitch_hit` is the uncapped
+  increment for forced (`/haunt glitch`) bursts only.
+- `first_contact_name_hits` + `first_contact_name_day` +
+  `first_contact_name_day_hits`: stage-2 hits, same shape
+  (`claim_first_contact_name_hit`; `record_first_contact_name_hit` for
+  forced hits). The third hit arms stage 3.
+- `first_contact_whisper_hits` (int) and `first_contact_whisper_at`
+  (RFC3339): stage-3 deliveries and the last one's time, written only by
+  `claim_first_contact_whisper` (conditional on the cap and the gap);
+  the counter at its cap schedules stage 4 from the stamp.
+- `first_contact_bio` (object `{hash, verdict, at}`): the bio screen
+  cache. `claim_first_contact_bio_screen` stamps `pending` for a hash
+  when no verdict exists for it, or the one on record is not `passed`
+  and is older than `BIO_RESCREEN_AFTER_HOURS` (24);
+  `set_first_contact_bio_verdict` lands `passed`/`failed` only while
+  that hash is still on record. Not a chain mark: `/haunt reset` leaves
+  it alone (rewrite the bio to re-screen).
+- `first_contact_invited_at` (RFC3339): stage-4 claim, written only by
+  `claim_first_contact_invitation` (conditional on absence), taken back
+  by `release_first_contact_invitation` when the send after a won claim
+  fails.
+- `reset_first_contact` wipes the six chain keys and both stamps (the
+  `/haunt reset` hook).
+- The stage-2 wire has **no table on purpose**
+  (`late-core/src/models/deadchannel_name_hit.rs`): a name hit is a second
+  and a half of theater whose mark is already a conditional claim on the
+  user row, so there is no truth to store. The channel carries a
+  self-contained payload
+  (`<message>:<room>:<user>:<seed>`), the publisher's pooled
+  connection is not the listener's (so Postgres hands the beat back to the
+  publishing replica too, and every session hears it exactly one way), and
+  a replica that boots mid-beat misses it like a person who was not
+  looking. Nothing to sweep, nothing to migrate.
+
+## Gotchas
+
+- A hit shows one tick after the claim wins, not on the tick the dice
+  landed (one DB round trip). For the flicker that is still on the
+  landing echo's ~800ms hold; the glitch never had a moment to miss.
+- On this replica the room sees a hit within a tick of the person being
+  haunted: the chat broadcast (`ChatEvent::MessageCreated`) lands the
+  message in every local session before the sender's claim is even out.
+  Only a session on *another* replica learns of the message from the chat
+  snapshot refresh (`CHAT_REFRESH_INTERVAL`, 10s), so there the beat is
+  heard first and the name corrupts as the message *arrives*, then
+  heals. That is why chat holds the beat rather than the haunting
+  painting on receipt, and why `NAME_HIT_WAIT` (30s) has to stay
+  comfortably above that cadence. Do not reach for a shared clock to make
+  the waves simultaneous; it would cost persistence and buy nothing the
+  fiction wants.
+- A witnessed beat is spent when it starts, and "started" only means the
+  message is in this session's copy of the room, whether or not that room
+  is on screen. A witness who is off in the arcade spends the beat
+  without seeing it. That is the same bargain the own-flicker makes (it
+  fires on the landing echo and trusts the eye is there) and cheaper than
+  teaching the haunting what is on screen; if it turns out to matter, the
+  fix is a visibility gate like the clock glitch's, not a queue.
+- If stage 2 looks dead from a second session, check that the session
+  holds the room (a beat for a room it is not in is dropped on receipt),
+  that chat's message listener is running (tests and headless paths do
+  not start it, so there stage 2 stays private to the session that rolled
+  it), and that the message landed inside `NAME_HIT_WAIT`.
+- The wire is a delivery path, never a source of truth, so it is one of
+  the few pieces of deadchannel state that is process-local by design.
+  The caps it could be tempted to enforce already live in the row claim.
+- `screen_bio` fails closed at every step: AI off means `BioStanding::AiOff`
+  (no claim, no pass, unless a pass is already on record, which is
+  final); a broken call leaves the pending claim to expire rather than
+  releasing it, so a flapping API costs at most one call per bio text
+  per day.
+- Clock domains differ on purpose: the whisper runs on `splash_ticks`
+  (the splash's own typing clock), the glitch and flicker on
+  `marquee_tick` (wall-derived 66ms units).
+- Input swallowed by the held door leaves the VT parser mid-escape; both
+  the input path and the release path call `vt_input.reset()`. Input
+  swallowed by the breakthrough is dropped before the feed, so it needs no
+  reset.
+- Every voiced or corrupted character obeys the screenshot test (static /
+  signal / city / channel vocabulary, never Unix internals); the whisper
+  pool and the invitation plea need feed-template-grade variety before
+  leaving staff scope (GAME.md, Open questions).
+- The invitation runs through `ChatService::send_message`, so DM
+  delivery, unread badges, and IRC projection behave like any DM.
+- Test apps pass `FirstContactMarks::spent_for_tests()` and
+  `FirstContactGate::closed_for_tests()` so no stage can fire in a test
+  unless armed on purpose (`test_helpers` compiles unconditionally, so
+  those helpers carry no `#[cfg(test)]`).
+- `right_sidebar_visible` (in `tick.rs`) is `pub(crate)` for the glitch's
+  visibility gate.

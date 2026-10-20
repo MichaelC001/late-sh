@@ -152,7 +152,7 @@ room is the chat surface, and the full history lives in #lounge on Home.
   (`@bartender buy @user a drink`, `one for @user`, `@user's next one is on
   me`, the closed `GIFT_PHRASES` list) instead leaves one 200-chip credit on that person's tab, even while they
   are offline, without pouring the buyer. The recipient claims it on their
-  own order; see `app/ai/CONTEXT.md`, The Round. The tutorial greeting stays free.
+  own order; see `app/ai/ROUND.md`. The tutorial greeting stays free.
 - Message selection/reactions/scroll do not exist on this screen; Home owns
   them. The lounge is still pinned as the visible chat room for read cursors
   (`sync_visible_chat_room`).

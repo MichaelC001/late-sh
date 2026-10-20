@@ -173,7 +173,7 @@ Current UX gaps worth addressing:
 Moderation revocation:
 - `/mod room-voice off` revokes every known/authorized participant for that voice channel and calls LiveKit `RemoveParticipant` for each identity.
 - Room kick/ban revokes the target user from that room's voice channel (all voice channels are chat-room-targeted, including game-surface ones). A *ban* additionally refuses future tickets for that channel (see `checked_join_ticket` in §3); a kick does not, so a kicked user may rejoin and speak again.
-- A stream room's owner can reach this without staff, through `/ban` in their own room. See `../stream/CONTEXT.md` §6.
+- A stream room's owner can reach this without staff, through `/ban` in their own room. See `../stream/MODERATION.md`.
 - Server kick/ban revokes the target user from whichever voice channel they are currently in or most recently ticketed for.
 - `/mod voice kick` is broader than room revocation: it is a runtime, server-wide voice block and is not persisted beyond restart.
 - LiveKit removal failures are logged after DB/audit state is committed; they should not roll back moderation state.

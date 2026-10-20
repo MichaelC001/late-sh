@@ -567,7 +567,7 @@ async fn main() -> anyhow::Result<()> {
 
     // The door log pipe: tail each door host's append-only log files over the
     // stats SSH session and land runs/milestones/badges (the contract lives
-    // in `app/leaderboard/CONTEXT.md`). One task per door, gated on the same
+    // in `app/door/ingest/CONTEXT.md`). One task per door, gated on the same
     // flag as that door's client; single-replica by the same assumption as
     // every other process-global singleton here.
     let door_ingest_service = late_ssh::app::door::ingest::svc::DoorIngestService::new(

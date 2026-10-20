@@ -140,8 +140,8 @@ notices in triggers. Rules and shared tables: `late-core/CONTEXT.md`.
 Every chip movement is a `ChipMove` variant written through
 `UserChips::apply` with a `source_ref`; repeatable game prizes go through
 `GamePayout::grant_multi`. `late-core/CONTEXT.md` has the ledger rules,
-`app/leaderboard/CONTEXT.md` what counts on Top Chips and the door milestone
-prizes, `app/hub/CONTEXT.md` the quest amounts, `app/hub/shop/CONTEXT.md`
+`app/leaderboard/CONTEXT.md` what counts on Top Chips,
+`app/door/ingest/CONTEXT.md` the door milestone prizes, `app/hub/CONTEXT.md` the quest amounts, `app/hub/shop/CONTEXT.md`
 the Shop prices, and each mechanic's own context its numbers (gilds, the
 crown, the round, the pot, invites).
 
@@ -184,15 +184,15 @@ otherwise.
 | `late-ssh/src/ircd/CONTEXT.md` | Embedded IRC server: token auth, room/DM projection, IRCv3 caps, history, moderation |
 | `DESIGN_GUIDE.md` | TUI conventions: layout, spacing, text roles, palette, modals, forms, hit geometry |
 | `chat` | Rooms, DMs, composer, message actions, Showcase/Work feeds; the composer, every slash command and key in `COMMANDS.md`, rendering in `RENDERING.md`, read marks in `MARKS.md`, room data and the rail in `ROOMS.md` |
-| `ai` | The model calls: ghost bots (@bot, @graybeard, @bartender) and the round, text screening, translation, `/summary` |
+| `ai` | The model calls: ghost bots (@bot, @graybeard, @bartender) and the round (`ROUND.md`), text screening, translation, `/summary` |
 | `chat/gild` | Gilds: chips paid to mark another user's message |
 | `chat/news` | Shared links, the News room, the reader, the YouTube watch player |
 | `chat/cyberspace` | The cyberspace.online client and its rail entry |
 | `crown` | The crown: one holder, the price ladder, the laureate |
 | `audio` | Radio, YouTube queue and booth, source selection, `/listen` snapshot; the queue service in `QUEUE.md`, the equalizer in `VIZ.md`, the sidebar stage in `STAGE.md`, the stations in `STATIONS.md` |
 | `voice` | LiveKit voice rooms, TUI voice controls, pair-WS voice messages |
-| `stream` | `/golive` and `/watch` streams, the stream registry, the late-web live pages |
-| `live` | The live strip (`now`) on #lounge and the Live panel |
+| `stream` | `/golive` and `/watch` streams, the stream registry, the late-web live pages (staff and streamer tools in `MODERATION.md`) |
+| `live` | The live strip (`now`) on #lounge and the Live panel (rows and keys in `PANEL.md`) |
 | `paper` | The Late Edition: the daily paper and its print sweeper |
 | `jobs` | The job feed: nightly press, posts, tags, matches |
 | `usermap` | The People map |
@@ -204,9 +204,9 @@ otherwise.
 | `ascii` | The animated ascii pieces, the Zen ascii tile, the away screensaver |
 | `bonsai` | The bonsai: branch graph, care modal, daily chips; the per-user state reference |
 | `hub` | The Shop (`Ctrl+S`), quests, pet unlock (the marketplace, rentals and flair in `shop/CONTEXT.md`, the reef in `aquarium/CONTEXT.md`) |
-| `games` | Shared game primitives: cards, the chips service, `chess_core`, `pool_core` |
-| `arcade` | The Arcade: solo games, daily puzzles, high scores |
-| `leaderboard` | Leaderboards page, board rosters, the door log pipe contract, monthly awards |
+| `games` | Shared game primitives: cards, the chips service, `chess_core`, `pool_core` (each kernel has its own `CONTEXT.md`) |
+| `arcade` | The Arcade: solo games, daily puzzles, high scores (per-game notes, controls and adding a game in `GAMES.md`) |
+| `leaderboard` | Leaderboards page, board rosters, the refresh service (monthly awards and milestone badges in `AWARDS.md`) |
 | `lobby` | The `Ctrl+G` Lobby modal |
 | `lobby/daily` | Daily correspondence games: roster, matches, boards, deadlines (per-game rules and adding a game in `GAMES.md`, surfaces in `UI.md`, pool in `POOL.md`) |
 | `lobby/house` | House tables: poker, blackjack, Asterion, Tron, Super Snake |
@@ -217,7 +217,8 @@ otherwise.
 | `clubhouse` | The tavern: crowd, seating, bubbles, the tour, the floor plan |
 | `clubhouse/nightcap` | The Nightcap bar out back |
 | `scratchpad` | `/pair` shared scratchpad |
-| `deadchannel` | The character game: the runner, persistence; design in `GAME.md`, `DIGEST.md` |
+| `deadchannel` | The character game: the map of its slices, persistence; design in `GAME.md`, `DIGEST.md` |
+| `deadchannel/runner` | The runner: the look, the directory, the face in #deadchannel, the runner row |
 | `deadchannel/haunt` | First contact: the haunting ladder that brings staff in, `/haunt` |
 | `deadchannel/city` | The night city under `0`: map, shops, panels, art |
 | `deadchannel/fight` | The day's road, the cards, the round, the crossing; money, crystals and balance in `fight/*.md` |
@@ -225,9 +226,10 @@ otherwise.
 | `door` | The Games hub and the door family; each door has its own context below it |
 | `door/lateania` | Lateania, the shared world RPG (the lands and content in `WORLD.md`, combat and items in `COMBAT.md`, keys and panels in `UI.md`, land numbers and the balance audit in `PROGRESSION.md`, the maps in `WORLDMAP.md`) |
 | `door/realm` | The Realm, the standing conquest world (rules and payouts in `RULES.md`, Earth and drawn worlds in `MAPS.md`, screens in `UI.md`) |
-| `door/greendragon`, `door/darkroom` | Native remakes (LoGD-style RPG with its systems in `MECHANICS.md` and support digest in `PLAYERS.md`; A Dark Room) |
-| `door/nethack`, `door/dcss`, `door/brogue`, `door/usurper`, `door/dopewars`, `door/bashquest`, `door/codekeep`, `door/zork` | PTY doors and their host crates (NetHack's build and deploy in `nethack/DEPLOY.md`) |
+| `door/greendragon`, `door/darkroom` | Native remakes (LoGD-style RPG with its systems in `MECHANICS.md` and support digest in `PLAYERS.md`; A Dark Room, its scope, endings and battleship in `GAME.md`) |
+| `door/nethack`, `door/dcss`, `door/brogue`, `door/usurper`, `door/dopewars`, `door/bashquest`, `door/codekeep`, `door/zork` | PTY doors and their host crates (build and deploy in `DEPLOY.md` for NetHack, DCSS, Brogue, dopewars and BashQuest; DCSS's public crawl files in `dcss/PUBLISH.md`, Brogue's grid fixes in `brogue/RENDER.md`, BashQuest's graduation pipeline in `bashquest/CERTIFICATE.md`) |
 | `door/spectate` | Watching live door games |
+| `door/ingest` | The door log pipe: host log files into `door_runs`/`door_milestones`, door badges and payouts |
 | `door/minecraft`, `door/vintagestory` | Info-only cards for the game servers, and the servers' operations |
 
 No context of its own (read `late-ssh/CONTEXT.md` and the code): `activity`,
