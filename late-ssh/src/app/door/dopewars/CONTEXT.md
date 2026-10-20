@@ -5,17 +5,17 @@
 - Domain: dopewars, the real upstream curses "Drug Wars" trading game (GPLv2), run on a PTY inside a **dedicated `late-dopewars` SSH host** and reached by late-ssh as a network-proxied door (the same model as the NetHack door).
 - Primary audience: LLM agents changing the dopewars launcher UI, the SSH client transport, the host crate (PTY bridge / auth / TERM handling), input forwarding, or its config/deploy wiring.
 - Status: Active
-- Parent context: `../../../../../CONTEXT.md`
+- Parent context: `../CONTEXT.md` (the door family)
 - Stability note: `[STABLE]` sections change rarely; `[VOLATILE]` sections change with the launcher UI, keybindings, or build/deploy wiring.
 
 ---
 
 ## 0. Context Maintenance Protocol [STABLE]
 
-Read this after root `CONTEXT.md` whenever a task touches the dopewars launcher, launch/leave behavior, the SSH client transport, the `late-dopewars` host (PTY bridge, auth, TERM resolution), input forwarding/filtering, or dopewars config/deploy wiring.
+Read this after `../CONTEXT.md` whenever a task touches the dopewars launcher, launch/leave behavior, the SSH client transport, the `late-dopewars` host (PTY bridge, auth, TERM resolution), input forwarding/filtering, or dopewars config/deploy wiring.
 
 - Keep this file aligned with the SSH transport contract, the client/host split, the spawn args, config knobs, and known gotchas.
-- Update root `CONTEXT.md` when routing, the top-level screen list/tab order, or global keybindings change.
+- Update `../CONTEXT.md` when the hub roster or the door family changes, and `late-ssh/CONTEXT.md` for global keys.
 - Treat tests and code as authoritative when comments drift; patch stale comments or this file before handoff.
 - Do not add `pub use` re-export layers; `mod.rs` stays declaration-only.
 
@@ -25,7 +25,7 @@ Read this after root `CONTEXT.md` whenever a task touches the dopewars launcher,
 
 dopewars runs the **real upstream dopewars curses client on a PTY**, but **not** inside late-ssh. It lives in its own crate/pod, `late-dopewars`, a minimal russh **server** that spawns one `dopewars` child per SSH session. late-ssh reaches it exactly like the NetHack door reaches `late-nethack`: the door is a russh **client** that streams the remote terminal through a `vt100::Parser` and blits it into a ratatui widget below the top bar. SSH *is* the transport — there is no custom IPC.
 
-(History: dopewars used to run as a local `openpty` child inside the `service-ssh` container. It was extracted to `late-dopewars` on 2026-07-01 to get the foreign GPLv2 C binary out of the SSH gateway container — the same **blast-radius isolation** that motivated the nethack extraction — and to give it a **persistent, shared high-score table** on a PVC. A PTY can't cross containers, so it became a network door.)
+(It runs in its own pod to keep the foreign GPLv2 C binary out of the SSH gateway container, the same **blast-radius isolation** as NetHack, and to give it a **persistent, shared high-score table** on a PVC. A PTY cannot cross containers, so it is a network door.)
 
 Core shape:
 - `Screen::Dopewars` has no top-level number key. It is reached by selecting the dopewars card in the Games hub (page `3`, last card) and pressing `Enter`. `Enter` constructs the `State` (`enter_dopewars`) and `connect`s — opening the SSH connection and switching to `Mode::Running` — in one step; the standalone launcher render is normally skipped.
@@ -169,22 +169,16 @@ Input capture contract (client side):
 
 ## 8. Tests And Verification [STABLE]
 
-Root policy applies: agents should not run `cargo test`/`nextest`/`clippy` as blocking verification; mention the focused command in handoff.
+Agents run the focused tests through the capped runner: `make test-llm ARGS="-p late-dopewars -p late-ssh -E 'package(late-dopewars) or test(dopewars)'"`.
 
 Inline pure tests cover:
 - Client `proxy.rs`: `dopewars_session_label` (account-derived, safe, stable, distinct per account).
-- Client `identity.rs` / host `late-dopewars/identity.rs`: derivation determinism. (A cross-crate known-answer fingerprint test — like nethack's — is TODO once test-running is re-enabled.)
+- Client `identity.rs` / host `late-dopewars/src/identity.rs`: derivation determinism. (A cross-crate known-answer fingerprint test like nethack's is still missing.)
 - Client `state.rs`: `connect` no-op when disabled; `forward_input` without a proxy is a no-op; `strip_input_noise` drops mouse/paste but keeps keys/arrows; exit-grace opens on close and counts down.
 - Host `server.rs`: `effective_term` falls back for unknown/hostile TERM and passes a supported one through.
 - `app/door/hub/state.rs` + `app/common/primitives.rs`: selector ordering and screen `next`/`prev` place `Dopewars` correctly.
 
 The PTY bridge (`host.rs`) and the russh client/server loops are process/network-bound and not unit-tested; verify launch/play/quit manually against a real host.
-
-Focused commands for human verification:
-
-```bash
-cargo test -p late-dopewars && cargo test -p late-ssh dopewars
-```
 
 (Don't fold these into one `-p late-dopewars -p late-ssh dopewars` — the `dopewars` name filter would also apply to the host crate and skip its tests.)
 
@@ -208,6 +202,6 @@ cargo test -p late-dopewars && cargo test -p late-ssh dopewars
 - Binary built from verified upstream source (1.6.2); when bumping versions, update the `DOPEWARS_*` Dockerfile `ARG`s (incl. `DOPEWARS_SHA256`) and `NOTICE`.
 
 ### Possible future work
-- Milestones/chips/awards by scraping the final-score screen (deferred; mirror `nethack/milestone.rs` + `award.rs` + the `scan_screen` scrape in `nethack/state.rs`).
-- ~~Optional shared/competitive market: one `dopewars -S` server with `-o`/`-p` clients per session.~~ **Evaluated and rejected 2026-07-18**: concurrency is far too low (~1 player/week) for two people to ever share the market, and one shared server makes every deploy wipe all in-progress runs. Cheap to build (supervised `-S` on localhost, spawn `-t -b -o 127.0.0.1 -p 7902 -P <handle>`, thread the handle through the SSH username), so revisit only if concurrent players become a thing.
+- Milestones/chips/awards by scraping the final-score screen (deferred; the roguelike doors get theirs from host log files through the door log pipe, `door/ingest/`, never from the screen).
+- ~~Optional shared/competitive market: one `dopewars -S` server with `-o`/`-p` clients per session.~~ **Evaluated and rejected**: concurrency is far too low (~1 player/week) for two people to ever share the market, and one shared server makes every deploy wipe all in-progress runs. Cheap to build (supervised `-S` on localhost, spawn `-t -b -o 127.0.0.1 -p 7902 -P <handle>`, thread the handle through the SSH username), so revisit only if concurrent players become a thing.
 - A cross-crate known-answer fingerprint test pinning `derive_client_key` (mirror nethack's KAT), once test-running is re-enabled.

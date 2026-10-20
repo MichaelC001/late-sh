@@ -8,7 +8,7 @@ a browser game with no terminal to proxy.
 
 This is the first game on late.sh's **incremental shelf**: not a run you die
 out of (NetHack, Brogue, DCSS) and not a daily-turn RPG (Green Dragon,
-Usurper), but a save that grows. See root `DOOR.md` for why that shape was
+Usurper), but a save that grows. See `devdocs/DOOR-CANDIDATES.md` for why that shape was
 wanted.
 
 ## Upstream source of truth

@@ -1,8 +1,8 @@
 # The Thundersmith, a class design
 
 Status: design only, not implemented. Every engine claim below reflects the
-landed world, including the world resist/weak pass and the weapon coats (spec:
-`CONTEXT.md`, "The world resist/weak pass" and "Crafting depth"). The benchmark
+current world, including the world resist/weak pass and the weapon coats (spec:
+`COMBAT.md`, "The world resist/weak pass", and `WORLD.md`, "Crafting depth"). The benchmark
 class is the Ranger (not the Rogue), measured at the Lv30-60 band where the game
 is actually played, not at L100.
 
@@ -162,8 +162,8 @@ rounds chamber with a click."). Priority: known weakness if carried > storm
 (affinity) > whatever is loaded > scrap. Zero keypresses; knowledge does the
 work.
 
-**This is no longer a convenience advantage, and the design must not lean on it
-as one.** The `C` key (`svc::coat_best`) gives every class a one-keystroke coat
+**This is not a convenience advantage, and the design must not lean on it as
+one.** The `C` key (`svc::coat_best`) gives every class a one-keystroke coat
 picked by the same logic - the foe's weakness first, then a school it does not
 resist, then tier. Auto-chamber is now *faster*, not *unique*, and speed alone
 is not an identity. What stays his is the shape of the commitment:
@@ -363,12 +363,11 @@ Cheap where it counts, reusing existing patterns (all verified present):
   default in read land. If the sim says that runs hot, shots-per-cell is
   the dial that prices uptime without touching the per-shot feel.
 
-## 13. The world resist/weak pass (landed)
+## 13. The world resist/weak pass
 
-The pass shipped together with the weapon coats, which were promoted from
-follow-up once it was clear placement alone left the seven Physical-locked
-classes a mathematically zero matchup game. **The
-spec lives in `CONTEXT.md`, section "The world resist/weak pass"**: theme
+The pass and the weapon coats belong together: placement alone leaves the seven
+Physical-locked classes a mathematically zero matchup game. **The
+spec lives in `COMBAT.md`, section "The world resist/weak pass"**: theme
 vocabulary and tables, the two Physical rules, census bands, the routed
 grind-rate budget, and the tests that are the contract. Its consequences for
 this class are folded into the sections above (the census and the
@@ -404,7 +403,7 @@ model in §5, the oiled bar and uptime caveats in §9, the coat exclusion in
   tax.** Physical resist exists on exactly 14 bosses and zero regulars,
   everywhere, test-enforced, and every one of those bosses guards an
   optional prize or sits at the low band where a tier-0 oil already answers
-  the fight (the solo rule in CONTEXT.md, pinned by
+  the fight (the solo rule in COMBAT.md, pinned by
   `physical_walls_never_gate_the_long_road_past_the_treant`). An oiled
   martial always clears the wall - slower, roughly two-thirds pace - so
   the Thundersmith's edge here is comfort and speed, not access. Do not

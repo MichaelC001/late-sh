@@ -78,7 +78,7 @@ const PROBE_SETTLE_MAX: Duration = Duration::from_millis(500);
 /// client sends back. russh queues writes beyond the client's SSH channel
 /// window in an uncapped internal buffer, so a client that stops reading
 /// turns the render loop into an unbounded memory sink unless we stop
-/// feeding it (2026-07-22 OOM, CONTEXT.md §10.5).
+/// feeding it (2026-07-22 OOM, `infra/RUNBOOK.md` incident log).
 struct OutputBudget {
     /// Bytes sent since the last proof that russh's pending queue was empty.
     outstanding: AtomicU64,

@@ -4,7 +4,7 @@
 - Scope: read-only spectating of live door games (the roguelikes DCSS, NetHack, Brogue, and the Zork Trilogy) and the per-player watch chat: the client in `late-ssh/src/app/door/spectate`, its wiring in `late-ssh/src/app` (state/input/render/tick, the hub rail, the live strip, the workspace cycle), and the host half, `src/watch.rs` in each of `late-dcss`, `late-nethack`, `late-brogue` and `late-zork`.
 - Primary audience: LLM agents changing the watch view, the hub's live rows, the watch chat, the live strip's door-game source, or a door host's watch sessions.
 - Status: Active
-- Parent context: `../../../../../CONTEXT.md`. Each door's own context (`../dcss/CONTEXT.md`, `../nethack/CONTEXT.md`, `../brogue/CONTEXT.md`, `../zork/CONTEXT.md`) owns its game, transport and host; this file owns what the four share. Zork's watcher suggestions (F3 types a watcher's `>` command) are Zork's own and live in its context.
+- Parent context: `../CONTEXT.md` (the door family). Each door's own context (`../dcss/CONTEXT.md`, `../nethack/CONTEXT.md`, `../brogue/CONTEXT.md`, `../zork/CONTEXT.md`) owns its game, transport and host; this file owns what the four share. Zork's watcher suggestions (F3 types a watcher's `>` command) are Zork's own and live in its context.
 
 ---
 

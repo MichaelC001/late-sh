@@ -5,17 +5,17 @@
 - Domain: BashQuest, a native late.sh original (not a foreign upstream binary): an interactive terminal game teaching Linux/Bash, 90 levels across 18 tiers, written by Tony "Hardlygospel" Hosaroygard (GPL-3.0, `github.com/hardlygospel/bashquest`), run on a PTY inside a **dedicated `late-bashquest` SSH host** and reached by late-ssh as a network-proxied door (same transport model as dopewars/DCSS).
 - Primary audience: LLM agents changing the BashQuest launcher UI, the SSH client transport, the host crate (PTY bridge / auth), input forwarding, or its config/deploy wiring.
 - Status: Active
-- Parent context: `../../../../../CONTEXT.md`
+- Parent context: `../CONTEXT.md` (the door family)
 - Stability note: `[STABLE]` sections change rarely; `[VOLATILE]` sections change with the launcher UI or build/deploy wiring.
 
 ---
 
 ## 0. Context Maintenance Protocol [STABLE]
 
-Read this after root `CONTEXT.md` whenever a task touches the BashQuest launcher, launch/leave behavior, the SSH client transport, the `late-bashquest` host (PTY bridge, auth), input forwarding, or BashQuest config/deploy wiring.
+Read this after `../CONTEXT.md` whenever a task touches the BashQuest launcher, launch/leave behavior, the SSH client transport, the `late-bashquest` host (PTY bridge, auth), input forwarding, or BashQuest config/deploy wiring.
 
 - Keep this file aligned with the SSH transport contract, the client/host split, the spawn args, config knobs, and known gotchas.
-- Update root `CONTEXT.md` when routing, the top-level screen list/tab order, or global keybindings change.
+- Update `../CONTEXT.md` when the hub roster or the door family changes, and `late-ssh/CONTEXT.md` for global keys.
 - Treat tests and code as authoritative when comments drift; patch stale comments or this file before handoff.
 - Do not add `pub use` re-export layers; `mod.rs` stays declaration-only.
 
@@ -161,10 +161,10 @@ Input capture contract (client side):
 
 ## 8. Tests And Verification [STABLE]
 
-Root policy applies: agents should not run `cargo test`/`nextest`/`clippy` as blocking verification; mention the focused command in handoff.
+Agents run the focused tests through the capped runner: `make test-llm ARGS="-p late-bashquest -p late-ssh -E 'package(late-bashquest) or test(bashquest)'"`.
 
 Inline pure tests cover:
-- Client `identity.rs` / host `identity.rs`: derivation determinism + a cross-crate known-answer fingerprint test (`SHA256:9NHbIJzzfj+WQ4YoYYlgWtjvH7N+FE2m1KYAp3X/73c` for secret `late-bashquest-kat-v1`), pinning the cross-crate contract from day one (unlike dopewars, which shipped this as a TODO).
+- Client `identity.rs` / host `identity.rs`: derivation determinism + a cross-crate known-answer fingerprint test (`SHA256:9NHbIJzzfj+WQ4YoYYlgWtjvH7N+FE2m1KYAp3X/73c` for secret `late-bashquest-kat-v1`), pinning the cross-crate contract.
 - Host `playname.rs`: sanitization (alnum+underscore only, cap at 20, empty falls back to `"player"`).
 - Host `server.rs`: auth records/sanitizes the playname, a rejected auth records none, and `effective_term` falls back to `xterm-256color` for an unresolvable or hostile TERM while passing a resolvable one through.
 - Client `state.rs`: `connect` no-op when disabled; `forward_input` without a proxy is a no-op; `strip_input_noise` drops mouse/paste but keeps keys/arrows; exit-grace opens on close and counts down; a disabled door's `HandleFlow` settles to `Missing` instead of hanging in `Loading`.
@@ -173,12 +173,6 @@ Inline pure tests cover:
 - `app/door/hub/state_test.rs` + `app/door/hub/ui_test.rs`: selector ordering, screen `next`/`prev` placement, and sidebar hit-test coordinates (updated for the 11th `HubGame`/19-row sidebar).
 
 The PTY bridge (`host.rs`) and the russh client/server loops are process/network-bound and not unit-tested; verify launch/play/logout manually against a real host.
-
-Focused commands for human verification:
-
-```bash
-cargo test -p late-bashquest && cargo test -p late-ssh bashquest
-```
 
 (Don't fold these into one `-p late-bashquest -p late-ssh bashquest` — the `bashquest` name filter would also apply to the host crate and skip its tests.)
 
@@ -192,7 +186,7 @@ cargo test -p late-bashquest && cargo test -p late-ssh bashquest
 
 ### Host-side (`late-bashquest`)
 - **Ctrl-S freeze (XON/XOFF).** Cleared on the PTY before exec, same as every other door host.
-- **`clear` needs terminfo even though bashquest.sh is "plain ANSI".** This shipped broken: the door was built on the assumption that a non-curses script has no terminfo dependency, but `clear_screen() { clear; }` does, and `runtime-bashquest` only carried the ncurses-base entry set. A ghostty client (`xterm-ghostty`, terminfo installed on the player's machine, absent on the host) got `'xterm-ghostty': unknown terminal type.` twice per redraw and a screen that never cleared, so banners/menus stacked. Fixed on both sides: `effective_term` in `server.rs` (§4) and `ncurses-term` in the runtime image. Don't reintroduce the "no terminfo concerns" assumption.
+- **`clear` needs terminfo even though bashquest.sh is "plain ANSI".** A non-curses script still has a terminfo dependency through `clear_screen() { clear; }`, so `runtime-bashquest` must carry more than the ncurses-base entry set. A ghostty client (`xterm-ghostty`, terminfo installed on the player's machine, absent on the host) got `'xterm-ghostty': unknown terminal type.` twice per redraw and a screen that never cleared, so banners/menus stacked. Fixed on both sides: `effective_term` in `server.rs` (§4) and `ncurses-term` in the runtime image. Don't reintroduce the "no terminfo concerns" assumption.
 - **Shared HOME is a feature, not a bug.** Every session getting the *same* `LATE_BASHQUEST_DATA_DIR` is deliberate (see §7), unlike almost every other door host in this codebase.
 
 ### Operational
@@ -201,7 +195,7 @@ cargo test -p late-bashquest && cargo test -p late-ssh bashquest
 - Script fetched by pinned commit (see §6); when bumping versions, update the `BASHQUEST_*` Dockerfile `ARG`s (incl. `BASHQUEST_SHA256`) and `NOTICE`.
 
 ### Possible future work
-- ~~Milestones/chips/awards for graduation~~ **Done — see §10.** Graduation reporting shipped without a screen scrape: `late-bashquest` reads its own certificate file directly (it already controls that filesystem) rather than needing a machine-readable achievement file added to bashquest.sh. Tier-completion milestones (short of full graduation) are still unimplemented; the same host-side file-check approach would extend to them if bashquest.sh ever wrote a per-tier marker file.
+- Graduation awards are in §10, without a screen scrape: `late-bashquest` reads its own certificate file directly (it already controls that filesystem) rather than needing a machine-readable achievement file added to bashquest.sh. Tier-completion milestones (short of full graduation) are still unimplemented; the same host-side file-check approach would extend to them if bashquest.sh ever wrote a per-tier marker file.
 - A public web/TUI badge for graduation (like nethack's Amulet/ascension badge on the profile modal) is not wired up. `profile_award.rs`'s category tables and `profile_modal/badges.rs`'s legend would need a `BASHQUEST_GRADUATE_AWARD_CATEGORY` entry; the `bashquest_graduates` table (§10) is intentionally separate from `profile_awards` since it holds full certificate text, not just a badge fact.
 
 ---

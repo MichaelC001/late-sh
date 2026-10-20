@@ -43,8 +43,8 @@ to the doors.
 `LeaderboardService` refreshes `LeaderboardData` from DB every 5 minutes, and
 only while at least one session is subscribed, publishing it through a
 `watch::Receiver<Arc<LeaderboardData>>`. The cadence is deliberately coarse:
-the old refresh pass was 13% of all DB execution time at 30s (SCALE.md
-DB Cost Ranking). Today the pass is **fifteen queries**: each board family is
+a 30s pass measured 13% of all DB execution time (SCALE.md, DB Cost
+Ranking). Today the pass is **fifteen queries**: each board family is
 one union query ranked with `PARTITION BY game`; the Lateania boards add two
 (both O(players) over `mud_characters`) and the roguelike-door boards two
 (one query per window over `door_runs`/`door_milestones`, all three families
@@ -112,11 +112,9 @@ Monthly windows use UTC calendar months. No refresh query scans full history.
 ## The door log pipe (what fills `door_runs`/`door_milestones`)
 
 The three external roguelike doors feed their boards, badges, chips, and feed
-lines from **host-written log files, never from the terminal**. Shipped in four
-phases over 2026-08-07..10 (DCSS, NetHack + scrape removal, Brogue, then the
-DCSS file publishing). The build record (`devdocs/PLAN-ROGUELIKE-BOARDS.md`)
-was deleted on 2026-09-03; migrations 136 and 140 still name that path in
-their header comments, and this section is where they now lead.
+lines from **host-written log files, never from the terminal**. Migrations 136
+and 140 name a deleted plan (`devdocs/PLAN-ROGUELIKE-BOARDS.md`) in their
+header comments; this section is where they lead.
 
 - **Transport: a stats SSH session on the door host.** Each host reserves one
   SSH username, `late_stats` (inside the already-reserved `late_*` handle
@@ -164,9 +162,8 @@ their header comments, and this section is where they now lead.
   fact row is freshly inserted AND the event is inside a 10-minute recency
   window, so a backfill of years of history never floods the feed. "Started a
   game" stays connect-based in the client; it never was a scrape.
-- **Never build boards or badges on a screen scrape.** NetHack's vt100 scrape
-  was acceptable for cosmetic flair and was deleted in Phase 2; anything that
-  pays chips or ranks a player reads the spoof-proof host files. Non-scoring
+- **Never build boards or badges on a screen scrape.** Anything that pays
+  chips or ranks a player reads the spoof-proof host files. Non-scoring
   games are excluded at the source, per door: wizard/explore xlogfile lines are
   flagged and skipped (and explore mode is locked off at the sysconf, since
   livelog lines carry no flag), crawl never logs wizard games, Brogue writes no
@@ -198,12 +195,11 @@ their header comments, and this section is where they now lead.
 - **Boards per door are uniform**: Wins (all-time), Deepest dive and Top score
   (monthly + all-time), joining the Games rail group. Adding a fourth door costs
   zero extra queries.
-- **Backfilled historical wins grant** badges and chips (approved 2026-08-07);
+- **Backfilled historical wins grant** badges and chips (by decision);
   the idempotence above is what makes that safe.
 - **Brogue variants do not count.** Rapid and Bullet Brogue write their own
   files beside the standard one and the host never opens them.
-- **Badge codes** `DCO`/`DCW` (approved 2026-08-07) and `BRE`/`BRM` (approved
-  2026-08-08).
+- **Badge codes** `DCO`/`DCW` and `BRE`/`BRM`.
 
 ## The page
 
@@ -219,7 +215,7 @@ standings through every loaded rank (see Page navigation).
 
 - Migration 077 adds `profile_awards`, one permanent row per user/category/month placement; 081 enforces top-3.
 - `LeaderboardService::start_profile_award_snapshot_loop` creates missing previous-UTC-month rows and leaves existing rows frozen. **Every board is settled by the first pass that writes a row for it**: the insert's final `NOT EXISTS (row for this category and period)` makes every later pass (the 24h fallback, a restart, another replica) insert nothing for that board. Last month's inputs keep moving after the rollover (a mod removal in the gallery, the Late Time spill, a best score that leaves the window when its owner beats it), and the conflict key includes the user, so without the guard a later ranking would hand whoever it lifted into the top 3 a fresh row beside the three already written. It ticks hourly, but the tick is a clock read: the DB pass runs only at startup, when the previous UTC month changed since the last successful pass (so badges land within an hour of the month rollover, which matters because the chat-label query filters live on the previous month and matches nothing until the rows exist), or on a 24h fallback; a failed pass retries on the next hourly tick. The gate is the pure `svc.rs::should_snapshot_awards`, tested beside `should_refresh`. Awarded categories: `top_chips`, `arcade_wins`, `tetris` (renders as Lateris), `twenty_forty_eight`, `snake`, `artboard` (the gallery: best piece's applause per hanger, 3 applause to count, code `ART`), ranks 1-3, plus `crown`, `late_time` and `top_drinkers`. **The gallery award pays** (`gallery_prize_chips`: 40,000 / 15,000 / 10,000, `ChipMove::ArtboardPrize`, `source_ref` the award row id): the insert runs with `RETURNING` inside one transaction and only the rows it created are paid. The settle rule above is what keeps it paying once: the daily re-run and a second replica's pass insert nothing and pay nothing even when the standings moved. It ranks with `ROW_NUMBER` over applause then earliest hang, never `RANK`, so a tie cannot pay two first prizes. The function takes `&mut Client` for that transaction and returns `AwardSnapshotOutcome { inserted, gallery_prizes_paid }`.
-- **The crown (`CRWN`) is monthly but rankless.** The `crown_holder` CTE in `snapshot_previous_month_profile_awards` takes last month's latest `crown_reigns` row (by `taken_at`, whether or not it is still open, since the rollover is a read-time rule with no sweeper) and grants rank 1 with `paid_chips` as the score. One holder means a `#1` on the badge would be noise, so `award_badge` prints it bare. That splits two properties that used to coincide: `is_rankless_award` (no rank digit; milestones plus the crown) and `MILESTONE_AWARD_CATEGORIES` (shown in chat labels whatever month they were earned; milestones only). The crown is the one award chat does not print as a code: the label query skips it and `chat_award_categories` keeps it out of the Chat badges picker, because chat paints the month's winner as the laureate's 👑 before the name instead (resolved from `crown_reigns` by `CrownService`, same rule as the CTE). The profile lists `CRWN` like any award. The full mechanic is `late-ssh/src/app/chat/CONTEXT.md` §9c.
+- **The crown (`CRWN`) is monthly but rankless.** The `crown_holder` CTE in `snapshot_previous_month_profile_awards` takes last month's latest `crown_reigns` row (by `taken_at`, whether or not it is still open, since the rollover is a read-time rule with no sweeper) and grants rank 1 with `paid_chips` as the score. One holder means a `#1` on the badge would be noise, so `award_badge` prints it bare. That splits two properties that otherwise coincide: `is_rankless_award` (no rank digit; milestones plus the crown) and `MILESTONE_AWARD_CATEGORIES` (shown in chat labels whatever month they were earned; milestones only). The crown is the one award chat does not print as a code: the label query skips it and `chat_award_categories` keeps it out of the Chat badges picker, because chat paints the month's winner as the laureate's 👑 before the name instead (resolved from `crown_reigns` by `CrownService`, same rule as the CTE). The profile lists `CRWN` like any award. The full mechanic is `late-ssh/src/app/crown/CONTEXT.md`.
 - **Late Time (`LATE`) is a single-holder monthly award too.** The `late_time_leader` CTE takes `RANK() = 1` over last month's `user_online_time_monthly` (an exact-millisecond tie shares it), score in milliseconds, no chips. A segment belongs to the month it began, so last month's totals can still grow for one five-minute checkpoint past the rollover; the board is settled by the first pass like every other, so a later pass cannot crown a second player who overtook in that spill. The crown, Late Time and Top Drinkers together are `profile_award.rs::SINGLE_HOLDER_AWARD_CATEGORIES`, which `is_rankless_award` and the badge-legend test both read.
 - **Top Drinkers (`DRNK`) is the third single-holder monthly award.** The `top_drinker` CTE takes `RANK() = 1` over last month's summed `drink_pours.points`, so a tie shares it (buzz totals are round numbers, so ties are likelier than on Late Time), score in buzz points, no chips. Single and unpaid on purpose: buzz is bought with chips and a gifted drink pours 400 for 200 chips, so a ranked ladder or a prize would be worth farming between friends.
 - One-time rankless milestone awards share the table (granted immediately, shown regardless of award month): Lateania's four crowns (`LMG`, `LKN`, `LYS`, `LKA`, 10k each), NetHack (`NHA` Amulet 20k, `NHY` ascension 40k), DCSS (`DCO` Orb pickup 20k, `DCW` escape 40k), Brogue (`BRE` escape 20k, `BRM` mastery 40k) — all three door pairs granted by the log pipe's award sink — Green Dragon (`GDS`, 10k), and A Dark Room (`ADE` the ascent won 15k, `ADB` the ascent won holding the fleet beacon off the ravaged battleship's command deck 20k; both granted by `door/darkroom/svc.rs::reward_escape`, migrations 143 and 145, claimed separately), and deadchannel (`SIG`, the Old Signal put down, granted by `deadchannel/fight/svc.rs` on every kill and landing once; the kill pays 40,000 chips once per mark and at most once every 30 days, `ChipMove::OldSignalSlain`, through the door milestones' two-gate grant). **The badge is once per account; the chips repeat** (migrations 158, 207, and 208): the roguelike doors pay once per ingested run behind a 30-day per-milestone lockout, Lateania once per `mud_characters.id` behind the same lockout, Green Dragon for every kill (the kill resets the character), and A Dark Room for every run that gets out (the ending wipes the save). A badge row therefore says the feat happened, never how many times it paid; `game_payout_claims` and `chip_ledger` say that. The set of rankless milestone categories is `profile_award.rs::MILESTONE_AWARD_CATEGORIES`, which is what `award_badge` checks for the no-rank-suffix rule and what the chat-label query binds as a parameter rather than respelling in SQL. Chat author labels keep only the highest badge a player holds on each game's ladder (`profile_award.rs::BADGE_LADDERS` is the single ordering, applied by `user.rs::chat_profile_award_badges`); profile views show all, plus the always-appended `Badge Codes` legend. **A new badge has to be added to the Leaderboards guide (`app/profile_modal/badges.rs::guide_lines`) and the help modal (`app/help_modal/data.rs`) by hand** — those are authored prose, not generated, so `app/profile_modal/badges_test.rs` asserts both cover every milestone category (and the crown) and names any that a change forgot. Note the collapse rule is a display convention and does not imply a grant rule: `BRM` collapses `BRE` in chat labels, `NHY` collapses `NHA`, `DCW` collapses `DCO`, and `ADB` collapses `ADE`, but every one of those is granted only by its own line or ending; nothing back-grants the badge it collapses.

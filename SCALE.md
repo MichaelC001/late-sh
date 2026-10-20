@@ -1,6 +1,6 @@
 # late.sh Scale Notes
 
-This document records the current production capacity posture, what was discovered during the HN-spike investigations (June 2026 and the 2026-07-22 OOM, see CONTEXT.md §10.5), the DB query findings, the shipped render-cost program, and the roadmap toward roughly 1000 concurrent users.
+This document records the current production capacity posture, what was discovered during the HN-spike investigations (June 2026 and the 2026-07-22 OOM, see the incident log in `infra/RUNBOOK.md`), the DB query findings, the shipped render-cost program, and the roadmap toward roughly 1000 concurrent users.
 
 ## Current Infra Status
 
@@ -79,7 +79,7 @@ Operational note: changing the CNPG memory limit briefly removed the `postgres-r
 Applied 2026-07-22 (OOM incident):
 
 - Raised `service-ssh` memory limit from `4Gi` to `8Gi` and request from `512Mi` to `2Gi`, first via in-place pod resize (Kubernetes 1.34 `kubectl patch --subresource resize`, zero restart, zero dropped sessions), then persisted in Terraform
-- Shipped the SSH output-budget guard and pair-WS hardening (see Pain Point 1 and CONTEXT.md §10.5)
+- Shipped the SSH output-budget guard and pair-WS hardening (see Pain Point 1 and the `infra/RUNBOOK.md` incident log)
 - In-place resize caveat: it patches only the running pod; the Deployment template must come from Terraform or the next rollout reverts the limit
 
 ## Biggest Pain Points
@@ -95,7 +95,7 @@ The render-cost program (see its own section below) removed both the fixed tick 
 - The per-frame constant factors from the 2026-07-22 audit are fixed (run-length clubhouse spans instead of per-cell `String`s, 1 Hz presence cache instead of a per-render `active_users` lock).
 - The floor by product decision: a session with the right sidebar visible paints at ~7.5 fps and never settles fully clean. Two panels hold that edge: the bonsai sway (always) and the ambient equalizer (only while a client is paired and unmuted).
 
-The memory failure mode is also closed: the 2026-07-22 OOM (full writeup in CONTEXT.md §10.5) was frames rendered into russh's uncapped per-channel output queue for clients that had stopped reading. Shipped fix: a per-session `OutputBudget` in `late-ssh/src/ssh.rs`; over 32 MB outstanding the render loop pauses, and 30 s of sustained stall disconnects the session. Metrics: `late_ssh_render_stall_{skips,disconnects}_total`.
+The memory failure mode is also closed: the 2026-07-22 OOM (full writeup in the `infra/RUNBOOK.md` incident log) was frames rendered into russh's uncapped per-channel output queue for clients that had stopped reading. Shipped fix: a per-session `OutputBudget` in `late-ssh/src/ssh.rs`; over 32 MB outstanding the render loop pauses, and 30 s of sustained stall disconnects the session. Metrics: `late_ssh_render_stall_{skips,disconnects}_total`.
 
 Measured in prod 2026-07-24 (v0.41.0, single `service-ssh` pod, 60 live sessions):
 
@@ -116,7 +116,7 @@ Re-derived ceiling: at ~26.5 mcores/session, `service-ssh` reaches about **260 s
 
 **The input queue does overflow in prod, and it is fine.** 2,306 `session input queue full; dropping inbound ssh input` warnings (`ssh.rs:1299`, `queue_cap=256`) over the 7 days to 2026-08-18. Before reading that as input-latency regression: the events arrive **sub-millisecond apart** in 5 tight bursts (one hour held 1,511 of them), which is a paste bomb or an escape-sequence flood filling a 256-slot queue instantly, not a user losing keystrokes while typing. This is the bounded queue doing its job instead of growing without limit. Recorded so the next person who greps for it does not go hunting a latency bug. If it ever appears spread evenly across a session instead of bunched, that *would* be the real thing.
 
-Input latency (moved here from the retired CONTEXT.md §8.5): keystrokes land in a per-session bounded queue and the render loop wakes on input, so ordinary keystrokes never wait on the app mutex before being queued. The remaining risk under high fan-out is that `render_once` still holds the app lock across synchronous `app.tick()` + `app.render()`, so a slow tick delays that session's input-to-frame path; the input queue closed the cadence gap, not the lock-held-across-tick stall. Chat-specific row-cache, snapshot, unread-count, and scoped-loading performance notes live in `late-ssh/src/app/chat/CONTEXT.md`.
+Input latency: keystrokes land in a per-session bounded queue and the render loop wakes on input, so ordinary keystrokes never wait on the app mutex before being queued. The remaining risk under high fan-out is that `render_once` still holds the app lock across synchronous `app.tick()` + `app.render()`, so a slow tick delays that session's input-to-frame path; the input queue closed the cadence gap, not the lock-held-across-tick stall. Chat-specific row-cache, snapshot, unread-count, and scoped-loading performance notes live in `late-ssh/src/app/chat/CONTEXT.md`.
 
 ### 2. `service-ssh` cannot safely scale horizontally yet
 
@@ -140,12 +140,30 @@ Target shape for 1000 users: a handful of SSH pods after the render-cost program
 
 **The app half of the problem (started 2026-09-02).** Session ownership and pair-WS routing are the transport half; the list above is the app half, and it only shrinks if features stop adding to it. Two things now hold that line:
 
-- **The rule.** Root CONTEXT.md §0 "Multi-replica rule": every new feature is designed as if several `late-ssh` processes were already running. Truth lives in Postgres, once-only actions are conditional `UPDATE ... WHERE` claims or advisory locks, cross-session fan-out is `LISTEN/NOTIFY`, background work dedupes through the DB, switches are rows. Presence is the one named exception and may not grow. The rule is bounded by "Replica-ready, not over-engineered" in the same section: one user's sessions on different replicas need not sync live, and read-on-open counts as replica-ready.
-- **The per-user shape (2026-09-17).** Root CONTEXT.md §0 "Reference shape: per-user state": pure rules, one writer under the row lock, a per-session render mirror, and a notify that carries only the owner's user id. Bonsai is the first migrated domain (`late-ssh/src/app/bonsai`) and the template for the pet, the tank, and per-account settings. Its cost per change is one notify per replica plus one UUID compare per local session on an existing tick, so it is nowhere near the 1000-user budget; it is the wrong shape for high-frequency shared surfaces (Artboard, house tables), which need room- or table-scoped routing instead.
+- **The rule.** Root CONTEXT.md, "The multi-replica rule": every new feature is designed as if several `late-ssh` processes were already running. Truth lives in Postgres, once-only actions are conditional `UPDATE ... WHERE` claims or advisory locks, cross-session fan-out is `LISTEN/NOTIFY`, background work dedupes through the DB, switches are rows. Presence is the one named exception and may not grow. The rule is bounded by "Replica-ready, not over-engineered" in the same section: one user's sessions on different replicas need not sync live, and read-on-open counts as replica-ready.
+- **The per-user shape.** Root CONTEXT.md, "Per-user state", worked in `late-ssh/src/app/bonsai/CONTEXT.md`: pure rules, one writer under the row lock, a per-session render mirror, and a notify that carries only the owner's user id. Bonsai is the first migrated domain (`late-ssh/src/app/bonsai`) and the template for the pet, the tank, and per-account settings. Its cost per change is one notify per replica plus one UUID compare per local session on an existing tick, so it is nowhere near the 1000-user budget; it is the wrong shape for high-frequency shared surfaces (Artboard, house tables), which need room- or table-scoped routing instead.
 
 The first feature built under the rule is the first-contact haunting (`late-ssh/src/app/deadchannel/`): every daily and lifetime cap a claim on the user row, the once-ever stamps claims, the AI bio screen claimed per bio text. It is the template for the migration of the list above.
 
-What each remaining item needs is not the same, which is why "make it a row" is the wrong instinct for most of them (the per-row plan lives in root CONTEXT.md §7 "Multi-replica readiness"):
+The per-structure ledger. A design that cannot meet the multi-replica rule adds its row here; new features never do:
+
+| Structure | Location | Current | To externalize |
+|-----------|----------|---------|----------------|
+| `active_users` / `conn_counts` | `State` | In-memory counters | Shared store (Redis or DB) |
+| `SessionRegistry` | `session.rs` | In-memory `token → mpsc` | Stays local: sticky sessions route SSH + WS to same replica |
+| Chat/Article events + snapshots, Profile per-user snapshots | `broadcast` / `watch` channels | In-process only | Postgres `LISTEN/NOTIFY` or Redis pub/sub for cross-replica fan-out |
+| @bot + @graybeard chat | `GhostService` | Always-on presence + AI chat tasks; both are dedicated DB users with fixed fingerprints | Single-leader to avoid duplicate chat responses. During pod drain today, the old pod cancels bot tasks immediately. |
+| Leaderboard data | `LeaderboardService` | DB-backed `watch` channel, 300s refresh | Already DB-backed; each replica runs its own refresh loop: duplicate work but no write conflict |
+| Chat translation | `TranslationService` (`app/ai/translate.rs`) | DB-backed cache + in-memory single-flight set, daily call cap, and concurrency gate, all per replica | Cache is already shared through Postgres, so correctness holds across replicas; only the dedupe and the cap are per-process, meaning N replicas can each spend up to the cap and can duplicate one call for the same message. Both are acceptable at current scale; a shared counter would be the fix. |
+| `SharedScratchpadRegistry` | `scratchpad/registry.rs` | In-memory `/pair` intents + `user_id → pairing` | Stays local by design: `/pair` pairings are explicitly ephemeral, acceptable to drop on failover |
+| Drunk map | `clubhouse/drunk.rs` (`State.drunk_map`) | A per-process mirror of `user_drinks`, seeded from the table every 60s by each replica's ghost task and bumped on a local pour | Correct across replicas (the table is the truth); a pour on another replica shows here on the next seed, up to a minute late. A notify would make it instant. |
+| Nightcap `SharedWall` | `state.rs` (`State.nightcap_house`) | One process-global wall (TV captions, tab board, carvings) refreshed by one task per process; a carve updates it in place | A second replica shows a carve late until its next refresh (5 min), or needs the notify shape from root `CONTEXT.md` |
+| Bonsai | `app/bonsai` (`svc.rs`, `session.rs`) | Replica-clean: the row is the truth, every write runs under the row lock in `BonsaiService`, sessions mirror the row and refresh over `bonsai_changed`. The reference per-user shape (root `CONTEXT.md`). | Nothing. |
+| First-contact haunting | `app/deadchannel/haunt` | Replica-clean: staff only is a code rule, not a switch; every cap and stamp is a conditional claim on the user row, the bio screen is claimed per bio text. Only the per-session dice are local, by design. | Nothing. One accepted race: two devices playing a whisper in the same window both play it, one mark lands (claiming at arming would burn it on every dropped session). |
+| Presence (the tavern crowd, the Nightcap stools, the night city street) | `app/presence` (`svc.rs`, `state.rs`, `session.rs`), wire in `late-core` `models/presence.rs` | Replica-clean: one record per session (its tavern seat or cell, its stool, its street runner, its `lounge` flag for the deadchannel spawner); each replica's task batches its sessions' changed records onto `presence` (one notify per 200ms flush, a full heartbeat every 3s) and drops another replica's records 10s after its last heartbeat. Rooms derive from the records (`clubhouse/crowd.rs`, `clubhouse/nightcap/stools.rs`, `deadchannel/street/state.rs`); a session picks its own seat or stool, the earlier claim keeping a contested one. Counter `late_ssh_presence_total{beat}` (published, publish_failed, heard, rejected, expired) and gauge `late_ssh_presence_records{scope}` (local: a replica's own sessions; all: every record it holds, which should read the same on every replica), on the dashboard's Presence row. Nothing persisted. | Nothing. The bots' online flags in the tavern still read the local `active_users`, so on a replica without the ghost bots the bar reads empty of them. |
+| `StreamRegistry` | `app/stream/registry.rs` | In-memory live-stream registry: one stream per user, capability ids, watcher heartbeats | Stays local by design: a stream dies with the process (the room and its history are DB rows and survive); the streamer just runs `/golive` again |
+
+What each remaining item needs is not the same, which is why "make it a row" is the wrong instinct for most of them:
 
 - session registry, paired client registry: stay pod-local by design under sticky ownership (the transport half, item 8 below)
 - active user presence, clubhouse lobby, scratchpad pairings, stream registry: a shared presence store (Redis) or an explicit "pod-local, dies with the pod" decision per structure; the round's buyer roster is where a wrong answer is user-visible (the clubhouse frame no longer shows a headcount)
@@ -542,13 +560,13 @@ the kernel's send buffer; on its own that setting only moves the queue. The
 
 ## Render-Cost Program (shipped 2026-07-22/23)
 
-Consolidated from RENDER_COST.md (deleted). The canonical description of the gate contract and the adaptive tick lives in CONTEXT.md §2.6; this section keeps the scale-relevant summary, the rules that must not be violated, and the open follow-ups.
+Consolidated from RENDER_COST.md (deleted). The canonical description of the gate contract and the adaptive tick lives in `late-ssh/CONTEXT.md`, Render loop; this section keeps the scale-relevant summary, the rules that must not be violated, and the open follow-ups.
 
 ### What shipped
 
 - **Phase 0, per-frame constant factors (2026-07-22):** counter-validated chat row caches (`ChatRowsVersions`, see `late-ssh/src/app/chat/CONTEXT.md`), presence cached at 1 Hz, per-session `targeted_event_rx` for single-recipient chat events, 64 KB BufWriter frame path, run-length clubhouse spans, Arc-shared nonogram library, and the `OutputBudget` guard (32 MB unacked pause, 30 s disconnect).
 - **Phase 1, dirty gate (2026-07-22):** `App::tick() -> bool`; `render_once` (ssh.rs) computes `changed = signal.dirty.swap(false) | input drained | app.tick()` and skips `terminal.draw()` entirely when clean (ratatui's diff does not advance on skip, no forced repaint needed).
-- **Phase 1 tightening + domain sweep (2026-07-22/23):** every domain state exposes `tick() -> bool` under the dirty contract ("rule of three", CONTEXT.md §2.6): chat snapshot drains report real change via full compares, modals are event-driven, house tables and door games report their watch peeks and go quiet between rounds, the ultimate cooldown became minute-granularity riding the per-minute global frame. The FFT audio visualizer was replaced by a stateless synthetic ambient equalizer (`viz::render_eq`), so no audio state drives rendering at all.
+- **Phase 1 tightening + domain sweep (2026-07-22/23):** every domain state exposes `tick() -> bool` under the dirty contract ("rule of three", `late-ssh/CONTEXT.md`): chat snapshot drains report real change via full compares, modals are event-driven, house tables and door games report their watch peeks and go quiet between rounds, the ultimate cooldown became minute-granularity riding the per-minute global frame. The FFT audio visualizer was replaced by a stateless synthetic ambient equalizer (`viz::render_eq`), so no audio state drives rendering at all.
 - **Phase 2, adaptive world tick (2026-07-23):** the fixed 66 ms interval is gone. Each render pass returns `App::wake_hint() -> Duration` and the loop sleeps exactly that long unless input or a `RenderSignal` wake lands first. Tiers (`app/tick.rs` consts): `HOT_TICK` 66 ms (splash, 2 s post-input window, active ultimate effect, house tables, open arcade game, bonsai modals), `ANIM_HALF_TICK` 132 ms (Clubhouse, visible sidebar, pet), `ANIM_QUARTER_TICK` 264 ms (aquarium surfaces), `IDLE_TICK` 500 ms floor. Floor ticks only drain channels; worst-case latency for an unprompted event while idle is one floor interval. Enablers: `marquee_tick` is wall-clock-derived, every frame edge is a period-index compare, and bonsai passive growth was removed entirely (product decision) so no wall-time accumulator depends on tick cadence.
 
 Result: idle sessions cost 2 cheap clean ticks/sec and about 1 render/min. A sidebar-visible session holds ~7.5 fps (about 37 draws per 5 s) by product decision: the bonsai sway animates unconditionally, and the ambient eq animates while a client is paired and unmuted.
@@ -562,7 +580,7 @@ Gating the `anim_half` sidebar edge on a paired client is NOT the knob, and woul
 - Peek receivers BEFORE draining (`has_changed()` on watches, `!is_empty()` on mpsc/broadcast). Exception: fixed-cadence publishers (chat snapshot, audio queue) report real change from the drain itself. A watch that is only `borrow()`ed at render must be marked seen (`borrow_and_update`) by whoever peeks it, or the peek latches dirty forever.
 - Nothing paints at full rate. The ambient eq, pet, bonsai sway, and clubhouse ambience share the half-rate edge (`anim_half`, ~7.5 fps); aquarium steps on the quarter edge (~3.8 fps); everything else is slow/static. Marquee moves 3 columns/sec in 1 s steps so speed costs no extra frames.
 - `is_multiple_of` on the tick counter is a bug pattern under sparse ticking; every edge compares its period index against the previous tick's.
-- A blanket `changed = true` or fixed cadence needs a written justification at its call site (the current survivors are listed in CONTEXT.md §2.6).
+- A blanket `changed = true` or fixed cadence needs a written justification at its call site (the current survivors are listed in `late-ssh/CONTEXT.md`).
 
 ### Metrics and observability
 
@@ -687,7 +705,7 @@ Below this, nothing measured exceeds 0.2%. Re-rank after the deploy rather than 
 
 ## DB Investigation
 
-`pg_stat_statements` was not enabled during the first investigation; it is now preloaded and installed in prod (used during the 2026-07-22 investigation; query recipes live in CONTEXT.md §10.2.2).
+`pg_stat_statements` was not enabled during the first investigation; it is now preloaded and installed in prod (used during the 2026-07-22 investigation; query recipes live in `infra/RUNBOOK.md`).
 
 The first investigation used:
 
@@ -815,7 +833,7 @@ Started 2026-09-02. Nitpicks found while reviewing, none of them a problem at to
 | `start_notify_worker` in `app/hub/shop/svc.rs` and `app/hub/dailies/svc.rs` | Each worker handles its queue one notify at a time, and these two run a per-user query per notify (`chip_user_changed` fires on every chip move). Re-read-only workers (flags, news, runner looks) already collapse a burst into one read; crown and pot apply every payload in order by design. A chip-heavy burst lags only shop panels on that replica, never another domain, since each worker has its own queue. | Drain what is queued, dedupe by user id, then refresh once per distinct user. Local to each worker, no new infrastructure. |
 | Any listener for a stream-shaped table (chat messages, feeds, news, notifications) built during the Pain Point 2 app-half migration | The re-read-only listeners (news, daily matches) re-read their whole table on every notify. That shape does not transfer to tables that grow. | Carry the row id in the payload as a hint, fetch rows with id greater than the last one seen (UUID v7 orders by time), and run the same query after a reconnect. The payload stays untrusted; the table stays the truth. |
 | `late-core/src/models/marketplace.rs` (9 call sites), `quest.rs` (2), `crown.rs`, `pot.rs`, `chat_message_gild.rs`, `bonsai.rs` (`Tree::notify_changed`, one call site per write in `BonsaiService`) | App-side `SELECT pg_notify(...)` after the write. Migration 128 already records why this is fragile: a new write path forgets the notify and nobody notices until a replica is stale. Chips use a trigger instead. | Move each channel's notify into an `AFTER INSERT OR UPDATE` trigger as the model is touched, delete the app-side call, keep the channel name constant in the model. |
-| `late-ssh/src/app/deadchannel/haunt/svc.rs`, splash whisper | Two devices of one user on the held door in the same window both play the whisper; only one mark lands. Already in root CONTEXT.md §7. | Claim before play instead of after, at the cost of the door opening a round trip later. Only worth it if someone notices. |
+| `late-ssh/src/app/deadchannel/haunt/svc.rs`, splash whisper | Two devices of one user on the held door in the same window both play the whisper; only one mark lands. Already in the Pain Point 2 ledger. | Claim before play instead of after, at the cost of the door opening a round trip later. Only worth it if someone notices. |
 
 ### Root-file thinning (measured 2026-09-02)
 
@@ -944,7 +962,7 @@ Fixed in code, pending deploy verification. See Pain Point 6 for the shape and t
 
 ### 6. `pg_stat_statements` tracking
 
-Done: preloaded and installed in prod; query recipes in CONTEXT.md §10.2.2. Keep watching top total execution time, top mean, top calls, top temp bytes, and top shared/local block reads after traffic events.
+Done: preloaded and installed in prod; query recipes in `infra/RUNBOOK.md`. Keep watching top total execution time, top mean, top calls, top temp bytes, and top shared/local block reads after traffic events.
 
 **Caveat learned 2026-08-18:** the window has never been reset, so cumulative shares are meaningless across a deploy that changes query shapes (see the warning at the top of DB Cost Ranking). Two workable habits: reset the window after any deploy that rewrites SQL, or rank by a **two-snapshot delta** rather than by cumulative totals. The delta method needs no reset, preserves history, and is what verified the 2026-07-26 fixes. `stats_since` also helps: it dates each entry's creation, which is enough to tell deploy generations of the same query apart.
 
@@ -964,7 +982,7 @@ Minimum viable design:
 
 Do not scale `service-ssh` randomly before this exists. The proxy half already pays for itself at one replica: it closes Pain Point 10.
 
-The app half runs in parallel and is the longer job: work the root CONTEXT.md §7 "Multi-replica readiness" table row by row, in the order the transport design needs them (presence first, since sticky sessions alone do not make a round's roster right; ghost single-leader second, since duplicate bot replies are the first thing users would notice; the translation cap last). New features never add rows to that table (CONTEXT.md §0 rule); a switch still held in process memory becomes a row as it is touched (Pain Point 2).
+The app half runs in parallel and is the longer job: work the Pain Point 2 ledger row by row, in the order the transport design needs them (presence first, since sticky sessions alone do not make a round's roster right; ghost single-leader second, since duplicate bot replies are the first thing users would notice; the translation cap last). New features never add rows to that table (root CONTEXT.md, multi-replica rule); a switch still held in process memory becomes a row as it is touched (Pain Point 2).
 
 ### 9. Add PgBouncer
 

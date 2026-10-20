@@ -318,7 +318,7 @@ late-ssh prod profile.
 deploy-time rollout step: deploy a parser-capable image first, then set the
 GitHub environment variable `IRC_PROXY_EMIT=1` and run a subsequent
 infrastructure deployment. Rollback reverses the order. The prod profile always
-accepts PROXY headers, so the old accept-side toggle is gone.
+accepts PROXY headers, so there is no accept-side toggle.
 
 ### IPv6 edge proxy
 

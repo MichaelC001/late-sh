@@ -92,7 +92,7 @@ fn is_system_author(username: &str) -> bool {
 }
 
 /// The two marks a room's rows draw against, resolved for one room by the
-/// caller. See `chat/CONTEXT.md` §The Two Marks: they never feed each other,
+/// caller. See `chat/MARKS.md`: they never feed each other,
 /// so they arrive as two fields rather than one cursor.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ChatDividers {

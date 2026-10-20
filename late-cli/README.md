@@ -160,7 +160,7 @@ On WSL, audio startup failures now include a targeted hint covering `DISPLAY`, `
 
 For debugging, `late --verbose` writes parent CLI logs to a file when stderr is
 an interactive terminal, so debug output does not corrupt the TUI. The startup
-notice prints the path. Set `LATE_LOG_STDERR=1` to force the old stderr behavior,
+notice prints the path. Set `LATE_LOG_STDERR=1` to log to stderr anyway,
 or redirect stderr with `late -v 2>late-debug.log`.
 
 The embedded YouTube helper writes WebKit/GStreamer stderr to

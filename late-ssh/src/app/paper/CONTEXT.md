@@ -8,7 +8,7 @@
 
 A newspaper, not a per-reader summary. `/summary` is per viewer because its window is the reader's own device mark. The paper's window is fixed (edition dated D covers the UTC day D-1), so one room's column reads the same to everyone and is printed exactly once. Cost is per room per day, never per reader.
 
-It is also where the operator's word lands: every `#announcements` post from the covered day prints at the top, as written, with no model in the path and no threshold. The paper replaced the old login announcements modal on 2026-09-11. That changed the delivery guarantee: the modal reached every reader at their next login, the paper reaches them in the next day's edition, and only once at login. A same-day notice ("maintenance tonight") is not something the paper can carry; the operator posts a day ahead, or the room itself is the channel.
+It is also where the operator's word lands: every `#announcements` post from the covered day prints at the top, as written, with no model in the path and no threshold. There is no login announcements modal: the paper reaches a reader in the next day's edition, once, at login. A same-day notice ("maintenance tonight") is not something the paper can carry; the operator posts a day ahead, or the room itself is the channel.
 
 ## Module map
 

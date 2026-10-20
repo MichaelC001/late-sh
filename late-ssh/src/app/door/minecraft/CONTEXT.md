@@ -3,8 +3,8 @@
 ## Metadata
 - Scope: the Minecraft card in the Games hub (`late-ssh/src/app/door/minecraft`) and the server it describes (`infra/minecraft.tf`, `scripts/minecraft_whitelist_add.sh`).
 - Upstream: Paper (Minecraft Java Edition server) via the `itzg/minecraft-server` image, plus the GriefPrevention and Simple Voice Chat plugins from Modrinth.
-- Status: Active. Server live since 2026-09-13.
-- Parent context: `../../../../../CONTEXT.md`.
+- Status: Active.
+- Parent context: `../CONTEXT.md` (the door family).
 
 ## Summary
 
@@ -36,7 +36,7 @@ Minecraft is not a door. Nothing runs inside `late-ssh` and there is no proxy, P
 - Ports 25565/TCP (game) and 24454/UDP (voice) are pod **hostPorts** on `agent-1`, IPv4 only. Open both in any Hetzner Cloud Firewall attached to `agent-1`. It is deliberately not an ingress-nginx TCP passthrough: every nginx reload (cert-manager renewals included) drains workers after 240 s and would kick every player.
 - DNS is managed by hand in Cloudflare, DNS-only (never proxied: raw TCP):
   - `mc.late.sh A 65.21.240.242` (agent-1). Players connect to `mc.late.sh`.
-  - `_minecraft._tcp.late.sh SRV 0 5 25565 mc.late.sh.` lets the client accept plain `late.sh`. Not created yet as of 2026-09-13, so plain `late.sh` lands on `server-1` and fails.
+  - `_minecraft._tcp.late.sh SRV 0 5 25565 mc.late.sh.` lets the client accept plain `late.sh`. It does not exist yet (adding it is a `SCALE.md` follow-up), so plain `late.sh` lands on `server-1` and fails.
 - `late.sh` itself resolves to `server-1`, and the `*.late.sh` wildcard is Cloudflare-proxied, which is why Minecraft needs its own explicit A record.
 
 ## Access
@@ -58,7 +58,7 @@ Minecraft is not a door. Nothing runs inside `late-ssh` and there is no proxy, P
   - PvP is protected inside claims; logging out within 15 s of combat kills you. Death drops are NOT locked, because the world counts as a PvP world.
 - Voice: Simple Voice Chat runs on its defaults: proximity voice within 48 blocks, whisper 24, groups allowed. Players need the client mod (Fabric, NeoForge, Forge, or Quilt) for the server's game version; vanilla clients join and play without voice.
 - Vanilla gamerules stay at defaults: `mob_griefing` on (villager breeding and farming and piglin bartering need it, so automation farms work), `pvp` on, `keep_inventory` off, `locator_bar` on. Difficulty `normal`, view distance 10, max 20 players, spawn protection 16.
-- **Gamerule names are snake_case since 26.x.** `gamerule mobGriefing false` and `gamerule doFireTick false` fail with "Incorrect argument" and change nothing; this shipped once in `RCON_CMDS_STARTUP` unnoticed. Check the startup log after adding one.
+- **Gamerule names are snake_case since 26.x.** `gamerule mobGriefing false` and `gamerule doFireTick false` fail with "Incorrect argument" and change nothing, silently, in `RCON_CMDS_STARTUP`. Check the startup log after adding one.
 
 ## Operations
 

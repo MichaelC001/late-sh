@@ -187,11 +187,10 @@ Cross-domain touchpoints:
    publishing from a page is impossible by grant. The page's `watcher_id`
    (a random per-page-load browser UUID) is both the heartbeat key and,
    as `viewer-{watcher_id}`, the viewer's LiveKit identity: the grant fetch
-   carries it and `StreamService::watch_grant` requires it. It used to mint
-   `viewer-{random}` per fetch, so a viewer whose media path kept failing
-   left a new ghost participant in the room every 10 seconds with nothing
-   tying the attempts together; reusing the id also makes a reconnect
-   *replace* the stale participant instead of racing it. The id is
+   carries it and `StreamService::watch_grant` requires it. One identity per
+   page means a viewer whose media path keeps failing cannot leave a new ghost
+   participant in the room every 10 seconds, and a reconnect *replaces* the
+   stale participant instead of racing it. The id is
    shape-checked (`registry::valid_watcher_id`, alnum + dash, <= 64) at both
    the late-web proxy and the late-ssh API, since it reaches a LiveKit
    identity. Connect failures back off (10s, 20s, 40s, capped at 60s,

@@ -29,7 +29,7 @@ We compare against the GitHub mirror:
 <https://github.com/lotgd/core>. It's a headless, **content-empty** engine
 (no forest/dragon/masters/specialties), last real release v0.5.0 (Apr 2019),
 **archived Jan 2026**. Newer architecture, but a dead shell — nothing to port.
-Also checked (2026-07): **NB-Core/lotgd** ("+nb" v2.0.5) and
+Also checked: **NB-Core/lotgd** ("+nb" v2.0.5) and
 **stephenKise/Legend-of-the-Green-Dragon** are live PHP-8 modernizations of the
 same 1.1.2 game with no mechanics changes — useful only as bug tie-breakers.
 
@@ -195,9 +195,9 @@ not memory. Each names the upstream file it matches.
 - **Forest death** (`lib/forestoutcomes.php`): on-hand gold → 0, experience × 0.9 (`forestexploss` default 10%), bank untouched, sent to the graveyard. Matches exactly.
 - **The dead realm** (`graveyard.php` + `lib/graveyard/case_*.php`): while dead the graveyard is the hub. Torment fights (10/day via `gravefightsperday`) swap the soulpoint pool in as HP (damage persists between fights), set attack = defense = `10 + round((level-1)*1.5)`, and pit you against a shade whose stats derive entirely from your level (atk `9 + shift + int((level-1)*1.5)`, def ×0.7, hp `5*level+50`); victory pays `e_rand(10+round(level/3), 20+round(level/3))` **favor** (`deathpower`), defeat zeroes the day's grave fights with no other penalty, and fleeing costs `min(favor, 5 + e_rand(0, level))` favor on a 1-in-3 escape. The mausoleum restores the pool for `round(10*missing/max)` favor; 100 favor buys the **paid resurrection** — an immediate extra new day at `base+ff-6` turns that skips the soulpoint/grave-fight refills. The free path (waiting for dawn) is a plain full new day, exactly as upstream. No specialty skills while dead (`fightnav(false, ...)`).
 - **Forest hunt** (`forest.php`): slum / hunt / thrill shift the target creature level by **−1 / 0 / +1** (not ±2), plus the exact upstream jitter in `start_forest_fight`. Thrillseeking pays +10% gold/exp (applied after `buff_foe`).
-- **Shops** (`weapons.php`/`armor.php`): the full 15-row ladder lists for everyone — upstream gates nothing on player level; affordability against the net swap cost (price less the `round(value·.75)` trade-in) is the only purchase gate, and trading down pays the difference out. Upstream's dragonkill "tiers" are names-only reskins of the same damage/cost rows; our one original name set stands in for them (fixed 2026-07 from an erroneous player-level gate — PARITY.md's user-feedback sweep).
-- **Healer** (`healer.php`): a **forest** amenity (`lib/forest.php`'s "Heal" nav; the village has none — fixed 2026-07 from a village-only placement): full-heal cost `round(ln(level)*(missing+10))`, a **percent shelf** selling 100% down to 10% heals (`round(cost·pct/100)` for `round(missing·pct/100)` HP), companion mending, and a free forced normalize when HP is somehow above max.
-- **Bank** (`bank.php` + `newday.php`): a **random 1–10% daily rate** on the new-day rollover — positive balances only if ≤`FIGHTS_FOR_INTEREST` (4) turns were left unused and under `MAX_GOLD_FOR_INTEREST` (100k); **debt always compounds**. `gold_in_bank` is **signed**: loans up to `level·20` (`borrowperlevel`) drive it negative; deposits pay debt down. RNG in `svc`, rules in `model`. **Transfers** (`op=transfer`, stock-on via `allowgoldtransfer`, landed 2026-07): level 3+ or any DK, refused in debt; amount ≥ sender level, ≤ `level·25` out per day, recipient ≤ `theirLevel·25` per note (upstream's "per day" message, per-transfer check — kept 1=1) and 3 receipts per day; drawn hand-first with the shortfall from the bank, landing in the recipient's *bank*; their systemmail rides the report drain. The recipient's half is a row-locked fresh-blob write (the PvP pattern).
+- **Shops** (`weapons.php`/`armor.php`): the full 15-row ladder lists for everyone — upstream gates nothing on player level; affordability against the net swap cost (price less the `round(value·.75)` trade-in) is the only purchase gate, and trading down pays the difference out. Upstream's dragonkill "tiers" are names-only reskins of the same damage/cost rows; our one original name set stands in for them, with no player-level gate.
+- **Healer** (`healer.php`): a **forest** amenity (`lib/forest.php`'s "Heal" nav; the village has none): full-heal cost `round(ln(level)*(missing+10))`, a **percent shelf** selling 100% down to 10% heals (`round(cost·pct/100)` for `round(missing·pct/100)` HP), companion mending, and a free forced normalize when HP is somehow above max.
+- **Bank** (`bank.php` + `newday.php`): a **random 1–10% daily rate** on the new-day rollover — positive balances only if ≤`FIGHTS_FOR_INTEREST` (4) turns were left unused and under `MAX_GOLD_FOR_INTEREST` (100k); **debt always compounds**. `gold_in_bank` is **signed**: loans up to `level·20` (`borrowperlevel`) drive it negative; deposits pay debt down. RNG in `svc`, rules in `model`. **Transfers** (`op=transfer`, stock-on via `allowgoldtransfer`): level 3+ or any DK, refused in debt; amount ≥ sender level, ≤ `level·25` out per day, recipient ≤ `theirLevel·25` per note (upstream's "per day" message, per-transfer check — kept 1=1) and 3 receipts per day; drawn hand-first with the shortfall from the bank, landing in the recipient's *bank*; their systemmail rides the report drain. The recipient's half is a row-locked fresh-blob write (the PvP pattern).
 - **Master fight** (`train.php`): non-lethal — a loss **heals you to full** ("stays the final blow") and sends you home with no penalty; a win is +1 level, +10 max HP, +1 atk, +1 def, **+5 soulpoints**, full heal, **+1 specialty skill** (`increment_specialty`), and every companion's per-level growth + full mend (`companionslevelup` 1). The master scales with investment (`scaled_master`, factor 0.33 — each flux rolled over the whole budget then clamped to a quarter of it, upstream's spiked distribution). **The yard bans everything**: no specialty skills, no flee (Esc fights the round, "pride"), buffs and companions suspended (`fightnav(false,false)` + `allowintrain`, set only by the elf/troll racial buff — ours folds that into the stat derivation). **One challenge per day** (`seenmaster`): the flag is set when the challenge starts (persisted immediately, so a disconnect can't refund it), cleared by a win and at every dawn — a loss locks the yard until tomorrow. **Truancy** (`village.php` `automaster` 1): entering the village holding more experience than the *next* level's advancement requires forces the challenge on the spot (courtesy heal, news item, no refusing).
 - **Dragon approach** (`forest.php` op=dragon): the seek is a forest nav; it
   opens the cave-mouth screen, which spends the day's `seendragon` on sight.
@@ -205,73 +205,80 @@ not memory. Each names the upstream file it matches.
   false)`; Esc fights the round, "the tail blocks the exit") — while running
   for the inn costs 1 charm (`inn.php` op=fleedragon, floored at 0).
 - **Dragon kill** (`dragon.php`): the run's gold is **wiped** and restarts at `50 + 50·kills` (cap 300); `max(0, kills-7)` gems accrue (cap 10); charm +5; companions are wiped; and a flawless (no-damage) kill adds +150 gold (over the cap) and a gem. The account reset reaches everything outside `dragon.php`'s preserve list: **the bank balance (debt included), favor, any haunt mark, the race, and the specialty** (path and skill/uses — each module's `dragonkill` hook plus the column default) all revert, and because upstream wipes `lasthit`, **a full new day rolls as soon as the post-kill gates close** (`dawn_owed` → `settle_dawn`: fresh turns with spirits and the re-chosen race's bonus, soul/grave/PvP pools, the daily module effects). Each kill banks **one chooseable dragon point** (`Mode::SpendDragonPoints`, a forced gate exactly like LoGD's new-day spend screen): +5 max HP / +1 daily forest fight (`ff`, feeding `roll_new_day`) / +1 attack / +1 defense. The dragon itself **scales** with your banked investment (`scaled_dragon`, `round(investment·0.75)` points split into +atk/+def/+5HP), so the boons never trivialize it. Legacy auto-boon saves are grandfathered by a **schema v2 migration** in `persist.rs` (boons kept, implicit `ff = min(kills,10)`).
-- **Forest events** (`events.rs`, the 8 stock forest modules): a 15% pre-combat roll (`forestchance`), even weight per module. Effect tables transcribed 1=1 — findgold `level·10..50`; goldmine's 1–20 table (nothing / gold / gems via `round(level/7)+1` & `round(level/3)+1` / both / a cave-in whose death roll is race-gated (`raceminedeath`), death still crediting +10% exp and an escape costing the day's turns) each costing a fight; fairy's gem-for-`e_rand(1,7)`-boon (a gemless accept costs a fight); glowingstream's 1–10 drink (death, near-death, full-heal+turn, gem, **turn-only** 5–7, default full heal); crazyaudrey's three-basket match (5/2/1 fights, or lose a fight — or a charm point when no fight is left; her **village petting zoo** — a 20% square roll, 5 gold to pet for a 5-round defense ×1.05 calm, then the same basket game gated once/day by `zoo_played_today` — landed with the 2026-07 missing-feature sweep); foilwench's gem-for-skill. `darkhorse` opens the real Dark Horse (the games, the board, the barman's intel — see `tavern.rs`). **The modules are the stock core set; the live LoGD's "hundreds of events" were separately-licensed DragonPrime add-ons we can't and don't copy.**
+- **Forest events** (`events.rs`, the 8 stock forest modules): a 15% pre-combat roll (`forestchance`), even weight per module. Effect tables transcribed 1=1 — findgold `level·10..50`; goldmine's 1–20 table (nothing / gold / gems via `round(level/7)+1` & `round(level/3)+1` / both / a cave-in whose death roll is race-gated (`raceminedeath`), death still crediting +10% exp and an escape costing the day's turns) each costing a fight; fairy's gem-for-`e_rand(1,7)`-boon (a gemless accept costs a fight); glowingstream's 1–10 drink (death, near-death, full-heal+turn, gem, **turn-only** 5–7, default full heal); crazyaudrey's three-basket match (5/2/1 fights, or lose a fight — or a charm point when no fight is left; her **village petting zoo** — a 20% square roll, 5 gold to pet for a 5-round defense ×1.05 calm, then the same basket game gated once/day by `zoo_played_today`); foilwench's gem-for-skill. `darkhorse` opens the real Dark Horse (the games, the board, the barman's intel — see `tavern.rs`). **The modules are the stock core set; the live LoGD's "hundreds of events" were separately-licensed DragonPrime add-ons we can't and don't copy.**
 - **Races + titles** (`modules/race{human,elf,dwarf,troll}.php`, `lib/titles.php`): a forced per-run gate — re-armed by every dragon kill, as upstream resets `race` (`newday.php`'s order: dragon points → race → specialty) with the four stock analogs under original names — Plainsborn (+2 daily forest fights, applied on the paid resurrection's day too, since upstream's `newday` hook fires there), Wealdkin/Cragborn (`+1+floor(level/5)` defense/attack, flat adds equal to upstream's recomputed `defmod`/`atkmod` buffs; inert while dead), Deepfolk (creature gold ×1.2 after `buff_foe`, before thrill ×1.1 — the `creatureencounter` hook point — and a 5% goldmine cave-in death chance vs everyone else's 90%, rolled `e_rand(1,100) < chance`; survivors lose the rest of the day's turns). **DK titles**: an original two-column ladder (`data::TITLES`) picked at the highest threshold ≤ kills, re-rolled per dragon kill; the `AddressStyle` field picks the column where upstream reads `sex` (chosen at the one-time style gate; it also picks the romance partner and bard outcome 15).
 - **Phase-3 buildings** (stables/mercenary camp/inn/outhouse/Dark Horse/news, each source-verified before porting): the stable's three mounts (gems 6/10/16, +1/+2/+3 daily fights, atk ×1.2 for 20/40/60 rounds/day, ⅔ trade-in); the camp's two hires + the Deepfolk bear (stats baked at purchase, one-hire cap, sawbones heal `round(ln(level+1)·(missing+10)·1.33)`); the inn's room (`round(level·(10+ln level))`, bank +5%), bribes (gems 30/60/90%, gold 25/~47/75%, paid either way), the five-potion shelf (2 gems/dose), the bard's `e_rand(0,18)` table, the three drinks with drunkenness/hangover/sober-up, and the lovers ladder (`e_rand(charm,T) >= T`, marriage at charm ≥ 22, dawn upkeep `e_rand(1, max(1, round(0.85·√dk)))`, divorce at 0); the outhouse's exact wash/no-wash rolls; the Dark Horse's dice AI, shared-pot Five Sixes (100 start, +5/play, 5000 cap, 10/5% payouts, whole-pot jackpot), and stones (player-vs-old-man piles). Full details + audit corrections in PARITY.md's phase-3 section.
-- **Commentary** (`lib/commentary.php` + its stock callers, the first phase-4 slice): one shared table, rooms as sections. Village square (25-line window), the inn (20), the Dark Horse etchings (10), the gardens (30, "whispers"), the veterans' rock (30, "boasts", `dragon_kills > 0` — everyone else sees a weathered stone that stays a stone), and the shade channel (25) reachable free from the graveyard ("despairs") or through **the gypsy's paid trance** ("projects", `level·20` gold per visit, `gypsy.php`). Daily allowance `round(limit/2)` counted **among the window's rows posted today** (posts that scroll out free the slot); double posts (same author + identical body as the section's newest row) and empty/bare-emote posts rejected; 45-char unbroken runs get a space; non-"says" venues bake their verb into the body at post time exactly like upstream. **Pages + markers** (2026-07): `comscroll` paging (older/newer/first-unseen; refresh lands on page 0, as upstream's link drops the param), the new-post marker off the `recentcomments` watermark (advanced to the *previous* dawn at every new day, paid resurrections included; day-granular on the blob), and the first-unseen jump (`round(count/limit + 0.5) - 1`, overshoot quirk kept). **Drunken slurring** (2026-07): the drinks hook fires before run-breaking — the "drunkenly" verb past 50, `drunkenize` 1=1 into the stored row. All prompts, room intros, and rejection lines original.
+- **Commentary** (`lib/commentary.php` + its stock callers, the first phase-4 slice): one shared table, rooms as sections. Village square (25-line window), the inn (20), the Dark Horse etchings (10), the gardens (30, "whispers"), the veterans' rock (30, "boasts", `dragon_kills > 0` — everyone else sees a weathered stone that stays a stone), and the shade channel (25) reachable free from the graveyard ("despairs") or through **the gypsy's paid trance** ("projects", `level·20` gold per visit, `gypsy.php`). Daily allowance `round(limit/2)` counted **among the window's rows posted today** (posts that scroll out free the slot); double posts (same author + identical body as the section's newest row) and empty/bare-emote posts rejected; 45-char unbroken runs get a space; non-"says" venues bake their verb into the body at post time exactly like upstream. **Pages + markers**: `comscroll` paging (older/newer/first-unseen; refresh lands on page 0, as upstream's link drops the param), the new-post marker off the `recentcomments` watermark (advanced to the *previous* dawn at every new day, paid resurrections included; day-granular on the blob), and the first-unseen jump (`round(count/limit + 0.5) - 1`, overshoot quirk kept). **Drunken slurring**: the drinks hook fires before run-breaking — the "drunkenly" verb past 50, `drunkenize` 1=1 into the stored row. All prompts, room intros, and rejection lines original.
 - **Warrior list + Hall of Fame** (`list.php` / `hof.php`, phase 4's second slice): the online-first landing (upstream `loggedin` + 15-minute `laston` window → our blob `online` flag + the save row's `updated`), the total ordering (level → dragon kills → bare name), the interleaved-`%` subsequence name search, and the seven rankings — every one with the most/least flip, direction-following tie-breaks (level → exp → id), the kills/days `> 0` filters, the ±5%-fuzzed **and fuzz-sorted** wealth (signed, debt included), the rank+name-only gems list, and the floor-at-1 "top N%" percentile (kills-gated). The run counters (`age`/`dragon_age`/`best_dragon_age`/`resurrections`) follow `dragon.php`'s preserve list exactly. TUI adaptations (documented in PARITY.md): 15-row pages everywhere, no gender column, a two-state alive column until PvP's knockouts exist.
 - **Clans** (`clan.php` + `lib/clan/*`, phase 4's last big system): the registrar's lobby (apply / found at 10,000 gold + 15 gems with the 5–50-char name and 2–5-letter tag checks / the member-count-ordered listings with per-clan public rolls), the hall (MOTD/charter with author names, per-rank counts, total DKs, the `clan-{id}` commentary section — allowance-exempt, custom talk verb, `<TAG>` speaker prefix for rank > 0 everywhere), the membership ledger (promote/demote one founder-popped rung clamped at the actor's own rank, demote bottoming out at member, the founder's step-down, remove at-or-below — all row-locked cross-player writes re-checked against fresh blobs), the shared waiting area, succession (leaderless auto-promote at hall render and on a solitary leader's withdraw; the last member's exit dissolves the clan and clears stragglers), and the lazy empty-clan sweep. Membership survives dragon kills per `dragon.php`'s preserve list; a dangling membership self-heals at the lobby, `common.php`-style. TUI adaptations in PARITY.md (post-time tag snapshots, 200-char boards, the founding grace).
 - **Specialties** (`specialty.rs` + buff/companion engine): the three classes and their four skills each, ported 1=1 — Mystical (Mending Flow/regen+`aura`, Stonefist/minion, Lifedrink/lifetap, Stormskin/damage-shield), Dark Arts (**Bonecall/persistent skeleton companion**, Effigy/big hit, Hexweight/`badguydmgmod` 0.5, Soulwither/atk+def 0), Thief (Taunt/enemy-atk 0.5, Venom Edge/atk ×2, Vanish/enemy-atk 0, Shadowstrike/atk+def ×3). Use-economy matches LoGD (`floor(skill/3)`+1/day, +1 per 3 skill); a dragon kill resets the path itself along with skill/uses (upstream clears `specialty`), so it's re-chosen each run via `Mode::ChooseSpecialty`; advanced by gems at the fairy/foilwench. **Specialty perk-modules' mechanics are in core (uncopyrightable); our names/flavor are original.**
 
-## What's missing vs. the original
+## Parity status
 
-Everything we *have* now matches LoGD; what's below is the full remaining
-list. **Phase 4 closed out 2026-07**: PvP (the inn's who's-lodged list
-included), bounties + the haunt, the barman's paid enemy intel, the
-dragon-kill rewards wiring (migration 100), clans (migration 101 — see
-PARITY.md for the 9 audit corrections), **bank gold transfers** (`bank.php`
-op=transfer, a stock-on feature the plan had missed — found and ported
-during the mail-decision prep), and the **mail decision, resolved**: no
-in-door mailbox, every systemmail moment rides the `pvp_reports` drain, and
-the out-of-door ping is deferred pending an app-wide notification-design
-discussion (see PARITY.md's mail section for the schema findings).
+The port is feature-complete against stock LoGD 1.1.2; `PARITY.md` holds the
+per-system audit and every correction found while porting. Anything beyond it
+is original late.sh content (a creative decision, not a parity item) under the
+same licensing rule: mechanics, odds and payouts transcribed 1=1 from stock
+core, all prose and names original, community add-on modules off-limits.
 
-- **The King's tournament is NOT missing — it never shipped**: verified
-  2026-07 that stock 1.1.2 contains no tournament module (only a hidden
-  `source.php` reference). Reclassified to PARITY.md's out-of-scope list.
-- **The commentary leftovers landed 2026-07** (the last open items):
-  `comscroll` **pagination** (older/newer/first-unseen/refresh, mirroring
-  upstream's nav row), the **new-post marker** (`recentcomments`: a
-  watermark advanced to the previous dawn at every new day, day-granular on
-  the blob), and the drinks module's **drunken comment slurring**
-  (`drunkenize` 1=1: doubled letters compounding at the first occurrence,
-  random `*hic*`s, the "drunkenly" verb past 50). **Nothing is missing:
-  the port is feature-complete against stock LoGD 1.1.2.**
+Deliberate gaps:
+- **No King's tournament**: stock 1.1.2 contains no tournament module (only a
+  hidden `source.php` reference); out of scope in `PARITY.md`.
+- **No in-door mailbox.** Every systemmail moment rides the `pvp_reports`
+  drain, DMs exist site-side, and an out-of-door ping waits on an app-wide
+  notification design (`PARITY.md`, mail section).
+- The Dark Horse's web-only "colors" tutorial is dropped.
 
-The phase-3 buildings are **in**: the daily news ("yesterday in Duskmere", migration 096), the stables and mercenary camp, the full inn (room, bribes + specialty switch, the potion shelf, the bard, drinks + drunkenness, the romance ladder through marriage/divorce), the forest outhouse, the restored Dark Horse Tavern (dice, the shared-pot Five Sixes over migration 097, stones), and the battle-end flavor + bandit purse-cut. Charm and the persistent-buff engine now have their consumers (romance, drinks, potions, mounts, sickness).
+## Multiplayer layer
 
-## Next: toward multiplayer (kickoff notes)
+`state.rs` is authoritative per session, and the shared world sits on two
+patterns:
+- **Reading other characters**: `svc.load_roster()` decodes every stored
+  character for the warrior list, Hall of Fame, and target lists.
+- **Cross-player writes**: row-locked delta transactions (fresh-blob decode +
+  `update_data_keep_updated`, held under the victim's in-process write gate,
+  with a 4-minute presence heartbeat keeping live sessions untargetable).
+  PvP settlements, bounties, the haunt, clan rank changes, officer notices
+  and bank transfers all use it; `PARITY.md`'s PvP section has the full
+  concurrency story.
 
-The single-player core is faithful and complete. The next phase is the **social/multiplayer layer** — the tavern, dice, gossip, PvP, the bar. This is where late.sh's "everyone in the same SSH room" shape can shine. Same licensing rule throughout: **mechanics/odds/payouts transcribed 1=1; all prose and names original; community add-on modules are off-limits, only the stock-core systems.**
-
-**The one architectural shift.** Today `state.rs` is authoritative-per-session ("the session owns the truth", no shared world). Multiplayer means a **shared world**: reading *other* players' stored characters, and cross-player writes. Both halves are **in** (2026-07): `svc.load_roster()` decodes every stored character for the warrior list / Hall of Fame / target lists, and PvP's settlements write gold/exp/death/reports onto a victim's stored blob through row-locked delta transactions (fresh-blob decode + `update_data_keep_updated`, held under the victim's in-process write gate, with a 4-minute presence heartbeat keeping live sessions untargetable). The pattern is reusable as-is for bounties, haunts, and clan membership writes — see PARITY.md's PvP section for the full concurrency story.
-
-**Two foundational primitives unlock almost everything:**
-1. **`commentary` (the gossip/chat primitive) — BUILT** (2026-07, phase 4's first slice: migration 098, `commentary.rs`, svc load/post, `Mode::Commentary` + the talk line). Every stock room is live: the village square, the inn's long table, the Dark Horse etchings, the gardens, the veterans' rock, the shade channel (graveyard free / gypsy paid), and — since clans — the shared waiting area and the per-clan halls (`clan-{id}` sections: allowance-exempt, custom talk verb, `<TAG>`-prefixed speaker names in every room).
-2. **PvP resolution** (`pvp.php`) — **BUILT** (2026-07, phase 4's third slice): the two target lists (fields + the barkeep's who's-upstairs), the sleeping-defender fight through the existing engine, the gold/exp/death settlements onto the stored blob, in-blob sleep reports, and news both ways.
-
-**Features, each mapping to a stock-core original file:**
-- **The Dark Horse Tavern's social half** (`darkhorse.php`) — **all in**: the games (phase 3, `tavern.rs`), the comment board (the etchings), and the barman's paid **enemy intel** (2026-07; the web-only "colors" tutorial is the one menu deliberately dropped).
-- **The inn's PvP hooks** (`inn.php`) — **BUILT** with the PvP slice: the barkeep bribe unlocks the who's-upstairs list and inn attacks on `lodged_today` characters (with their bodyguard).
-- **News's multiplayer writers** (`news.php`, `addnews`) — the daily feed is built (phase 3); PvP writes both result variants, bounty collections make the paper, and haunts write success and botch alike (upstream news both ways).
-- **Bounties** (`modules/dag.php`) + the **haunt** (`case_haunt*.php`) — **BUILT** (2026-07, phase 4's fourth slice): the broker's booth off the inn, the wanted list, contract placement with the maturity delay, collection inside the PvP victory settlement, and the graveyard's 25-favor haunt with the next-dawn turn dock. The haunt's victim notification rides `pvp_reports`, exactly as the PvP mail adaptation predicted.
-- **Clans** (`clan.php` + `lib/clan/*`) — **BUILT** (2026-07, phase 4's fifth slice): migration 101 + the `greendragon_clans` row (name/tag unique, MOTD/charter with author snapshots, custom talk verb), membership on the character blob (`clan_id`/`clan_rank` 0-10-20-30-31/`clan_joined_at`/the denormalized `clan_tag`, all dragon-kill-proof), the registrar's lobby (apply/found/list/detail/waiting), the hall (hearth chat, the membership ledger with the step-ladder promote/demote/step-down/remove as row-locked cross-player writes, the boards editor, the warrior list's online-clan slice, withdraw with succession and empty-clan deletion), and the leaderless auto-promote at hall render. Officer notices ride `pvp_reports`; the empty-clan sweep runs lazily at list render with a founding grace.
-- **Mail** (`mail.php`) — **RESOLVED 2026-07 as a decision, not a build** (see PARITY.md): reports drain in-door, DMs exist site-side, the out-of-door ping deferred to an app-wide discussion. The **King's tournament** turned out not to exist in stock 1.1.2 — reclassified out of scope.
-- **Bank gold transfers** (`bank.php` op=transfer) — **BUILT** (2026-07, the phase-4 coda): the vault's transfer window off the Coinvault, the broker-style recipient search + talk-line sum, upstream's six checks in order, and the recipient's half as a row-locked fresh-blob settlement with the report-drain notice.
-
-**Bounties + the haunt landed 2026-07** (source-audited first, like every slice — 6 + 4 corrections recorded in PARITY.md, the biggest being bounty immunity's off-by-one leniency vs the PvP list's, self-set bounties staying open after forfeit, bounty gold skipping the level-15 zeroing, the haunt's total lack of a target filter, and the dock firing on paid resurrections too). Both ride the PvP cross-player patterns exactly as predicted: the bounty sweep runs *inside* `pvp_settle_victory`'s transaction, and the haunt is one row-locked favor-gated blob write.
-
-**The two small leftovers landed 2026-07** (source-audited first, as always — the enemy intel's 4 corrections are in PARITY.md, the biggest being that it is a flat 100-gold-per-name counter open to anyone, searching *every* character rather than the online roster): the barman's intel rides the roster snapshot for the search and a fresh single-row read for the sheet; the rewards wiring mirrors NetHack's `award.rs` (migration 100, `ActivityGame::GreenDragon`, the `GDS` badge; repriced and made per-kill by migration 158).
-
-**Clans landed 2026-07** (source-audited first, like every slice — 9 corrections recorded in PARITY.md, the biggest being the clan halls' allowance exemption, the founder-popped promote/demote ladder clamped at the actor's rank with demote bottoming out at member, and the lazy empty-clan deletion). The cross-player rank writes, the officer notices, and the dissolved-clan cleanup all ride the PvP patterns exactly as predicted.
-
-**Phase 4 closed 2026-07 — and the checklist with it.** The mail decision
-resolved (reports only; the out-of-door ping deferred to an app-wide
-notification-design discussion — the schema findings live in PARITY.md's
-mail section), bank transfers landed as the coda, the King's tournament
-proved to be a phantom (not in stock 1.1.2; reclassified out of scope), and
-the commentary leftovers (pagination, new-post markers, drunken slurring)
-closed right behind. **The port is feature-complete against stock LoGD
-1.1.2.** Anything beyond is original late.sh content — a creative decision,
-not a parity item — under the same licensing rule: mechanics may be
-borrowed from anywhere stock, prose and names stay ours.
+What runs on it, each mapped to its stock-core file:
+- **Commentary** (`commentary.rs`, migration 098, `Mode::Commentary` + the
+  talk line): every stock room is live (village square, the inn's long
+  table, the Dark Horse etchings, the gardens, the veterans' rock, the shade
+  channel, the clan waiting area and per-clan halls with `clan-{id}`
+  sections, allowance-exempt, custom talk verb, `<TAG>`-prefixed speakers).
+  `comscroll` pagination (older/newer/first-unseen/refresh), the new-post
+  marker off the `recentcomments` watermark (advanced to the previous dawn at
+  every new day), and drinks' drunken slurring (`drunkenize` 1=1, the
+  "drunkenly" verb past 50).
+- **PvP** (`pvp.php`, `inn.php`): the fields list and the barkeep's
+  who's-upstairs list (bribe-gated, `lodged_today` with their bodyguard), the
+  sleeping-defender fight through the existing engine, gold/exp/death
+  settlements onto the stored blob, in-blob sleep reports, news both ways.
+- **Bounties and the haunt** (`modules/dag.php`, `case_haunt*.php`): the
+  broker's booth off the inn, the wanted list, placement with the maturity
+  delay, collection inside `pvp_settle_victory`'s transaction, and the
+  graveyard's 25-favor haunt with the next-dawn turn dock (one row-locked
+  favor-gated blob write; the victim's notice rides `pvp_reports`).
+- **Enemy intel** (`darkhorse.php`): a flat 100-gold-per-name counter open to
+  anyone, searching every character via the roster snapshot, the sheet a
+  fresh single-row read.
+- **Clans** (`clan.php`, `lib/clan/*`, migration 101): the `greendragon_clans`
+  row (name/tag unique, MOTD/charter with author snapshots, custom talk
+  verb); membership on the character blob (`clan_id`, `clan_rank`
+  0-10-20-30-31, `clan_joined_at`, denormalized `clan_tag`, all
+  dragon-kill-proof); the registrar's lobby, the hall (hearth chat, the
+  membership ledger with the step-ladder promote/demote/step-down/remove,
+  the boards editor, withdraw with succession), the leaderless auto-promote at
+  hall render, and the lazy empty-clan sweep at list render with a founding
+  grace.
+- **Bank transfers** (`bank.php` op=transfer): the transfer window off the
+  Coinvault, broker-style recipient search, upstream's six checks in order,
+  and the recipient's half as a row-locked fresh-blob settlement with the
+  report-drain notice.
+- **News** (`news.php`, `addnews`): the daily feed ("yesterday in Duskmere",
+  migration 096); PvP, bounty collections and haunts write to it.
+- **Dragon-kill rewards**: mirror NetHack's `award.rs` (migration 100,
+  `ActivityGame::GreenDragon`, the `GDS` badge, per-kill since migration
+  158).
