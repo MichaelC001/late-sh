@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use ratatui_textarea::{TextArea, WrapMode};
-use tokio::sync::{broadcast, watch};
+use tokio::sync::{broadcast, oneshot, watch};
 use uuid::Uuid;
 
 use crate::app::common::{composer, primitives::Banner};
@@ -9,6 +9,7 @@ use late_core::models::article::{
     ArticleEvent, ArticleFeedItem, ArticleSnapshot, NEWS_FEED_LIMIT, NEWS_SHARE_MAX_PAID_PER_DAY,
     NEWS_SHARE_REWARD_CHIPS, NewsShareReward,
 };
+use late_core::models::article_body::BodyStatus;
 
 /// The success banner for a share, from what it actually minted. Both share
 /// surfaces (the News composer and an RSS `s`) read this, so neither can
@@ -27,11 +28,12 @@ pub fn news_share_banner(lead: &str, reward: NewsShareReward) -> Banner {
     }
 }
 
-use super::svc::ArticleService;
+use super::reader::state::{ReaderBody, ReaderModal};
+use super::svc::{ArticleService, BodyLoad, BodyReply};
 
 /// This session's news reads: the ids of the snapshot's articles the
 /// reader has read (`article_reads`), a visit to the News room reading
-/// every one of them and the article modal reading one. Reads only grow,
+/// every one of them and opening the reader reading one. Reads only grow,
 /// so a load merges into what is held. Until the first load answers, the
 /// badge stays empty rather than guessing: no reads means everything is
 /// unread, which is not the same as not knowing yet.
@@ -121,6 +123,15 @@ pub struct State {
     composer: TextArea<'static>,
     processing: bool,
     current_task: Option<tokio::task::AbortHandle>,
+    reader: Option<OpenReader>,
+}
+
+/// The reader on screen and its outstanding body request. They travel
+/// together: closing or reopening the reader drops the request with it, so
+/// an answer only ever lands on the reader that asked.
+struct OpenReader {
+    modal: ReaderModal,
+    body_request: Option<oneshot::Receiver<BodyReply>>,
 }
 
 impl State {
@@ -146,6 +157,7 @@ impl State {
             composer: new_news_textarea(),
             processing: false,
             current_task: None,
+            reader: None,
         }
     }
 
@@ -313,15 +325,15 @@ impl State {
         self.article_service.mark_read_task(self.user_id);
     }
 
-    /// Mark the one article the modal opened on as read, and no other. Its
+    /// Mark the one article the reader opened on as read, and no other. Its
     /// mark clears now, and the write always goes: it is a no-op on a row
     /// that exists, and a reopen is the retry of a write that failed.
-    pub fn mark_article_read(&mut self, item: &ArticleFeedItem) {
+    pub fn mark_article_read(&mut self, article_id: Uuid) {
         if let Reads::Loaded(read_ids) = &mut self.reads {
-            read_ids.insert(item.article.id);
+            read_ids.insert(article_id);
         }
         self.article_service
-            .mark_article_read_task(self.user_id, item.article.id);
+            .mark_article_read_task(self.user_id, article_id);
     }
 
     pub fn composer_push(&mut self, ch: char) {
@@ -414,14 +426,55 @@ impl State {
     }
 
     pub fn delete_selected(&mut self) {
-        if let Some(item) = self.articles.get(self.selected_index()) {
-            let is_owner = item.article.user_id == self.user_id;
-            if !is_owner && !self.is_admin {
-                return;
-            }
-            self.article_service
-                .delete_article(self.user_id, item.article.id, self.is_admin);
+        if let Some(article_id) = self.selected_item().map(|item| item.article.id) {
+            self.delete_article(article_id);
         }
+    }
+
+    /// Delete a story by id: its sharer's own, or any for an admin.
+    pub fn delete_article(&mut self, article_id: Uuid) {
+        let Some(item) = self
+            .source_articles
+            .iter()
+            .find(|item| item.article.id == article_id)
+        else {
+            return;
+        };
+        if item.article.user_id != self.user_id && !self.is_admin {
+            return;
+        }
+        self.article_service
+            .delete_article(self.user_id, article_id, self.is_admin);
+    }
+
+    /// Open the reader on a snapshot story, marking it read and asking for
+    /// its body. False when the story left the snapshot (deleted).
+    pub(crate) fn open_reader(&mut self, article_id: Uuid) -> bool {
+        let Some(item) = self
+            .source_articles
+            .iter()
+            .find(|item| item.article.id == article_id)
+        else {
+            return false;
+        };
+        let modal = ReaderModal::open(item);
+        self.mark_article_read(article_id);
+        let body_request =
+            self.article_service
+                .load_body_task(self.user_id, article_id, BodyLoad::Open);
+        self.reader = Some(OpenReader {
+            modal,
+            body_request: Some(body_request),
+        });
+        true
+    }
+
+    pub(crate) fn reader(&self) -> Option<&ReaderModal> {
+        self.reader.as_ref().map(|open| &open.modal)
+    }
+
+    pub(crate) fn close_reader(&mut self) -> Option<ReaderModal> {
+        self.reader.take().map(|open| open.modal)
     }
 
     pub fn submit_composer(&mut self) {
@@ -440,9 +493,10 @@ impl State {
         let changed = self.snapshot_rx.has_changed().unwrap_or(false) || !self.event_rx.is_empty();
         let snapshot_banner = self.drain_snapshot();
         let event_banner = self.drain_events();
+        let body = self.drain_reader_body();
         NewsTick {
-            banner: event_banner.or(snapshot_banner),
-            changed,
+            banner: event_banner.or(body.banner).or(snapshot_banner),
+            changed: changed || body.changed,
         }
     }
 
@@ -462,6 +516,7 @@ impl State {
         };
         self.source_articles = snapshot.articles;
         self.rebuild_display();
+        self.reload_pending_reader();
         if !announce {
             return None;
         }
@@ -471,6 +526,73 @@ impl State {
             "{} new {noun} in news",
             news_unread_label(unread)
         )))
+    }
+
+    /// A reader left waiting on a fetch asks again once the snapshot says
+    /// the body landed, so it turns into the article without a reopen. One
+    /// request at a time: a snapshot landing while one is out asks nothing.
+    fn reload_pending_reader(&mut self) {
+        let Some(open) = &mut self.reader else {
+            return;
+        };
+        if open.body_request.is_some() || *open.modal.body() != ReaderBody::Pending {
+            return;
+        }
+        let article_id = open.modal.article_id();
+        let landed = self
+            .source_articles
+            .iter()
+            .any(|item| item.article.id == article_id && item.body != BodyStatus::Pending);
+        if landed {
+            open.body_request = Some(self.article_service.load_body_task(
+                self.user_id,
+                article_id,
+                BodyLoad::Landed,
+            ));
+        }
+    }
+
+    /// The open reader's body answer, once it lands: the reader shows the
+    /// text, or falls back to the summary with a banner.
+    fn drain_reader_body(&mut self) -> NewsTick {
+        let quiet = NewsTick {
+            banner: None,
+            changed: false,
+        };
+        let Some(open) = &mut self.reader else {
+            return quiet;
+        };
+        let Some(request) = &mut open.body_request else {
+            return quiet;
+        };
+        let reply = match request.try_recv() {
+            Ok(reply) => reply,
+            Err(oneshot::error::TryRecvError::Empty) => return quiet,
+            // The load task ended without answering (it panicked): the
+            // summary beats a loading line that never resolves.
+            Err(oneshot::error::TryRecvError::Closed) => BodyReply::Failed,
+        };
+        open.body_request = None;
+        let tick = match reply {
+            BodyReply::Loaded(body) => {
+                open.modal.apply_body(body);
+                NewsTick {
+                    banner: None,
+                    changed: true,
+                }
+            }
+            BodyReply::Failed => {
+                open.modal.fail_load();
+                NewsTick {
+                    banner: Some(Banner::error("Couldn't load the article text.")),
+                    changed: true,
+                }
+            }
+        };
+        // A "still pending" answer can cross the snapshot that said the body
+        // landed, and that snapshot will not come again: ask once more now.
+        self.reload_pending_reader();
+        tick
     }
 
     fn drain_events(&mut self) -> Option<Banner> {
