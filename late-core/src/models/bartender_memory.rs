@@ -16,9 +16,9 @@
 //! protected ones is what keeps a patron who asks him to remember
 //! everything from crowding out tonight.
 //!
-//! "forget me", said exactly ([`is_forget_request`]), wipes the lot and
-//! stamps `bartender_memory_resets`, so a memory still in flight when it
-//! was said cannot land after the wipe.
+//! "forget me", said exactly ([`is_forget_request`]), wipes everything said
+//! up to it and stamps `bartender_memory_resets`, so a memory still in
+//! flight when it was said cannot land after the wipe.
 //!
 //! The two triggers are matched literally on the stored body, which is the
 //! drunk-scrambled one, so `chat/slur.rs` protects [`memory_phrase_spans`]
@@ -367,17 +367,18 @@ impl BartenderMemory {
         settle(tx, user_id, inserted).await
     }
 
-    /// Wipe everything the bartender remembers about `user_id`, and refuse
-    /// any memory said at or before `said_at` (the "forget me" message's
-    /// own time) that is still on its way in. Returns how many memories
-    /// were forgotten.
+    /// Wipe everything the bartender remembers about `user_id` that was
+    /// said at or before `said_at` (the "forget me" message's own time),
+    /// and refuse any such memory still on its way in. A memory said after
+    /// it stays, even one that reached the lock first. Returns how many
+    /// memories were forgotten.
     pub async fn forget(client: &mut Client, user_id: Uuid, said_at: DateTime<Utc>) -> Result<u64> {
         let tx = client.transaction().await?;
         lock_patron(&tx, user_id).await?;
         let forgotten = tx
             .execute(
-                "DELETE FROM bartender_memories WHERE user_id = $1",
-                &[&user_id],
+                "DELETE FROM bartender_memories WHERE user_id = $1 AND ordered_at <= $2",
+                &[&user_id, &said_at],
             )
             .await?;
         tx.execute(
@@ -469,8 +470,8 @@ async fn settle(tx: Transaction<'_>, user_id: Uuid, inserted: u64) -> Result<Rec
     let evicted = evictions(&slots);
     if !evicted.is_empty() {
         tx.execute(
-            "DELETE FROM bartender_memories WHERE id = ANY($1)",
-            &[&evicted],
+            "DELETE FROM bartender_memories WHERE user_id = $1 AND id = ANY($2)",
+            &[&user_id, &evicted],
         )
         .await?;
     }

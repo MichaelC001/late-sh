@@ -2989,6 +2989,7 @@ impl ChatService {
     /// or a send that did not land, accounted for here. For a bot that
     /// needs to know what landed and when: @bartender remembers the
     /// exchange off it.
+    #[tracing::instrument(skip(self, body), fields(user_id = %user_id, room_id = %room_id))]
     pub async fn send_bot_reply(
         &self,
         user_id: Uuid,
@@ -3398,11 +3399,11 @@ impl ChatService {
         Ok(None)
     }
 
-    #[tracing::instrument(skip(self, params), fields(user_id = %params.user_id, room_id = %params.room_id, body_len = params.body.len()))]
     async fn send_message(&self, params: SendMessageParams) -> Result<(), SendError> {
         self.send_message_returning(params).await.map(|_| ())
     }
 
+    #[tracing::instrument(skip(self, params), fields(user_id = %params.user_id, room_id = %params.room_id, body_len = params.body.len()))]
     async fn send_message_returning(
         &self,
         params: SendMessageParams,

@@ -71,7 +71,7 @@ use crate::{
         ChipService, GiftDrinkRefusal, GiftError, GiftRefusal, RoundError, RoundRefusal,
     },
     app::help_modal::data::{bartender_app_context, bot_app_context},
-    metrics,
+    metrics::{self, BartenderMemoryWrite},
     state::{ActiveUser, ActiveUsers, online_human_ids_excluding},
 };
 
@@ -867,10 +867,10 @@ impl GhostService {
         };
 
         let request = text_for_mention_detection(&trigger_message.body);
-        // "forget me" answers ahead of everything else, the ladder included,
-        // for the same reason a purchase does below: a patron who typed it on
-        // purpose must never have it swallowed by a throttle and walk away
-        // believing the bar forgot them.
+        // "forget me" is handled ahead of everything else, the ladder
+        // included, for the same reason a purchase is below: a patron who
+        // typed it on purpose must never have the wipe swallowed by a
+        // throttle. Only his answer waits on the ladder.
         if is_forget_request(request, &bartender.username) {
             return self.bartender_forget(&bartender, &trigger_message).await;
         }
@@ -1185,40 +1185,57 @@ impl GhostService {
         }
     }
 
-    /// "forget me": wipe everything he remembers about the patron. A wipe
-    /// always gets its line; a "forget me" with nothing to forget is free,
-    /// so it steps the ladder like a refused gift, and saying it over and
-    /// over costs the room one answer per ladder window.
+    /// "forget me": wipe everything he remembers about the patron. The wipe
+    /// lands ahead of the ladder, so a patron who typed it on purpose is
+    /// always forgotten; only the answer steps the ladder, the same as a
+    /// remember's, since a remember and a wipe cost nothing and alternating
+    /// them would otherwise get a line out of him every time.
     async fn bartender_forget(
         &self,
         bartender: &BotUser,
         trigger_message: &ChatMessage,
     ) -> Result<()> {
-        let forgotten = {
+        let wiped = async {
             let mut client = self.db.get().await?;
             BartenderMemory::forget(
                 &mut client,
                 trigger_message.user_id,
                 trigger_message.created,
             )
-            .await?
-        };
-        tracing::info!(
-            user_id = %trigger_message.user_id,
-            forgotten,
-            "bartender forgot a patron"
-        );
-        let body = match forgotten {
-            0 => {
-                if let Decision::Throttled { .. } = self.mention_ladders.check_and_step(
-                    LadderBot::Bartender,
-                    trigger_message.user_id,
-                    trigger_message.room_id,
-                ) {
-                    return Ok(());
-                }
-                FORGET_NOTHING_LINE
+            .await
+        }
+        .await;
+        let forgotten = match wiped {
+            Ok(forgotten) => {
+                metrics::record_bartender_memory(BartenderMemoryWrite::Wiped);
+                tracing::info!(
+                    user_id = %trigger_message.user_id,
+                    forgotten,
+                    "bartender forgot a patron"
+                );
+                forgotten
             }
+            // No line either: a patron is never told they were forgotten
+            // when they were not.
+            Err(error) => {
+                metrics::record_bartender_memory(BartenderMemoryWrite::WipeFailed);
+                tracing::error!(
+                    error = ?error,
+                    user_id = %trigger_message.user_id,
+                    "failed to forget a patron"
+                );
+                return Ok(());
+            }
+        };
+        if let Decision::Throttled { .. } = self.mention_ladders.check_and_step(
+            LadderBot::Bartender,
+            trigger_message.user_id,
+            trigger_message.room_id,
+        ) {
+            return Ok(());
+        }
+        let body = match forgotten {
+            0 => FORGET_NOTHING_LINE,
             _ => FORGET_DONE_LINE,
         };
         self.bartender_reply(
@@ -1249,12 +1266,14 @@ impl GhostService {
         } else if !room_is_public {
             REMEMBER_PRIVATE_LINE
         } else {
-            let recorded = {
+            let recorded = async {
                 let mut client = self.db.get().await?;
-                BartenderMemory::record_requested(&mut client, trigger_message, words).await?
-            };
+                BartenderMemory::record_requested(&mut client, trigger_message, words).await
+            }
+            .await;
             match recorded {
-                Recorded::Stored { evicted } => {
+                Ok(Recorded::Stored { evicted }) => {
+                    metrics::record_bartender_memory(BartenderMemoryWrite::RequestedStored);
                     tracing::info!(
                         user_id = %trigger_message.user_id,
                         evicted,
@@ -1263,7 +1282,24 @@ impl GhostService {
                 }
                 // Said before a "forget me" that has already landed, or
                 // already handled: either way there is nothing to confirm.
-                Recorded::Forgotten | Recorded::AlreadyStored => return Ok(()),
+                Ok(Recorded::Forgotten) => {
+                    metrics::record_bartender_memory(BartenderMemoryWrite::TurnedAway);
+                    return Ok(());
+                }
+                Ok(Recorded::AlreadyStored) => {
+                    metrics::record_bartender_memory(BartenderMemoryWrite::AlreadyStored);
+                    return Ok(());
+                }
+                // Nothing written down, so nothing to confirm.
+                Err(error) => {
+                    metrics::record_bartender_memory(BartenderMemoryWrite::RequestedFailed);
+                    tracing::error!(
+                        error = ?error,
+                        user_id = %trigger_message.user_id,
+                        "failed to remember what a patron asked"
+                    );
+                    return Ok(());
+                }
             }
             let mut rng = TinyRng::seeded();
             REMEMBER_DONE_LINES[rng.next_usize(REMEMBER_DONE_LINES.len())]

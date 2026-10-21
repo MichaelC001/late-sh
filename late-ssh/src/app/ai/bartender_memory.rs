@@ -18,6 +18,7 @@ use tracing::Instrument;
 use uuid::Uuid;
 
 use super::ghost::text_for_mention_detection;
+use crate::metrics::{self, BartenderMemoryWrite};
 
 /// Past the tail itself: a line whose transaction started inside the
 /// window is stamped inside it but may commit a moment after it closes.
@@ -58,15 +59,20 @@ pub(super) fn schedule_record(db: Db, order: ChatMessage, reply: ChatMessage) {
             .await;
             match recorded {
                 Ok(Recorded::Stored { evicted }) => {
+                    metrics::record_bartender_memory(BartenderMemoryWrite::ExchangeStored);
                     tracing::info!(evicted, "bartender remembered an exchange");
                 }
                 Ok(Recorded::Forgotten) => {
+                    metrics::record_bartender_memory(BartenderMemoryWrite::TurnedAway);
                     tracing::info!(
                         "bartender let an exchange go: the patron asked to be forgotten"
                     );
                 }
-                Ok(Recorded::AlreadyStored) => {}
+                Ok(Recorded::AlreadyStored) => {
+                    metrics::record_bartender_memory(BartenderMemoryWrite::AlreadyStored);
+                }
                 Err(error) => {
+                    metrics::record_bartender_memory(BartenderMemoryWrite::ExchangeFailed);
                     tracing::warn!(error = ?error, "failed to remember a bartender exchange");
                 }
             }

@@ -524,3 +524,41 @@ async fn a_remember_request_said_before_forget_me_is_turned_away() {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn forget_me_spares_what_was_said_after_it() {
+    let test_db = test_db().await;
+    let patron = create_test_user(&test_db.db, "forget-order-patron").await;
+    let mut client = test_db.db.get().await.expect("db client");
+    let room = ChatRoom::get_or_create_public_room(&client, "forget-order-room")
+        .await
+        .expect("room");
+    let t0 = Utc::now() - Duration::hours(1);
+
+    let wipe = say(&client, room.id, patron.id, "@k forget me", t0).await;
+    let later = say(
+        &client,
+        room.id,
+        patron.id,
+        "@k remember stouts",
+        secs(t0, 1),
+    )
+    .await;
+    // The later request wins the race to the patron's lock.
+    assert_eq!(
+        BartenderMemory::record_requested(&mut client, &later, "stouts")
+            .await
+            .expect("record requested"),
+        Recorded::Stored { evicted: 0 }
+    );
+
+    let forgotten = BartenderMemory::forget(&mut client, patron.id, wipe.created)
+        .await
+        .expect("forget");
+    assert_eq!(forgotten, 0);
+    let memories = BartenderMemory::list_for_user(&client, patron.id)
+        .await
+        .expect("list");
+    assert_eq!(memories.len(), 1);
+    assert_eq!(memories[0].order_body, "stouts");
+}

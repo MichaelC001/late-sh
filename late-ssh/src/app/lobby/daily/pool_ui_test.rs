@@ -575,8 +575,13 @@ fn the_readout_follows_the_push_on_your_own_stroke() {
     pool.draft.toggle_mode(ShotMode::Stroke(PowerBand::Normal));
     let t0 = Instant::now();
     for (y, ms) in [(10, 0), (24, 100), (22, 300)] {
-        pool.draft
-            .pointer_moved_at(40, y, false, AimGear::Normal, t0 + Duration::from_millis(ms));
+        pool.draft.pointer_moved_at(
+            40,
+            y,
+            false,
+            AimGear::Normal,
+            t0 + Duration::from_millis(ms),
+        );
     }
     let played = pool.draft.power();
     assert_ne!(
