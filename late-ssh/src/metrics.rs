@@ -341,6 +341,22 @@ pub enum TailorBeat {
     Failed,
 }
 
+/// A poster at PRINTS (`app/deadchannel/poster`): `Saved` and `Burned`
+/// landed, `NoRunner` found no standing runner to hang it on or take it
+/// off, `Failed` is the write not landing. The read when the panel opens:
+/// `ReadFailed` is the wall not read (the panel cannot open on it),
+/// `Undecodable` a stored poster that is no canvas (the panel opens on a
+/// bare wall).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PosterBeat {
+    Saved,
+    Burned,
+    NoRunner,
+    Failed,
+    ReadFailed,
+    Undecodable,
+}
+
 /// What the presence wire did (`app/presence`): `Published` a notify
 /// sent, `PublishFailed` one that did not land (the next heartbeat carries
 /// it again), `Heard` another replica's batch folded in, `Rejected` a
@@ -652,6 +668,7 @@ mod inner {
 
     use super::BartenderMemoryWrite;
     use super::HomeRoom;
+    use super::PosterBeat;
     use super::ScreensaverTrigger;
     use super::ShareCardKind;
     use super::SlidingPuzzleArtLoad;
@@ -1882,6 +1899,16 @@ mod inner {
         })
     }
 
+    fn deadchannel_poster_total() -> &'static Counter<u64> {
+        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
+        METRIC.get_or_init(|| {
+            meter()
+                .u64_counter("late_ssh_deadchannel_poster_total")
+                .with_description("deadchannel posters saved and burned at PRINTS, by beat")
+                .build()
+        })
+    }
+
     fn deadchannel_lounge_total() -> &'static Counter<u64> {
         static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
         METRIC.get_or_init(|| {
@@ -2020,6 +2047,21 @@ mod inner {
 
     pub fn record_deadchannel_tailor(beat: TailorBeat) {
         deadchannel_tailor_total().add(1, &[KeyValue::new("beat", tailor_beat_label(beat))]);
+    }
+
+    fn poster_beat_label(beat: PosterBeat) -> &'static str {
+        match beat {
+            PosterBeat::Saved => "saved",
+            PosterBeat::Burned => "burned",
+            PosterBeat::NoRunner => "no_runner",
+            PosterBeat::Failed => "failed",
+            PosterBeat::ReadFailed => "read_failed",
+            PosterBeat::Undecodable => "undecodable",
+        }
+    }
+
+    pub fn record_deadchannel_poster(beat: PosterBeat) {
+        deadchannel_poster_total().add(1, &[KeyValue::new("beat", poster_beat_label(beat))]);
     }
 
     fn lounge_beat_label(beat: LoungeBeat) -> &'static str {
@@ -3753,6 +3795,7 @@ mod inner {
     use late_core::models::user::{AsciiPiece, AsciiSelection};
 
     use super::BartenderMemoryWrite;
+    use super::PosterBeat;
     use super::ScreensaverTrigger;
     use super::ShareCardKind;
     use super::SlidingPuzzleArtLoad;
@@ -3791,6 +3834,7 @@ mod inner {
     pub fn record_deadchannel_fight(_beat: FightBeat) {}
     pub fn record_deadchannel_old_signal_payout(_payout: OldSignalPayout) {}
     pub fn record_deadchannel_tailor(_beat: TailorBeat) {}
+    pub fn record_deadchannel_poster(_beat: PosterBeat) {}
     pub fn record_deadchannel_lounge(_beat: LoungeBeat) {}
     pub fn record_presence(_beat: PresenceWire) {}
     pub fn record_presence_records(_scope: PresenceScope, _count: usize) {}
