@@ -1601,7 +1601,7 @@ fn news_help_lines() -> Vec<String> {
             saved_shelf_line.as_str(),
             "  The shelf sits above the feed under a \"saved\" rule, newest save first, and a saved story",
             "  stays readable after the feed has moved on. s on a saved story takes it off.",
-            "  The feed shows the newest twenty stories; the selected story opens out with its link and summary.",
+            "  The feed shows the newest forty stories, each with its link and summary.",
             "",
             "Watching",
             "  A YouTube video card reads \"watch\". w plays it right here, over the page.",

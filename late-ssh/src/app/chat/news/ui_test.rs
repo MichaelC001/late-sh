@@ -98,12 +98,11 @@ fn card_meta_reads_watch_for_a_video() {
     );
 }
 
-/// With a shelf, a rule heads it and another heads the feed; every story
-/// takes two rows, a blank row parts one story from the next, and the
-/// selected one opens out with its link and its bullets. Without a shelf
-/// there are no rules at all.
+/// With a shelf, a rule heads it and another heads the feed. Every story
+/// shows whole, selected or not: title, meta, link and bullets. Without a
+/// shelf a plain rule parts one story from the next.
 #[test]
-fn the_list_sections_the_shelf_over_the_feed_and_opens_the_selected_story() {
+fn the_list_sections_the_shelf_over_the_feed_and_shows_every_story_whole() {
     let positions = HashMap::new();
     let mut kept = card_at("https://example.com/kept", BodyStatus::Unavailable);
     kept.article.title = "Kept for later".to_string();
@@ -111,30 +110,32 @@ fn the_list_sections_the_shelf_over_the_feed_and_opens_the_selected_story() {
     // Both read, so no dot gets in the way of the rows.
     let marker: HashSet<Uuid> = articles.iter().map(|item| item.article.id).collect();
 
-    let rows = drawn(&view(&articles, 1, 1, &marker, &positions), 80, 12);
+    let rows = drawn(&view(&articles, 1, 1, &marker, &positions), 80, 14);
     assert!(
-        rows[0].starts_with("── saved · 1 of 10 ──"),
+        rows[0].starts_with("━━ saved · 1 of 10 ━━"),
         "{:?}",
         rows[0]
     );
     assert_eq!(rows[1], "  Kept for later");
     assert!(rows[2].starts_with("  @mat ·"));
-    assert_eq!(rows[3], "");
-    assert!(rows[4].starts_with("── latest ──"), "{:?}", rows[4]);
-    assert_eq!(rows[5], "  Why LISTEN/NOTIFY stops scaling");
-    assert!(rows[6].ends_with("· 7 min read"));
-    assert_eq!(rows[7], "  https://example.com/listen-notify");
-    assert_eq!(rows[8], "  • one");
-    assert_eq!(rows[9], "  • two");
-    assert_eq!(rows[10], "  • three");
-    assert_eq!(rows[11], "");
+    assert_eq!(rows[3], "  https://example.com/kept");
+    assert_eq!(rows[4], "  • one");
+    assert_eq!(rows[5], "  • two");
+    assert_eq!(rows[6], "  • three");
+    assert!(rows[7].starts_with("━━ latest ━━"), "{:?}", rows[7]);
+    assert_eq!(rows[8], "  Why LISTEN/NOTIFY stops scaling");
+    assert!(rows[9].ends_with("· 7 min read"));
+    assert_eq!(rows[10], "  https://example.com/listen-notify");
+    assert_eq!(rows[11], "  • one");
+    assert_eq!(rows[12], "  • two");
+    assert_eq!(rows[13], "  • three");
 
-    let rows = drawn(&view(&articles, 0, 0, &marker, &positions), 80, 12);
+    let rows = drawn(&view(&articles, 0, 0, &marker, &positions), 80, 13);
     assert_eq!(rows[0], "  Kept for later");
     assert_eq!(rows[5], "  • three");
-    assert_eq!(rows[6], "");
+    assert_eq!(rows[6], "─".repeat(80));
     assert_eq!(rows[7], "  Why LISTEN/NOTIFY stops scaling");
-    assert!(rows.iter().all(|row| !row.contains("──")));
+    assert_eq!(rows[12], "  • three");
 }
 
 /// The unread dot marks a feed story the visit's marker has no read for,
@@ -144,14 +145,14 @@ fn the_unread_dot_marks_the_feed_and_not_the_shelf() {
     let marker = HashSet::new();
     let positions = HashMap::new();
     let articles = [card(BodyStatus::Unavailable), card(BodyStatus::Unavailable)];
-    let rows = drawn(&view(&articles, 1, 1, &marker, &positions), 80, 12);
+    let rows = drawn(&view(&articles, 1, 1, &marker, &positions), 80, 14);
     assert!(rows[1].starts_with("  Why"), "{:?}", rows[1]);
-    assert!(rows[5].starts_with("● Why"), "{:?}", rows[5]);
+    assert!(rows[8].starts_with("● Why"), "{:?}", rows[8]);
 }
 
 /// A bullet that runs on takes two rows at most, the second hung under the
-/// text after the bullet and cut with an ellipsis, so the opened story
-/// stays a card and not a page.
+/// text after the bullet and cut with an ellipsis, so a story stays a card
+/// and not a page.
 #[test]
 fn a_long_bullet_is_cut_at_two_rows() {
     let marker = HashSet::new();
