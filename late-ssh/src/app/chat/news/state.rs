@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::time::Instant;
 
 use ratatui_textarea::{TextArea, WrapMode};
 use tokio::sync::{broadcast, oneshot, watch};
@@ -33,9 +32,8 @@ pub fn news_share_banner(lead: &str, reward: NewsShareReward) -> Banner {
 }
 
 use super::reader::state::{ReaderBody, ReaderModal};
-use super::svc::{ArticleService, BodyLoad, BodyReply, NewsSaveOutcome, ShelfStep, is_youtube_url};
-use super::watch::state::{LivePlay, Player, SetupBox, SetupInputs, WatchMemory, WatchModal};
-use crate::paired_clients::PairControlMessage;
+use super::svc::{ArticleService, BodyLoad, BodyReply, NewsSaveOutcome, ShelfStep};
+use crate::app::video::state::{WatchMemory, WatchRequest, WatchSource, is_watchable};
 
 /// This session's news reads: the ids of the snapshot's articles the
 /// reader has read (`article_reads`), a visit to the News room reading
@@ -191,13 +189,6 @@ pub struct State {
     processing: bool,
     current_task: Option<tokio::task::AbortHandle>,
     reader: Option<OpenReader>,
-    /// Never up at the same time as the reader.
-    watch: Option<WatchModal>,
-    /// What the paired CLI was last told to play, kept past the modal so
-    /// closing it still sends the stop (`watch::state::sync`).
-    live_play: Option<LivePlay>,
-    /// The last `play_id` handed out this session.
-    last_play_id: u64,
 }
 
 /// The reader on screen, the story it is on, and its outstanding body
@@ -241,9 +232,6 @@ impl State {
             processing: false,
             current_task: None,
             reader: None,
-            watch: None,
-            live_play: None,
-            last_play_id: 0,
         }
     }
 
@@ -622,7 +610,6 @@ impl State {
             return false;
         };
         let modal = ReaderModal::open(&item);
-        self.close_watch();
         self.mark_article_read(article_id);
         let body_request =
             self.article_service
@@ -647,79 +634,40 @@ impl State {
     /// room is "watch" and not the global Bonsai shortcut.
     pub(crate) fn selected_card_is_watchable(&self) -> bool {
         self.selected_item()
-            .is_some_and(|item| is_youtube_url(&item.article.url))
+            .is_some_and(|item| is_watchable(&item.article.url))
     }
 
-    /// Whether a snapshot story is a video the watch modal can play.
-    pub(crate) fn is_watchable(&self, article_id: Uuid) -> bool {
-        self.watchable_item(article_id).is_some()
-    }
-
-    /// Open the player on a snapshot video, a fresh `play_id` for it, and
-    /// mark it read. A video the reader left partway through resumes
-    /// there. False when it left the snapshot or is not a video.
-    pub(crate) fn open_watch_player(&mut self, article_id: Uuid, now: Instant) -> bool {
-        let Some(item) = self.watchable_item(article_id).cloned() else {
-            return false;
-        };
-        self.close_watch();
-        self.last_play_id += 1;
-        self.reader = None;
-        let resume_from = self.watch_positions.get(&article_id).copied();
-        self.watch = Some(WatchModal::Player(Box::new(Player::new(
-            &item,
-            self.last_play_id,
-            now,
-            resume_from,
-        ))));
-        self.mark_article_read(article_id);
-        true
-    }
-
-    /// Open the setup box for a snapshot video the user's setup cannot
-    /// play. False when it left the snapshot or is not a video.
-    pub(crate) fn open_watch_setup(&mut self, article_id: Uuid, inputs: &SetupInputs) -> bool {
-        let Some(item) = self.watchable_item(article_id) else {
-            return false;
-        };
-        let setup = SetupBox::decide(&item.article.url, inputs);
-        self.close_watch();
-        self.reader = None;
-        self.watch = Some(WatchModal::Setup(setup));
-        true
+    /// What the watch player (`app/video/`) opens on for a known video
+    /// story. None when it is gone or not a video.
+    pub(crate) fn watch_request(&self, article_id: Uuid) -> Option<WatchRequest> {
+        let item = self.watchable_item(article_id)?;
+        Some(WatchRequest {
+            source: WatchSource::NewsArticle(article_id),
+            url: item.article.url.clone(),
+            title: item.article.title.clone(),
+            author: item.author_username.clone(),
+            shared_at: item.article.created,
+        })
     }
 
     fn watchable_item(&self, article_id: Uuid) -> Option<&ArticleFeedItem> {
         self.find_article(article_id)
-            .filter(|item| is_youtube_url(&item.article.url))
+            .filter(|item| is_watchable(&item.article.url))
     }
 
-    pub(crate) fn watch(&self) -> Option<&WatchModal> {
-        self.watch.as_ref()
+    /// Where the reader left a video story, if partway through: the
+    /// player resumes there.
+    pub(crate) fn watch_position(&self, article_id: Uuid) -> Option<WatchPosition> {
+        self.watch_positions.get(&article_id).copied()
     }
 
-    pub(crate) fn player_mut(&mut self) -> Option<&mut Player> {
-        match &mut self.watch {
-            Some(WatchModal::Player(player)) => Some(player),
-            Some(WatchModal::Setup(_)) | None => None,
-        }
-    }
-
-    /// Close the watch modal. A closing player leaves its position behind
-    /// for the next watch (`Player::memory`): the session's own map changes
-    /// now, so the card shows the progress at once, and the write goes out
-    /// as a task whose load brings every session of the reader's in line.
-    pub(crate) fn close_watch(&mut self) {
-        let Some(WatchModal::Player(player)) = self.watch.take() else {
-            return;
-        };
-        let article_id = player.article_id();
-        match player.memory() {
-            WatchMemory::Save(position) => {
-                self.watch_positions.insert(article_id, position);
-                self.article_service
-                    .save_watch_position_task(self.user_id, article_id, position);
-            }
+    /// What a closed player left for a story's next watch
+    /// (`Player::memory`): the session's own map changes now, so the card
+    /// shows the progress at once, and the write goes out as a task whose
+    /// load brings every session of the reader's in line.
+    pub(crate) fn remember_watch(&mut self, article_id: Uuid, memory: WatchMemory) {
+        match memory {
+            WatchMemory::Save(position) => self.save_watch_position(article_id, position),
             WatchMemory::Clear => {
                 self.watch_positions.remove(&article_id);
                 self.article_service
@@ -729,31 +677,13 @@ impl State {
         }
     }
 
-    /// After a `video_state`: save the playing position every
-    /// `WATCH_SAVE_EVERY` (`Player::checkpoint`), so a session that drops
-    /// mid-video still resumes close to where it was.
-    pub(crate) fn checkpoint_watch(&mut self, now: Instant) {
-        let Some(player) = self.player_mut() else {
-            return;
-        };
-        let article_id = player.article_id();
-        let Some(position) = player.checkpoint(now) else {
-            return;
-        };
+    /// Keep a story's position: on a close partway through, and every
+    /// `WATCH_SAVE_EVERY` while it plays (`Player::checkpoint`), so a
+    /// session that drops mid-video still resumes close to where it was.
+    pub(crate) fn save_watch_position(&mut self, article_id: Uuid, position: WatchPosition) {
         self.watch_positions.insert(article_id, position);
         self.article_service
             .save_watch_position_task(self.user_id, article_id, position);
-    }
-
-    /// The pair messages that bring the CLI in line with the open player:
-    /// a play, a move, a stop. Called after every draw, which is what
-    /// records the player's body.
-    pub(crate) fn video_sync(&mut self) -> Vec<PairControlMessage> {
-        let wanted = match &self.watch {
-            Some(WatchModal::Player(player)) => player.wanted(),
-            Some(WatchModal::Setup(_)) | None => None,
-        };
-        super::watch::state::sync(&mut self.live_play, wanted)
     }
 
     pub fn submit_composer(&mut self) {
