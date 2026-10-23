@@ -617,8 +617,8 @@ async fn enter_on_a_lounge_card_opens_the_reader() {
 }
 
 /// `r` in the reader on a story with a #lounge card is `r` on the card: the
-/// reply quotes the card and points at it exactly as one written from the
-/// card does, so Enter on it jumps back to the card.
+/// reply quotes the card's first line and points at it, so Enter on it jumps
+/// back to the card.
 #[tokio::test]
 async fn r_in_the_reader_replies_to_the_storys_lounge_card() {
     use crate::app::ai::svc::AiService;
@@ -666,42 +666,31 @@ async fn r_in_the_reader_replies_to_the_storys_lounge_card() {
     app.resize(160, 40).expect("resize test terminal");
     wait_for_render_contains(&mut app, "share a link in News").await;
 
-    // `r` on the card itself.
     app.handle_input(b"j");
-    app.handle_input(b"r");
-    app.handle_input(b"on the card\r");
-    wait_for_render_contains(&mut app, "on the card").await;
-
-    // `r` in the reader opened on the card, now under that reply.
-    app.handle_input(b"j");
-    app.handle_input(b"k");
     app.handle_input(b"\r");
     assert_eq!(
         app.chat.reader().map(|reader| reader.url()),
         Some(url),
         "Enter on the card opens the story"
     );
+    // One reply only: its quote carries the card's link, and a fresh
+    // account's link cooldown refuses a second link for half an hour.
     app.handle_input(b"r");
     app.handle_input(b"from the reader\r");
     wait_for_render_contains(&mut app, "from the reader").await;
 
-    let sent = ChatMessage::list_recent(&client, lounge.id, 3)
+    let reply = ChatMessage::list_recent(&client, lounge.id, 1)
         .await
-        .expect("list lounge");
-    let replies: Vec<(&str, Option<uuid::Uuid>)> = sent
-        .iter()
-        .filter(|message| message.id != card.id)
-        .map(|message| {
-            let quote = message.body.lines().next().expect("a reply's quote");
-            (quote, message.reply_to_message_id)
-        })
-        .collect();
-    assert_eq!(replies.len(), 2, "both replies landed: {replies:?}");
+        .expect("list lounge")
+        .remove(0);
     assert_eq!(
-        replies[0], replies[1],
-        "the reader's reply quotes the card as the card's own does"
+        (reply.body.as_str(), reply.reply_to_message_id),
+        (
+            "> @card-reply-them: 📰 The terminal renaissance https://example.com/t...\nfrom the reader",
+            Some(card.id)
+        ),
+        "the reader's reply quotes the card and points at it"
     );
-    assert_eq!(replies[0].1, Some(card.id), "and points at the card");
 
     app.handle_input(b"j");
     app.handle_input(b"\r");
