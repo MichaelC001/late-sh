@@ -354,6 +354,14 @@ async fn main() -> anyhow::Result<()> {
     let paper_service =
         late_ssh::app::paper::svc::PaperService::new(db.clone(), ai_service.clone());
     let _paper_sweeper_task = paper_service.start_sweeper_task();
+    // The herald: every replica checks, the day's row decides who posts.
+    // See `app/herald/svc.rs`.
+    let herald_service = late_ssh::app::herald::svc::HeraldService::new(
+        db.clone(),
+        config.herald.clone(),
+        config.web_url.clone(),
+    );
+    let _herald_task = herald_service.start_task();
     // The job feed's press: once a night, the run row decides which
     // replica; every replica keeps its own shelf snapshot. See
     // `app/jobs/svc.rs`.
@@ -480,6 +488,7 @@ async fn main() -> anyhow::Result<()> {
         translation_service: translation_service.clone(),
         summary_service: summary_service.clone(),
         paper_service: paper_service.clone(),
+        herald_service: herald_service.clone(),
         jobs_service: jobs_service.clone(),
         audio_service: audio_service.clone(),
         voice_service,

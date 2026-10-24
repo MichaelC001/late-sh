@@ -121,6 +121,25 @@ pub enum BartenderMemoryWrite {
     WipeFailed,
 }
 
+/// How one day of the herald (`app/herald`) resolved. `Posted` is the
+/// variant that spent the instance's calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeraldPostResult {
+    Posted,
+    /// Nothing worth posting that day: no board with enough ink.
+    Skipped,
+    /// Another replica held the day's claim.
+    Lost,
+    Failed,
+}
+
+/// How one network's leg of the herald's post went.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeraldDeliveryResult {
+    Delivered,
+    Failed,
+}
+
 /// How one page of The Late Edition (`app/paper`) came off the press.
 /// `Printed` is the variant that spent a model call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -704,12 +723,12 @@ mod inner {
         BioScreenOutcome, CrownRefusal, DailyPuzzle, DailyWinPayout, DoorGame, DoorWatchOutcome,
         FightBeat, FirstContactBeat, GalleryApplauseResult, GalleryHangResult,
         GalleryTakeDownResult, GateVerdict, GiftDrinkRefusal, GildRefusal, GildTier,
-        JobsFetchResult, JobsPostResult, JobsPressResult, JobsReadResult, LoungeBeat,
-        NewsShareReward, NightcapHouseFailure, NightcapOrderResult, OldSignalPayout,
-        OnlineTimeFlushResult, OutputKind, PaperOpenResult, PaperPrintResult, Place,
-        PoolShotOutcome, PotRefusal, PotReminderOutcome, Presence, PresenceScope, PresenceWire,
-        RealmChatRoomAttach, RealmPayout, RealmSeasonOpen, RealmSnapshotRowError, Refresh,
-        RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor, Screen, SendRefusal,
+        HeraldDeliveryResult, HeraldPostResult, JobsFetchResult, JobsPostResult, JobsPressResult,
+        JobsReadResult, LoungeBeat, NewsShareReward, NightcapHouseFailure, NightcapOrderResult,
+        OldSignalPayout, OnlineTimeFlushResult, OutputKind, PaperOpenResult, PaperPrintResult,
+        Place, PoolShotOutcome, PotRefusal, PotReminderOutcome, Presence, PresenceScope,
+        PresenceWire, RealmChatRoomAttach, RealmPayout, RealmSeasonOpen, RealmSnapshotRowError,
+        Refresh, RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor, Screen, SendRefusal,
         SessionStartStage, SessionUser, SnapshotRowError, SongQueueReward, SshRejectReason,
         SummaryResult, TailorBeat, ThumbnailFetch, TranslationResult, VizWireBands, WatchDoor,
     };
@@ -3546,6 +3565,62 @@ mod inner {
         );
     }
 
+    fn herald_post_result_label(result: HeraldPostResult) -> &'static str {
+        match result {
+            HeraldPostResult::Posted => "posted",
+            HeraldPostResult::Skipped => "skipped",
+            HeraldPostResult::Lost => "lost",
+            HeraldPostResult::Failed => "failed",
+        }
+    }
+
+    fn herald_posts_total() -> &'static Counter<u64> {
+        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
+        METRIC.get_or_init(|| {
+            meter()
+                .u64_counter("late_ssh_herald_posts_total")
+                .with_description("The herald's daily post by result")
+                .build()
+        })
+    }
+
+    pub fn record_herald_post(result: HeraldPostResult) {
+        herald_posts_total().add(
+            1,
+            &[KeyValue::new("result", herald_post_result_label(result))],
+        );
+    }
+
+    fn herald_delivery_result_label(result: HeraldDeliveryResult) -> &'static str {
+        match result {
+            HeraldDeliveryResult::Delivered => "delivered",
+            HeraldDeliveryResult::Failed => "failed",
+        }
+    }
+
+    fn herald_deliveries_total() -> &'static Counter<u64> {
+        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
+        METRIC.get_or_init(|| {
+            meter()
+                .u64_counter("late_ssh_herald_deliveries_total")
+                .with_description("The herald's post landing on each network, by result")
+                .build()
+        })
+    }
+
+    pub fn record_herald_delivery(
+        network: late_core::models::herald::HeraldNetwork,
+        result: HeraldDeliveryResult,
+    ) {
+        herald_deliveries_total().add(
+            1,
+            &[
+                KeyValue::new("network", network.as_str()),
+                KeyValue::new("result", herald_delivery_result_label(result)),
+            ],
+        );
+    }
+
     fn jobs_fetch_result_label(result: JobsFetchResult) -> &'static str {
         match result {
             JobsFetchResult::Fetched => "fetched",
@@ -4057,12 +4132,12 @@ mod inner {
         BioScreenOutcome, CrownRefusal, DailyPuzzle, DailyWinPayout, DoorGame, DoorWatchOutcome,
         FightBeat, FirstContactBeat, GalleryApplauseResult, GalleryHangResult,
         GalleryTakeDownResult, GateVerdict, GiftDrinkRefusal, GildRefusal, GildTier,
-        JobsFetchResult, JobsPostResult, JobsPressResult, JobsReadResult, LoungeBeat,
-        NewsShareReward, NightcapHouseFailure, NightcapOrderResult, OldSignalPayout,
-        OnlineTimeFlushResult, OutputKind, PaperOpenResult, PaperPrintResult, Place,
-        PoolShotOutcome, PotRefusal, PotReminderOutcome, Presence, PresenceScope, PresenceWire,
-        RealmChatRoomAttach, RealmPayout, RealmSeasonOpen, RealmSnapshotRowError, Refresh,
-        RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor, Screen, SendRefusal,
+        HeraldDeliveryResult, HeraldPostResult, JobsFetchResult, JobsPostResult, JobsPressResult,
+        JobsReadResult, LoungeBeat, NewsShareReward, NightcapHouseFailure, NightcapOrderResult,
+        OldSignalPayout, OnlineTimeFlushResult, OutputKind, PaperOpenResult, PaperPrintResult,
+        Place, PoolShotOutcome, PotRefusal, PotReminderOutcome, Presence, PresenceScope,
+        PresenceWire, RealmChatRoomAttach, RealmPayout, RealmSeasonOpen, RealmSnapshotRowError,
+        Refresh, RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor, Screen, SendRefusal,
         SessionStartStage, SessionUser, SnapshotRowError, SongQueueReward, SshRejectReason,
         SummaryResult, TailorBeat, ThumbnailFetch, TranslationResult, VizWireBands, WatchDoor,
     };
@@ -4214,6 +4289,12 @@ mod inner {
     pub fn record_chat_summary(_result: SummaryResult) {}
     pub fn record_paper_print(_result: PaperPrintResult) {}
     pub fn record_paper_open(_result: PaperOpenResult) {}
+    pub fn record_herald_post(_result: HeraldPostResult) {}
+    pub fn record_herald_delivery(
+        _network: late_core::models::herald::HeraldNetwork,
+        _result: HeraldDeliveryResult,
+    ) {
+    }
     pub fn record_jobs_fetch(
         _source: late_core::models::job_posting::JobSource,
         _result: JobsFetchResult,

@@ -261,54 +261,107 @@ Live, in order of evidence behind them:
   one bearer token and two HTTP calls; federating profiles (ActivityPub,
   WebFinger, signed fetches, inbound moderation) is weeks of work and
   sends the visibility people want outward, away from the terminal.
-- **The herald: one picture a day on the Fediverse.** An ordinary account
-  on an existing Mastodon instance (fosstodon.org: FOSS-leaning, a local
-  timeline that gives a new account readers on day one, bots welcome
-  when marked), flagged as automated, `https://late.sh` in its profile
-  links, and an application token with `write:media` and
-  `write:statuses` only. The Fediverse is every server speaking
-  ActivityPub (Mastodon, Pixelfed, PeerTube, Lemmy, Threads in part);
-  one Mastodon account is addressable from all of it. Bluesky is a
-  different network and would be a second client, later.
-  - **What it posts.** One picture a day, rotating so the slot never
-    repeats: yesterday's Artboard snapshot (tagged #ASCIIart and
-    #MastoArt, the communities that boost strangers' art), a runner's
-    poster the day it is painted at PRINTS with the member's handle, the
-    day's best share card rendered as a picture with the `ssh late.sh`
-    footer, a frame of the tavern or the night city. Each with alt text,
-    a link to that day's `/paper` or the gallery, and the same four tags
-    (#tildeverse #pubnix #ssh #terminal). The rare headline events the
-    #lounge feed already treats as stories (the pot drawn, the crown
-    taken, the monthly awards) may take the slot. Every picture comes
-    through the front door's cell renderer
-    (`late-web/src/pages/shared/board_png.rs`), so anything the terminal
-    draws can be posted once it has a route; today only the poster and
-    the gallery snapshot have one.
+- **The herald: one picture a day on the Fediverse and Bluesky.** Built
+  (`late-ssh/src/app/herald/CONTEXT.md`) and shipped dark: both
+  accounts exist, and the `herald_settings` row starts off. One post
+  a day, delivered to every network the herald has an account on. The
+  Fediverse: an ordinary account on an existing Mastodon instance
+  (fosstodon.org: FOSS-leaning, a local timeline that gives a new account
+  readers on day one; invite-only, and its rule for automated accounts
+  is that an active member runs them and answers replies), flagged as
+  automated, `https://late.sh` in its profile links, and an application
+  token with `write:media` and `write:statuses` only. The Fediverse is
+  every server speaking ActivityPub (Mastodon, Pixelfed, PeerTube, Lemmy,
+  Threads in part); one Mastodon account is addressable from all of it.
+  Bluesky: a different network, so its own account, flagged with the
+  `bot` self-label, posting through an app password; it asks that a bot
+  never likes, reposts or replies unprompted, so the human half there is
+  done from a person's own account.
+  - **What it posts.** One picture a day at 16:00 UTC: yesterday's daily
+    Artboard snapshot (tagged #ASCIIart and #MastoArt, the communities
+    that boost strangers' art), linking the gallery, once it has enough
+    ink to be a picture; nothing on a bare day. Alt text and four tags.
+    The first design alternated it with members' PRINTS posters, each
+    once; dropped before launch, since a few new posters a month cannot
+    carry a slot.
+  - **Future work, in this order.** Each kind is one PNG route on the
+    front door (`late-web/src/pages/shared/board_png.rs`), one candidate
+    query, one text, and one more variant of the herald's picture, which
+    breaks the build until every match knows it. Before any of them, the
+    crop: the live board is 384 cells wide, so the board kind posts a
+    thin strip of whatever was drawn; crop the PNG to the drawn area, in
+    the herald, before it goes out.
+    1. **Gallery pieces.** A piece is a real picture a member made and
+       chose to hang, immutable, credited, with applause: the best supply
+       of art the server has, and the only kind with no model in the
+       path. Each piece goes out once, newest unposted first, one a day
+       when several wait, credited `~name`. Needs a piece PNG route and a
+       piece page on the web (the gallery shows snapshot lanes, no pieces
+       yet). Pieces are checked before posting: the rendered PNG goes to
+       a vision model with one question, is this fit to post from a
+       community art account, and a no skips the piece. The check gates;
+       it does not replace a moderator's removal.
+    2. **Game wins, weekly.** A Sunday scoreboard card, one line per
+       game with the week's best and `~name`, from the arcade's score
+       ledger (`game_score_events`, every arcade game in one table) and
+       the doors' own tables. The one kind that shows the whole shelf of
+       games; weekly so it never reads as a daily brag feed.
+    3. **The paper, on quiet days.** An edition exists every day the room
+       talked and is public on the web with a feed, so posting its front
+       page gives nothing away: a rendered masthead with the headlines,
+       linking the edition. The post text quotes masthead and headlines
+       only and drops `#MastoArt` (art communities dislike model-written
+       text); the "what we were reading" links stay inside the picture,
+       never in the text, since a list of links is what instance rules
+       call spam.
+    The rotation then reads: a waiting piece, else the scoreboard on
+    Sundays, else yesterday's board when it has ink, else the paper's
+    front page, else nothing. Ruled out: room summaries (a model's
+    account of what people said in a room they took for a clubhouse,
+    pointed outward) and a card of new profile slugs (dull, a handful a
+    month). Further out, each behind a PNG route: share cards with the
+    `ssh late.sh` footer, a frame of the tavern or the night city, the
+    rare headline events the #lounge feed treats as stories.
   - **What it never posts.** Chat. A frame of #lounge is people's
     messages on the public web; the Artboard, posters and cards are
     things people made to be seen, messages are not.
-  - **The rhythm.** One post a day, at most two when both are pictures.
-    A muted account never recovers; the variety above is so one slot
-    never repeats, not so there are more slots.
-  - **The shape.** A small late-ssh domain built like the paper's press:
-    a sweeper on every replica, a `herald_posts` row per UTC day claimed
-    by conditional insert so several replicas post exactly once, the
-    picture fetched over `web_url` from the front door's PNG routes
-    (`/profiles/{slug}/poster.png`, `/gallery/{key}/image.png`), a
-    media upload then a status call with an idempotency key so a retry
-    never double-posts, a `posted / skipped / failed` counter on the
-    Grafana board. Config off in dev and required in prod, so the first
-    prod deploy after it merges needs the token secret in place (wired
-    like `LATE_AI_API_KEY` in `infra/service-ssh.tf`) or the service
-    refuses to start.
+  - **The rhythm.** One post a day, never two. A muted account never
+    recovers; the rotation is so one slot never repeats, not so there are
+    more slots.
+  - **The shape.** A late-ssh domain built like the paper's press: a
+    checker on every replica, a `herald_posts` row per UTC day claimed by
+    conditional insert so several replicas post exactly once, the picture
+    picked once and stored on the row, fetched from the front door's PNG
+    routes over the cluster service, then one delivery per network
+    recorded as it lands (a retry sends only to the networks still
+    missing). On Mastodon the status call carries the row's id as its
+    idempotency key; on Bluesky the record key is derived from it, so a
+    retry never double-posts on either. Counters
+    `late_ssh_herald_posts_total` (posted, skipped, lost, failed) and
+    `late_ssh_herald_deliveries_total` by network, on the Grafana board's
+    Herald row. Going live on a network is a profile change: pin the
+    instance or the handle, require its secret, ship the `-infra` release
+    that injects it before the ssh image that needs it. Dev posts only
+    with a network's pair in `.env.local`, unlisted on Mastodon (Bluesky
+    has no unlisted).
   - **The human half.** The account follows a few people, answers
     replies, and boosts members who post their own profile or card. A
     bot that only broadcasts gets muted; an account that posts once a
     day and otherwise behaves like a person gets followed.
   - **When.** It is an arrivals lever, and the funnel in section 3 says
-    arrivals leak at 94% on day two. Build it, flip it on once the first
-    hour has moved, so the first thing new followers find is a place
-    that holds them.
+    arrivals leak at 94% on day two. Flip the row on once the first hour
+    has moved, so the first thing new followers find is a place that
+    holds them. Not measured yet beyond the counter.
+  - **What is left.** The herald is built and documented in
+    `late-ssh/src/app/herald/CONTEXT.md` (the post, the switches, the
+    account setup by hand, the telemetry); the rollout of its two secrets
+    follows the deploy skew rule in `infra/RUNBOOK.md`. Open: Bluesky's
+    `bot` self-label on the profile record (no setting in the app; a
+    one-off `putRecord` of `app.bsky.actor.profile` with `labels.values:
+    [{val: "bot"}]`), a `rel="me"` link from the landing page to
+    `https://fosstodon.org/@late` so the profile's `https://late.sh` link
+    shows verified, the vision check before member pieces go out, and the
+    human half above, daily.
 - **Launch posts wait for the deadchannel public flip** (`GAME.md`, "The
   three surfaces"), which is the game's public launch. The Hacker News
   front page in July 2026 peaked at about 100 sessions and settled back to
