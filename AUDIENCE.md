@@ -41,6 +41,19 @@ A person with one session in a week is not necessarily a drive-by: a
 regular who leaves one session open all week also counts once. Session
 counts measure reconnects, not visits.
 
+The CLI is the regulars' client. Per person, over the session summaries
+from 2026-10-20 to 2026-10-25 joined to lifetime `user_online_time`
+(connected time, not keyboard time):
+
+| People in the window | CLI only | Plain ssh only | Both | Mostly CLI, by time | Hours CLI / ssh |
+|---|---|---|---|---|---|
+| All 327 | 95 | 216 | 16 | 107 | 1,266 / 1,006 |
+| The 81 with 24 h or more lifetime | 43 | 27 | 11 | 52 | 1,177 / 917 |
+
+156 accounts have 24 h or more lifetime; the other 75 did not connect in
+the window. Which client a session used is in the logs only, so the split
+cannot reach further back than log retention.
+
 ## 2. Where the time goes
 
 Attention is counted once a second per session, split by screen and by
@@ -256,7 +269,15 @@ Live, in order of evidence behind them:
   Mastodon profile shows late.sh verified, and every page unfurls into a
   preview card: a profile into its runner's poster, a gallery link into
   its snapshot, both drawn server-side as PNG (`late-web/CONTEXT.md`).
-  None of it is measured yet beyond page views. Post, do not federate: a
+  The paper opens with YESTERDAY ON LATE.SH, the covered day in numbers
+  (the radio's top stations by paired listener, the tracks queued, the
+  games finished in the arcade and the Lobby, the doors opened), drawn
+  from the rows and no model
+  (`late-ssh/src/app/paper/CONTEXT.md`): the one paper section that
+  answers a newcomer's "is anyone here?", on the web and on the herald's
+  paper card too. Unmeasured: whether the paper's on-purpose opens (7 a
+  day) move; nothing else here is measured beyond page views. Post, do
+  not federate: a
   bot account on an existing instance is
   one bearer token and two HTTP calls; federating profiles (ActivityPub,
   WebFinger, signed fetches, inbound moderation) is weeks of work and
@@ -280,14 +301,15 @@ Live, in order of evidence behind them:
   done from a person's own account.
   - **What it posts.** One picture a day at 16:00 UTC, by a rotation:
     on Sundays the week in every game (a scoreboard card, one line per
-    game anyone played with its best and `~name`: the arcade's daily
+    game anyone played with its best and no name: the arcade's daily
     puzzles and high scores, the Lobby's chess, pool and card games by
     wins that paid, the doors by their top run), else the newest gallery
     piece hung in the last week and never posted (credited `~name`,
     linking the piece's page; each piece goes out once), else
     yesterday's Artboard snapshot cropped to what is drawn, once it has
     enough ink to be a picture (linking the gallery), else the Late
-    Edition's front page as a card (linking the edition), else nothing.
+    Edition's front page as a card (the day in numbers, then the heads of
+    the prose columns; linking the edition), else nothing.
     The scoreboard goes first because it has one day a week and a piece
     can wait a day; the week's window keeps a backlog from crowding out
     the board, and the launch from posting a year of pieces. Alt text
@@ -317,7 +339,10 @@ Live, in order of evidence behind them:
     best supply of art the server has: a real picture a member made and
     chose to hang, immutable, credited, with applause. The scoreboard is
     the one kind that shows the whole shelf of games, weekly so it never
-    reads as a daily brag feed. The paper's post text names the edition
+    reads as a daily brag feed, and nameless so it is never a brag at
+    all: hanging a piece is a public act and earns its `~name`, winning
+    Sudoku is not, and nobody opted into being posted; the names stay on
+    the terminal's boards. The paper's post text names the edition
     only and drops `#MastoArt` (art communities dislike model-written
     text); its columns stay inside the picture, never in the text, since
     a list of links is what instance rules call spam. The cards are drawn
@@ -464,6 +489,9 @@ curl -s http://127.0.0.1:19428/select/logsql/query \
 # session lengths (summaries are written for a subset of sessions)
 curl -s http://127.0.0.1:19428/select/logsql/query \
   --data-urlencode 'query=_time:7d "session wire summary" | stats by (client) count() n, quantile(0.5, secs) p50, quantile(0.9, secs) p90'
+# the per-person client split: join this on user_id to user_online_time
+curl -s http://127.0.0.1:19428/select/logsql/query \
+  --data-urlencode 'query=_time:7d "session wire summary" | stats by (user_id, client) count() n, sum(secs) secs' --data-urlencode 'limit=100000'
 ```
 
 The newcomer funnel comes from the database, not the logs: the referral
@@ -505,7 +533,11 @@ labels, so the series count cannot grow with the crowd):
   `user_aquarium_care` by `last_fed`; `user_online_time` as the lifetime
   distribution (`total_milliseconds` per `user_id`); `chat_messages` by
   `room_id` and distinct `user_id` per day; `deadchannel_runners` rows
-  with `left_at` null.
+  with `left_at` null. The doors are the exception: `door_openings` holds
+  one row per Enter on a hub card (`late-ssh/src/app/door/CONTEXT.md`),
+  so distinct `user_id` per `card` per day is one query, and the counts
+  alone are on the Grafana Games row ("Doors Opened by Card") and in the
+  paper's YESTERDAY line, every card.
 - What a newcomer does on day one, per person. The counters split it by
   tenure (`day_one`, `first_week`, `regular` on the attention, visit and
   session-start series), count each first-visit tour stop reached, the
