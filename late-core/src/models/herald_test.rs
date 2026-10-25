@@ -2,8 +2,8 @@ use chrono::{Duration, NaiveDate, Utc};
 use tokio_postgres::Client;
 
 use super::herald::{
-    HeraldDayStatus, HeraldDelivery, HeraldKind, HeraldNetwork, HeraldPost, HeraldPosted,
-    HeraldSwitch,
+    HeraldDayStatus, HeraldDelivery, HeraldKind, HeraldNetwork, HeraldPick, HeraldPost,
+    HeraldPosted, HeraldSwitch,
 };
 use crate::test_utils::test_db;
 
@@ -27,12 +27,15 @@ fn window() -> chrono::DateTime<Utc> {
 
 /// Store the pick and settle the day as posted on Mastodon.
 async fn post(client: &Client, day: NaiveDate, kind: HeraldKind, subject: &str) {
-    HeraldPost::store_picture(
+    HeraldPost::store_pick(
         client,
         day,
         kind,
         subject,
-        &serde_json::json!({"pick": subject}),
+        &HeraldPick {
+            picture: serde_json::json!({"pick": subject}),
+            look: serde_json::json!("unseen"),
+        },
     )
     .await
     .expect("store pick");
@@ -109,10 +112,11 @@ async fn a_day_is_claimed_once_and_settles() {
         }
     );
     assert_eq!(
-        HeraldPost::stored_picture(&client, DAY)
-            .await
-            .expect("read"),
-        Some(serde_json::json!({"pick": "daily:2026-10-22"}))
+        HeraldPost::stored_pick(&client, DAY).await.expect("read"),
+        Some(HeraldPick {
+            picture: serde_json::json!({"pick": "daily:2026-10-22"}),
+            look: serde_json::json!("unseen"),
+        })
     );
 
     // The key is the first claim's and never changes; a pick and a
@@ -123,12 +127,15 @@ async fn a_day_is_claimed_once_and_settles() {
         .await
         .expect("claim")
         .expect("wins");
-    HeraldPost::store_picture(
+    HeraldPost::store_pick(
         &client,
         later,
         HeraldKind::Artboard,
         "daily:2026-10-23",
-        &serde_json::json!({}),
+        &HeraldPick {
+            picture: serde_json::json!({}),
+            look: serde_json::json!({"seen": {"alt": "a cat"}}),
+        },
     )
     .await
     .expect("store pick");
@@ -146,10 +153,12 @@ async fn a_day_is_claimed_once_and_settles() {
     assert_eq!(retry, first, "the idempotency key survives a retry");
     assert_ne!(key, first, "each day has its own key");
     assert_eq!(
-        HeraldPost::stored_picture(&client, later)
-            .await
-            .expect("read"),
-        Some(serde_json::json!({}))
+        HeraldPost::stored_pick(&client, later).await.expect("read"),
+        Some(HeraldPick {
+            picture: serde_json::json!({}),
+            look: serde_json::json!({"seen": {"alt": "a cat"}}),
+        }),
+        "the look survives the retry with the picture"
     );
     assert_eq!(
         HeraldPost::deliveries(&client, later).await.expect("read"),
@@ -338,4 +347,54 @@ async fn an_unclaimed_day_is_settled_unposted() {
             .expect("settle"),
         "a claimed day is not touched"
     );
+}
+
+/// The subjects of one kind picked since a day, whatever became of the
+/// day: a failed day's piece counts as picked.
+#[tokio::test]
+async fn the_subjects_of_a_kind_read_back_since_a_day() {
+    let test_db = test_db().await;
+    let client = test_db.db.get().await.expect("db client");
+
+    let failed = DAY + Duration::days(2);
+    for day in [DAY, DAY + Duration::days(1), failed] {
+        HeraldPost::claim(&client, day, fresh(), window(), MAX_ATTEMPTS)
+            .await
+            .expect("claim")
+            .expect("wins");
+    }
+    post(&client, DAY, HeraldKind::Piece, "piece:a").await;
+    post(
+        &client,
+        DAY + Duration::days(1),
+        HeraldKind::Artboard,
+        "daily:x",
+    )
+    .await;
+    HeraldPost::store_pick(
+        &client,
+        failed,
+        HeraldKind::Piece,
+        "piece:b",
+        &HeraldPick {
+            picture: serde_json::json!({}),
+            look: serde_json::json!("unseen"),
+        },
+    )
+    .await
+    .expect("store pick");
+    HeraldPost::mark_failed(&client, failed)
+        .await
+        .expect("fail");
+
+    let subjects = |since| {
+        let client = &client;
+        async move {
+            HeraldPost::subjects_since(client, HeraldKind::Piece, since)
+                .await
+                .expect("read")
+        }
+    };
+    assert_eq!(subjects(DAY).await, vec!["piece:a", "piece:b"]);
+    assert_eq!(subjects(DAY + Duration::days(1)).await, vec!["piece:b"]);
 }

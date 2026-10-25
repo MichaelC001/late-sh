@@ -1,9 +1,9 @@
 //! The Bluesky leg of a delivery: the AT Protocol calls (a session from
 //! the app password, the blob upload, the post record), the picture
 //! fitted under the blob cap, the record key derived from the day's id so
-//! a retry overwrites instead of duplicating, and the facets that make the
-//! link and the tags live. Returns the post's URL or an error; `svc.rs`
-//! logs and counts.
+//! a retry overwrites instead of duplicating, the facets that make the
+//! link and the tags live, and the self-label the look's warning maps
+//! to. Returns the post's URL or an error; `svc.rs` logs and counts.
 
 use std::io::Cursor;
 
@@ -39,6 +39,8 @@ pub(crate) struct Post<'a> {
     pub(crate) png: &'a [u8],
     pub(crate) text: &'a str,
     pub(crate) alt: &'a str,
+    /// The self-label the record carries (`state::bluesky_mark`), if any.
+    pub(crate) label: Option<&'a str>,
     /// When the post says it was made.
     pub(crate) created_at: chrono::DateTime<chrono::Utc>,
 }
@@ -83,7 +85,7 @@ pub(crate) async fn deliver(
     let session = create_session(http, config).await?;
     let blob = upload_blob(http, config, &session, fitted.png).await?;
     let rkey = tid_for(post.key);
-    let record = json!({
+    let mut record = json!({
         "$type": "app.bsky.feed.post",
         "text": post.text,
         "createdAt": post.created_at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
@@ -98,6 +100,12 @@ pub(crate) async fn deliver(
             }],
         },
     });
+    if let Some(label) = post.label {
+        record["labels"] = json!({
+            "$type": "com.atproto.label.defs#selfLabels",
+            "values": [{ "val": label }],
+        });
+    }
     put_record(http, config, &session, &rkey, record).await?;
     Ok(format!(
         "https://bsky.app/profile/{}/post/{rkey}",
@@ -229,8 +237,9 @@ pub(crate) fn fit_under(png: &[u8], max_bytes: usize) -> anyhow::Result<Fitted> 
 }
 
 /// The rich-text facets: every `http(s)://` word a link, every `#word` a
-/// tag, by UTF-8 byte range as the protocol counts them. Our own text, so
-/// a word is whatever sits between whitespace.
+/// tag, by UTF-8 byte range as the protocol counts them. Our own text (a
+/// piece's title goes in dead, `state::title_words`), so a word is
+/// whatever sits between whitespace.
 pub(crate) fn facets(text: &str) -> Vec<Value> {
     let mut facets = Vec::new();
     let mut start = 0;

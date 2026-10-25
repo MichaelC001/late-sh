@@ -278,13 +278,22 @@ Live, in order of evidence behind them:
   `bot` self-label, posting through an app password; it asks that a bot
   never likes, reposts or replies unprompted, so the human half there is
   done from a person's own account.
-  - **What it posts.** One picture a day at 16:00 UTC: yesterday's daily
-    Artboard snapshot (tagged #ASCIIart and #MastoArt, the communities
-    that boost strangers' art), linking the gallery, once it has enough
-    ink to be a picture; nothing on a bare day. Alt text and four tags.
-    The first design alternated it with members' PRINTS posters, each
-    once; dropped before launch, since a few new posters a month cannot
-    carry a slot.
+  - **What it posts.** One picture a day at 16:00 UTC, by a rotation:
+    on Sundays the week in every game (a scoreboard card, one line per
+    game anyone played with its best and `~name`: the arcade's daily
+    puzzles and high scores, the Lobby's chess, pool and card games by
+    wins that paid, the doors by their top run), else the newest gallery
+    piece hung in the last week and never posted (credited `~name`,
+    linking the piece's page; each piece goes out once), else
+    yesterday's Artboard snapshot cropped to what is drawn, once it has
+    enough ink to be a picture (linking the gallery), else the Late
+    Edition's front page as a card (linking the edition), else nothing.
+    The scoreboard goes first because it has one day a week and a piece
+    can wait a day; the week's window keeps a backlog from crowding out
+    the board, and the launch from posting a year of pieces. Alt text
+    and the kind's tags. The first design alternated the board with
+    members' PRINTS posters, each once; dropped before launch, since a
+    few new posters a month cannot carry a slot.
   - **The tags.** Four at most, two that bring readers and two that
     bring members, chosen per kind so a tag never sits on a post its
     followers did not come for (a mismatched tag is how an account gets
@@ -293,48 +302,34 @@ Live, in order of evidence behind them:
     views; #tildeverse (pubnix people, the likeliest to run `ssh late.sh`)
     and #terminal (terminal culture; #ssh was dropped, it is sysadmin and
     security talk) bring members. Per kind: the board and gallery pieces
-    `#ASCIIart #MastoArt #tildeverse #terminal` (live for the board);
-    the weekly wins `#puzzles #sudoku #tildeverse #terminal`; the paper
+    `#ASCIIart #MastoArt #tildeverse #terminal`;
+    the weekly scoreboard `#puzzles #sudoku #tildeverse #terminal`; the paper
     `#tildeverse #terminal #smolweb`, never #MastoArt. Candidates not
     taken: #ANSIart (the BBS and coloured-terminal tradition, a smaller
     crowd), #TUI, #TextArt. Unmeasured: compare recent posters on each
     tag's page on the instance before changing a set.
-  - **Future work, in this order.** Each kind is one PNG route on the
-    front door (`late-web/src/pages/shared/board_png.rs`), one candidate
-    query, one text, and one more variant of the herald's picture, which
-    breaks the build until every match knows it. Before any of them, the
-    crop: the live board is 384 cells wide, so the board kind posts a
-    thin strip of whatever was drawn; crop the PNG to the drawn area, in
-    the herald, before it goes out.
-    1. **Gallery pieces.** A piece is a real picture a member made and
-       chose to hang, immutable, credited, with applause: the best supply
-       of art the server has, and the only kind with no model in the
-       path. Each piece goes out once, newest unposted first, one a day
-       when several wait, credited `~name`. Needs a piece PNG route and a
-       piece page on the web (the gallery shows snapshot lanes, no pieces
-       yet). Every piece goes out; the look (below) decides its alt text
-       and whether it carries the NSFW mark, never whether it posts.
-    2. **Game wins, weekly.** A Sunday scoreboard card, one line per
-       game with the week's best and `~name`, from the arcade's score
-       ledger (`game_score_events`, every arcade game in one table) and
-       the doors' own tables. The one kind that shows the whole shelf of
-       games; weekly so it never reads as a daily brag feed.
-    3. **The paper, on quiet days.** An edition exists every day the room
-       talked and is public on the web with a feed, so posting its front
-       page gives nothing away: a rendered masthead with the headlines,
-       linking the edition. The post text quotes masthead and headlines
-       only and drops `#MastoArt` (art communities dislike model-written
-       text); the "what we were reading" links stay inside the picture,
-       never in the text, since a list of links is what instance rules
-       call spam.
-    The rotation then reads: a waiting piece, else the scoreboard on
-    Sundays, else yesterday's board when it has ink, else the paper's
-    front page, else nothing. Ruled out: room summaries (a model's
-    account of what people said in a room they took for a clubhouse,
-    pointed outward) and a card of new profile slugs (dull, a handful a
-    month). Further out, each behind a PNG route: share cards with the
-    `ssh late.sh` footer, a frame of the tavern or the night city, the
-    rare headline events the #lounge feed treats as stories.
+  - **The kinds.** Built (`late-ssh/src/app/herald/CONTEXT.md`, "The
+    post"). Each kind is one PNG route on the front door (late-web's
+    piece page and PNG, the week's games card, the paper's front-page
+    card, all through `late-web/src/pages/shared/board_png.rs`), one
+    candidate read, one text, and one variant of the herald's picture,
+    which breaks the build until every match knows it. A piece is the
+    best supply of art the server has: a real picture a member made and
+    chose to hang, immutable, credited, with applause. The scoreboard is
+    the one kind that shows the whole shelf of games, weekly so it never
+    reads as a daily brag feed. The paper's post text names the edition
+    only and drops `#MastoArt` (art communities dislike model-written
+    text); its columns stay inside the picture, never in the text, since
+    a list of links is what instance rules call spam. The cards are drawn
+    from late.sh's own rows and never shown to the model. Ruled out: room
+    summaries (a model's account of what people said in a room they took
+    for a clubhouse, pointed outward) and a card of new profile slugs
+    (dull, a handful a month). Further out, each behind a PNG route:
+    share cards with the `ssh late.sh` footer, a frame of the tavern or
+    the night city, the rare headline events the #lounge feed treats as
+    stories. Unmeasured: how many
+    pieces a week wait, which decides how often the board still gets the
+    slot.
   - **What it never posts.** Chat. A frame of #lounge is people's
     messages on the public web; the Artboard, posters and cards are
     things people made to be seen, messages are not.
@@ -372,86 +367,44 @@ Live, in order of evidence behind them:
     automation label is on (Settings, "Show automation label"), and the
     landing page links both accounts with `rel="me"`, which is what makes
     the Mastodon profile's `https://late.sh` link show verified. Open:
-    the look (below), first, since today the board goes out unseen with a
-    template alt text and no NSFW mark; then the human half above, daily.
-  - **The look: alt text and the NSFW mark, before every post.** Not
-    built. A note from a Fediverse member on the first post: describe
-    every image (readers there look for alt text and care that it says
-    what is in the picture; a model writing it is fine), and mark
-    anything with nudity as sensitive. Today's alt text is one template
-    that never says what was drawn, and nothing is ever marked.
-    - **The rule.** Everything people make goes out. The look never
-      skips a post; it decides two things: the alt text, and which
-      warning the post carries, if any. Removal stays a hand job from
-      the account, as now.
-    - **The call.** One vision call per day, at pick time: the PNG
-      already fetched from late-web goes to Gemini (`AI_MODEL`) with a
-      schema answer `{ alt, warning }`. `alt` is a plain description of
-      what is drawn, under 1,000 characters (Mastodon allows 1,500), no
-      names, the herald prefixing `ASCII art: `. `warning` is one of a
-      closed set: `none`, `nudity` (bodies, not sexual), `suggestive`,
-      `explicit`, `gore`, `offensive` (a slur, hate symbol or harassment
-      drawn on the board). The prompt says the picture is ASCII and
-      Unicode glyph art on a dark canvas, and that the answer is a label,
-      not a verdict on whether to post.
-    - **Where each warning lands.** Mastodon: anything but `none` posts
-      with `sensitive: true` (the image blurred) and a content warning,
-      `nsfw: nudity`, `nsfw: suggestive`, `nsfw: explicit`, `cw: gore`,
-      `cw: offensive`. Bluesky has self-labels, not warnings, so the
-      record gets `labels` (`com.atproto.label.defs#selfLabels`):
-      `nudity`, `sexual`, `porn`, `graphic-media` in the same order.
-      Every warned post on Bluesky also carries `#nsfw` in its text (a
-      tag facet like the others, in place of the kind's last tag so the
-      post stays at four), since people there hide posts by muting the
-      tag. Bluesky has no label for `offensive`, so there the tag and a
-      first line `cw: offensive` are the whole mark: the image is not
-      blurred, only hidden from whoever mutes `#nsfw`. Mastodon's text
-      keeps its tags, its warning does that job. Both maps are
-      exhaustive matches on the closed `Warning`, so a new warning breaks
-      the build until each network knows it.
-    - **When the model fails.** The look is `Unseen`, not a guess:
-      the post goes out with the template alt text, `sensitive: true`
-      and the warning `cw: not reviewed` on Mastodon, and `#nsfw` with
-      a first line `cw: not reviewed` on Bluesky (which has no label
-      for it). Never unmarked, never lost. AI
-      switched off (dev) is always `Unseen`, so dev posts show the path.
-    - **Stored with the pick.** The answer is a closed enum
-      (`Look::Seen { alt, warning }` or `Look::Unseen`), written to a new
-      `look` jsonb column on `herald_posts` (forward migration) in the
-      same statement as the picture, before the first network call. A
-      retry posts the same alt and the same mark and never asks the
-      model again; an `Unseen` day stays unseen.
-    - **The shape in code.** A `look.rs` leg in the herald, shaped like
-      `mastodon.rs` and `bluesky.rs`: the prompt, the schema, the parse
-      into `Look`, logs nothing. `state.rs` gains `Warning`, `Look` and
-      the two per-network maps, pure. The AI domain gains one method,
-      a schema call that carries an image part (`inline_data`, PNG,
-      base64) beside the text: a widening of `AiService`'s public
-      surface, the only change outside the herald. The herald takes an
-      `AiService` in its constructor (`main.rs`). `/herald preview`
-      runs the look and shows the warning and the alt text, sending
-      nothing.
-    - **Telemetry.** `late_ssh_herald_looks_total{result}`: `clean`,
-      `warned`, `unseen`; the warning itself on the `the herald posted`
-      line; error type `herald_look_failed` with the model's error, once,
-      in the service.
-    - **Before wiring it.** Run the prompt by hand over the last thirty
-      daily snapshots in the gallery and read every answer: models read
-      glyph art worse than photos, and a description that misses what
-      everyone in the room can see is the failure readers will notice.
-      Tune the prompt there, then build.
-    - **Instance rules.** Fosstodon is a conservative FOSS instance;
-      read its rules on sexual content before the first `explicit` day.
-      If they forbid it even behind a warning, posting everything there
-      and keeping the account are in conflict, and that is a decision
-      to make before it happens, not after a report.
-    - **Tests.** The parse (each warning, an unknown one refused, an
-      over-long alt cut), both network maps for every warning and for
-      `Unseen` (the Bluesky text with `#nsfw` still under 300 graphemes), the stored look surviving a retry without a second call,
-      and the Mastodon form and the Bluesky record carrying the mark.
-      End to end in `svc_test.rs` covers `Unseen` (AI off); a `Seen` day
-      end to end needs `AiService`'s endpoint settable in tests, a small
-      second change to the AI domain.
+    the human half above, daily.
+  - **The look: alt text and the NSFW mark, before every post.** Built
+    (`late-ssh/src/app/herald/CONTEXT.md`, "The look" and "The mark"),
+    from a Fediverse member's note on the first post: describe every
+    image, and mark anything with nudity as sensitive. One Gemini vision
+    call at pick time writes the alt text and picks one warning from a
+    closed set, for the board and pieces; Mastodon gets a marked post as
+    a note behind a content warning with no picture (instance rules,
+    below), Bluesky the picture with a self-label and `#nsfw`, and a
+    failed call posts marked `not reviewed`. The look never skips a
+    post: removal stays a hand job from the account.
+    - **What the hand run measured.** The gallery's 16 archived boards
+      (7 dailies, 6 monthlies, 3 curated, on 2026-10-25), each asked
+      three to five times. The descriptions are good: positioned,
+      specific, no member names; one poster was named wrongly (Austin
+      Powers as Rick Astley). The first prompt warned on 15 of 16
+      boards, set by small words ("the art board needs boobs") and
+      possibly by a pride flag; the prompt now labels what is drawn,
+      never words or identity. The whole board alone missed a drawn
+      penis on the 18 and 19 October dailies in every run; with the
+      four quarters beside it the model found it in every run, for
+      about 6,000 input tokens a call. A 4,096-token cap left 7 of 48
+      answers empty (thinking spent the budget); at 16,384, none of 32.
+      Labels still drift between runs on the same board (nudity, then
+      suggestive). Every daily from 18 to 24 October carries a warning:
+      a nude cyborg figure stays on the live board until the monthly
+      wipe.
+    - **Instance rules.** Fosstodon's rules, read 2026-10-25 from its
+      API and its code of conduct (`hub.fosstodon.org/coc`): "DO NOT
+      post adult or age-restricted content. This includes nudity and
+      other sexualized or violent content", with no exception for a
+      content warning, and no slurs. Every warning the look gives runs
+      into one of them, so a marked post reaches Fosstodon as a note
+      behind its warning, no picture, linking the front page (whose
+      preview card is the site's picture, not the board). Whether a note
+      that points off-server is within the rules is the moderators'
+      call. The boards the hand run marked for 18 to 24 October were
+      posted there before any of this; check the account for them.
 - **Launch posts wait for the deadchannel public flip** (`GAME.md`, "The
   three surfaces"), which is the game's public launch. The Hacker News
   front page in July 2026 peaked at about 100 sessions and settled back to
