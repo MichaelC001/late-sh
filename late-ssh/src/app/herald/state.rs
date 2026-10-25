@@ -27,7 +27,7 @@ pub(crate) const BOARD_MIN_INK: usize = 200;
 /// The tags the board carries, four at most: a post that is a link and a
 /// pile of tags reads as spam to instance rules and readers alike. The
 /// art tags are the communities that boost strangers' pictures.
-const BOARD_TAGS: &str = "#ASCIIart #MastoArt #tildeverse #ssh";
+const BOARD_TAGS: &str = "#ASCIIart #MastoArt #tildeverse #terminal";
 
 /// The day whose post is due right now: today once the post time has
 /// passed, yesterday before it. A replica that was down at the hour

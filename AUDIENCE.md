@@ -285,6 +285,20 @@ Live, in order of evidence behind them:
     The first design alternated it with members' PRINTS posters, each
     once; dropped before launch, since a few new posters a month cannot
     carry a slot.
+  - **The tags.** Four at most, two that bring readers and two that
+    bring members, chosen per kind so a tag never sits on a post its
+    followers did not come for (a mismatched tag is how an account gets
+    muted). The art tags (#ASCIIart, the one people follow even though
+    the board is colour and Unicode, not strict ASCII; #MastoArt) bring
+    views; #tildeverse (pubnix people, the likeliest to run `ssh late.sh`)
+    and #terminal (terminal culture; #ssh was dropped, it is sysadmin and
+    security talk) bring members. Per kind: the board and gallery pieces
+    `#ASCIIart #MastoArt #tildeverse #terminal` (live for the board);
+    the weekly wins `#puzzles #sudoku #tildeverse #terminal`; the paper
+    `#tildeverse #terminal #smolweb`, never #MastoArt. Candidates not
+    taken: #ANSIart (the BBS and coloured-terminal tradition, a smaller
+    crowd), #TUI, #TextArt. Unmeasured: compare recent posters on each
+    tag's page on the instance before changing a set.
   - **Future work, in this order.** Each kind is one PNG route on the
     front door (`late-web/src/pages/shared/board_png.rs`), one candidate
     query, one text, and one more variant of the herald's picture, which
