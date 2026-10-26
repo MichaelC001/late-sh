@@ -23,7 +23,6 @@ use crate::app::chat::svc::{GildRefusal, SendRefusal};
 use crate::app::clubhouse::nightcap::svc::{NightcapHouseFailure, NightcapOrderResult};
 use crate::app::clubhouse::state::Tutorial;
 use crate::app::common::primitives::Screen;
-use crate::app::crown::svc::CrownRefusal;
 use crate::app::deadchannel::haunt::state::GateVerdict;
 use crate::app::door::realm::svc::{
     RealmChatRoomAttach, RealmPayout, RealmSeasonOpen, RealmSnapshotRowError,
@@ -773,18 +772,18 @@ mod inner {
     use super::SlidingPuzzleArtLoad;
     use super::{
         ActivityGame, ArcadeDifficulty, ArcadeFinish, ArcadeMode, AwardAnnouncementOutcome,
-        BioScreenOutcome, CrownRefusal, DailyPuzzle, DailyWinPayout, DoorCard, DoorGame,
-        DoorOpeningResult, DoorWatchOutcome, FightBeat, FirstContactBeat, GalleryApplauseResult,
-        GalleryHangResult, GalleryTakeDownResult, GateVerdict, GiftDrinkRefusal, GildRefusal,
-        GildTier, HeraldDeliveryResult, HeraldLookResult, HeraldPostResult, JobsFetchResult,
-        JobsPostResult, JobsPressResult, JobsReadResult, LoungeBeat, NewsShareReward,
-        NightcapHouseFailure, NightcapOrderResult, OldSignalPayout, OnlineTimeFlushResult,
-        OutputKind, PaperOpenResult, PaperPrintResult, Place, PoolShotOutcome, PotRefusal,
-        PotReminderOutcome, Presence, PresenceScope, PresenceWire, RadioRollCallResult,
-        RadioStation, RealmChatRoomAttach, RealmPayout, RealmSeasonOpen, RealmSnapshotRowError,
-        Refresh, RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor, Screen, SendRefusal,
-        SessionStartStage, SessionUser, SnapshotRowError, SongQueueReward, SshRejectReason,
-        SummaryResult, TailorBeat, ThumbnailFetch, TranslationResult, VizWireBands, WatchDoor,
+        BioScreenOutcome, DailyPuzzle, DailyWinPayout, DoorCard, DoorGame, DoorOpeningResult,
+        DoorWatchOutcome, FightBeat, FirstContactBeat, GalleryApplauseResult, GalleryHangResult,
+        GalleryTakeDownResult, GateVerdict, GiftDrinkRefusal, GildRefusal, GildTier,
+        HeraldDeliveryResult, HeraldLookResult, HeraldPostResult, JobsFetchResult, JobsPostResult,
+        JobsPressResult, JobsReadResult, LoungeBeat, NewsShareReward, NightcapHouseFailure,
+        NightcapOrderResult, OldSignalPayout, OnlineTimeFlushResult, OutputKind, PaperOpenResult,
+        PaperPrintResult, Place, PoolShotOutcome, PotRefusal, PotReminderOutcome, Presence,
+        PresenceScope, PresenceWire, RadioRollCallResult, RadioStation, RealmChatRoomAttach,
+        RealmPayout, RealmSeasonOpen, RealmSnapshotRowError, Refresh, RefreshOutcome, RenderReason,
+        RoundRefusal, RunnerDoor, Screen, SendRefusal, SessionStartStage, SessionUser,
+        SnapshotRowError, SongQueueReward, SshRejectReason, SummaryResult, TailorBeat,
+        ThumbnailFetch, TranslationResult, VizWireBands, WatchDoor,
     };
     use super::{BodyFetchOutcome, BodyStatus, WatchOutcome, WatchSource};
     use super::{BonsaiAction, BonsaiActionResult};
@@ -1151,14 +1150,6 @@ mod inner {
         }
     }
 
-    fn crown_refusal_label(refusal: CrownRefusal) -> &'static str {
-        match refusal {
-            CrownRefusal::AlreadyYours => "already_yours",
-            CrownRefusal::InsufficientChips { .. } => "insufficient_chips",
-            CrownRefusal::BidTooLow { .. } => "bid_too_low",
-        }
-    }
-
     fn bonsai_action_label(action: BonsaiAction) -> &'static str {
         match action {
             BonsaiAction::Water => "water",
@@ -1183,36 +1174,6 @@ mod inner {
             meter()
                 .u64_counter("late_ssh_bonsai_actions_total")
                 .with_description("Bonsai care actions, by action and how they settled")
-                .build()
-        })
-    }
-
-    fn crown_takes_total() -> &'static Counter<u64> {
-        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
-        METRIC.get_or_init(|| {
-            meter()
-                .u64_counter("late_ssh_crown_takes_total")
-                .with_description("Crown takeovers that settled")
-                .build()
-        })
-    }
-
-    fn crown_chips_burned_total() -> &'static Counter<u64> {
-        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
-        METRIC.get_or_init(|| {
-            meter()
-                .u64_counter("late_ssh_crown_chips_burned_total")
-                .with_description("Chips destroyed by crown takeovers (the whole price)")
-                .build()
-        })
-    }
-
-    fn crown_takes_refused_total() -> &'static Counter<u64> {
-        static METRIC: OnceLock<Counter<u64>> = OnceLock::new();
-        METRIC.get_or_init(|| {
-            meter()
-                .u64_counter("late_ssh_crown_takes_refused_total")
-                .with_description("Crown takeovers refused, by reason (none were charged)")
                 .build()
         })
     }
@@ -2597,7 +2558,6 @@ mod inner {
         match refresh {
             Refresh::RunnerLooks => "runner_looks",
             Refresh::LoungeSpawn => "lounge_spawn",
-            Refresh::CrownHolder => "crown_holder",
             Refresh::DailyMatches => "daily_matches",
             Refresh::Pot => "pot",
             Refresh::Articles => "articles",
@@ -3370,19 +3330,7 @@ mod inner {
         );
     }
 
-    /// The price is burned whole, so one counter tracks the takeovers and
-    /// another the chips they removed from the supply.
-    pub fn record_crown_taken(price: i64) {
-        crown_takes_total().add(1, &[]);
-        crown_chips_burned_total().add(price.max(0) as u64, &[]);
-    }
-
-    pub fn record_crown_take_refused(refusal: CrownRefusal) {
-        crown_takes_refused_total()
-            .add(1, &[KeyValue::new("reason", crown_refusal_label(refusal))]);
-    }
-
-    /// A settled round. The price is burned whole like the crown's, and the
+    /// A settled round. The price is burned whole, and the
     /// drinks are counted separately from the rounds because the interesting
     /// number is how many of them ever get drunk.
     pub fn record_round_bought(patrons: i64, chips: i64) {
@@ -4311,18 +4259,18 @@ mod inner {
     use super::SlidingPuzzleArtLoad;
     use super::{
         ActivityGame, ArcadeDifficulty, ArcadeFinish, ArcadeMode, AwardAnnouncementOutcome,
-        BioScreenOutcome, CrownRefusal, DailyPuzzle, DailyWinPayout, DoorCard, DoorGame,
-        DoorOpeningResult, DoorWatchOutcome, FightBeat, FirstContactBeat, GalleryApplauseResult,
-        GalleryHangResult, GalleryTakeDownResult, GateVerdict, GiftDrinkRefusal, GildRefusal,
-        GildTier, HeraldDeliveryResult, HeraldLookResult, HeraldPostResult, JobsFetchResult,
-        JobsPostResult, JobsPressResult, JobsReadResult, LoungeBeat, NewsShareReward,
-        NightcapHouseFailure, NightcapOrderResult, OldSignalPayout, OnlineTimeFlushResult,
-        OutputKind, PaperOpenResult, PaperPrintResult, Place, PoolShotOutcome, PotRefusal,
-        PotReminderOutcome, Presence, PresenceScope, PresenceWire, RadioRollCallResult,
-        RadioStation, RealmChatRoomAttach, RealmPayout, RealmSeasonOpen, RealmSnapshotRowError,
-        Refresh, RefreshOutcome, RenderReason, RoundRefusal, RunnerDoor, Screen, SendRefusal,
-        SessionStartStage, SessionUser, SnapshotRowError, SongQueueReward, SshRejectReason,
-        SummaryResult, TailorBeat, ThumbnailFetch, TranslationResult, VizWireBands, WatchDoor,
+        BioScreenOutcome, DailyPuzzle, DailyWinPayout, DoorCard, DoorGame, DoorOpeningResult,
+        DoorWatchOutcome, FightBeat, FirstContactBeat, GalleryApplauseResult, GalleryHangResult,
+        GalleryTakeDownResult, GateVerdict, GiftDrinkRefusal, GildRefusal, GildTier,
+        HeraldDeliveryResult, HeraldLookResult, HeraldPostResult, JobsFetchResult, JobsPostResult,
+        JobsPressResult, JobsReadResult, LoungeBeat, NewsShareReward, NightcapHouseFailure,
+        NightcapOrderResult, OldSignalPayout, OnlineTimeFlushResult, OutputKind, PaperOpenResult,
+        PaperPrintResult, Place, PoolShotOutcome, PotRefusal, PotReminderOutcome, Presence,
+        PresenceScope, PresenceWire, RadioRollCallResult, RadioStation, RealmChatRoomAttach,
+        RealmPayout, RealmSeasonOpen, RealmSnapshotRowError, Refresh, RefreshOutcome, RenderReason,
+        RoundRefusal, RunnerDoor, Screen, SendRefusal, SessionStartStage, SessionUser,
+        SnapshotRowError, SongQueueReward, SshRejectReason, SummaryResult, TailorBeat,
+        ThumbnailFetch, TranslationResult, VizWireBands, WatchDoor,
     };
     use super::{BodyFetchOutcome, BodyStatus, WatchOutcome, WatchSource};
     use super::{BonsaiAction, BonsaiActionResult};
@@ -4451,8 +4399,6 @@ mod inner {
     pub fn record_gild_refused(_refusal: GildRefusal) {}
     pub(crate) fn record_chat_send_refused(_refusal: &SendRefusal) {}
     pub fn record_bonsai_action(_action: BonsaiAction, _result: BonsaiActionResult) {}
-    pub fn record_crown_taken(_price: i64) {}
-    pub fn record_crown_take_refused(_refusal: CrownRefusal) {}
     pub fn record_round_bought(_patrons: i64, _chips: i64) {}
     pub fn record_round_refused(_refusal: RoundRefusal) {}
     pub fn record_gift_drink_bought(_chips: i64) {}
