@@ -8,10 +8,7 @@ use std::{
     env, io,
     io::{IsTerminal, Read},
     path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, atomic::AtomicBool},
     time::{Duration, Instant},
 };
 use tokio::{
@@ -46,6 +43,7 @@ use std::{
     os::unix::fs::DirBuilderExt,
     path::PathBuf,
     process::Command as StdCommand,
+    sync::atomic::Ordering,
     time::{SystemTime, UNIX_EPOCH},
 };
 
