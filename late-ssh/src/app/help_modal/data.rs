@@ -1328,6 +1328,7 @@ fn vintagestory_help_lines() -> Vec<String> {
         "  QP's Chisel Tools better chiseling tools",
         "  VS Roofing        gridless, vanilla-style roofs",
         "  BetterRuins       many more ruins, above and below ground",
+        "  A Wearable Light  head torches and belt lanterns; L toggles your light",
         "",
         "Land claims (built into the game)",
         "  /land claim new   start a claim, then mark two opposite corners:",
