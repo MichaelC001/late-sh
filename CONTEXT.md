@@ -234,7 +234,7 @@ otherwise.
 | `door/nethack`, `door/dcss`, `door/brogue`, `door/usurper`, `door/dopewars`, `door/bashquest`, `door/codekeep`, `door/zork` | PTY doors and their host crates (build and deploy in `DEPLOY.md` for NetHack, DCSS, Brogue, dopewars and BashQuest; DCSS's public crawl files in `dcss/PUBLISH.md`, Brogue's grid fixes in `brogue/RENDER.md`, BashQuest's graduation pipeline in `bashquest/CERTIFICATE.md`) |
 | `door/spectate` | Watching live door games |
 | `door/ingest` | The door log pipe: host log files into `door_runs`/`door_milestones`, door badges and payouts |
-| `door/minecraft`, `door/vintagestory` | Info-only cards for the game servers, and the servers' operations |
+| `door/minecraft`, `door/vintagestory` | Info-only cards for the game servers, and the servers' operations (every Vintage Story world option in `vintagestory/WORLDCONFIG.md`) |
 
 No context of its own (read `late-ssh/CONTEXT.md` and the code): `activity`,
 `common`, `dashboard`, `files`, `help_modal`,
