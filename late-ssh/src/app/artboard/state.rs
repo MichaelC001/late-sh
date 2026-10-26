@@ -1951,6 +1951,9 @@ fn clipboard_from_text(text: &str, max_width: usize, max_height: usize) -> Optio
     let mut current_row: Vec<Option<CellValue>> = Vec::new();
     let mut width = 0;
     let mut has_glyph = false;
+    // Set once something on the row does not fit: the rest of the row is cut
+    // at the edge, so a narrow glyph never closes up behind a clipped wide one.
+    let mut row_clipped = false;
     let mut chars = text.chars().peekable();
 
     while let Some(ch) = chars.next() {
@@ -1961,6 +1964,7 @@ fn clipboard_from_text(text: &str, max_width: usize, max_height: usize) -> Optio
                 }
                 width = width.max(current_row.len());
                 rows.push(std::mem::take(&mut current_row));
+                row_clipped = false;
                 if rows.len() >= max_height {
                     break;
                 }
@@ -1968,14 +1972,18 @@ fn clipboard_from_text(text: &str, max_width: usize, max_height: usize) -> Optio
             '\n' => {
                 width = width.max(current_row.len());
                 rows.push(std::mem::take(&mut current_row));
+                row_clipped = false;
                 if rows.len() >= max_height {
                     break;
                 }
             }
             ch if ch.is_control() => {}
+            _ if row_clipped => {}
             ' ' => {
                 if current_row.len() < max_width {
                     current_row.push(None);
+                } else {
+                    row_clipped = true;
                 }
             }
             ch => match Canvas::display_width(ch) {
@@ -1985,12 +1993,16 @@ fn clipboard_from_text(text: &str, max_width: usize, max_height: usize) -> Optio
                         has_glyph = true;
                         current_row.push(Some(CellValue::Wide(ch)));
                         current_row.push(Some(CellValue::WideCont));
+                    } else {
+                        row_clipped = true;
                     }
                 }
                 _ => {
                     if current_row.len() < max_width {
                         has_glyph = true;
                         current_row.push(Some(CellValue::Narrow(ch)));
+                    } else {
+                        row_clipped = true;
                     }
                 }
             },
