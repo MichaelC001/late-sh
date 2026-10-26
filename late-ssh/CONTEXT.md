@@ -68,13 +68,21 @@ sequenceDiagram
 - The SSH login name is ignored except `invite-<code>` on the connect that
   creates an account (`app/referral`). New accounts get a generated username
   (`usernames::next_generated_username`), retried on a unique violation.
-- The activity receiver is created in `auth_publickey` (before the login event
-  is published), stored on `ClientHandler`, and taken into `SessionConfig` in
-  `pty_request`. Creating it later misses the user's own login event.
+- The activity receiver is created in `auth_publickey`, stored on
+  `ClientHandler`, and taken into `SessionConfig` in `pty_request`. The login
+  event is published in `pty_request`, the first point that knows whether
+  the session was moved off a draining pod (`LATE_RESUME`); a moved session
+  publishes none. Creating the receiver after the publish misses the user's
+  own login event.
 - `force_admin` is a profile literal (`true` in dev, `false` in prod), OR'd with
   `users.is_admin` at session init.
 - SSH compression is pinned to `NONE`: a client that negotiates zlib drops
   mid-session on the first keystroke that moves a character.
+- A draining pod (shutdown signal, `is_draining`) keeps its sessions behind
+  the "Server updating!" banner, except a quiet native-mode CLI session: it
+  is asked to redial the new pod and sends back `LATE_RESUME` (read in
+  `env_request` into `SessionConfig::resume`), which lands it on the page it
+  left. Flow, rules and gaps: `app/handoff/CONTEXT.md`.
 
 ## 3. Sync/async boundary
 
@@ -255,8 +263,10 @@ Pair WS, client to server: `heartbeat`; `viz` (16 bands; older CLIs send 8 and
 mute, volume; legacy `browser`/`webview` spellings still parse); `latency`
 (telemetry only, `late_ssh_cli_latency_seconds{kind,platform}`; deploy the
 server before a CLI that sends a new event). Server to client: `toggle_mute`,
-`volume_up`, `volume_down`, plus the audio-source, clipboard, YouTube and voice
-messages owned by `app/audio`, `app/voice` and `late-cli`.
+`volume_up`, `volume_down`, `reconnect` (a drain handoff, only to a CLI that
+advertises the `reconnect` capability; `app/handoff`), plus the audio-source,
+clipboard, YouTube and voice messages owned by `app/audio`, `app/voice` and
+`late-cli`.
 
 Pairing flow:
 
@@ -448,6 +458,8 @@ a no-op twin when built without `otel`.
   a session ended: the last thing a newcomer saw). The Grafana "Newcomers"
   row (`monitoring/dashboards/observability.json`) reads these plus the
   day-one slice of the attention counter.
+- Drain handoff: `late_ssh_drain_handoffs_total{stage}` (`sent`, `resumed`,
+  `unparsed`; `app/handoff/CONTEXT.md`).
 - Connections: `late_ssh_connections_total`,
   `late_ssh_connections_rejected_total{reason}`, `late_ssh_sessions_active`,
   `late_ssh_session_start_seconds{stage,user,tenure}` (`user` is whether the

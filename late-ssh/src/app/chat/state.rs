@@ -931,6 +931,10 @@ pub struct ChatState {
     /// nothing asks for the tail again.
     early_tails: HashMap<Uuid, Vec<ChatMessage>>,
     pub(crate) selected_room_id: Option<Uuid>,
+    /// The room a session moved off a draining pod had selected
+    /// (`app/handoff`). Taken by the first `sync_selection` that has a room
+    /// list, which picks it only when it is one of this user's rooms.
+    resume_room_id: Option<Uuid>,
     pub(crate) room_jump_active: bool,
     composer: TextArea<'static>,
     pub(crate) composing: bool,
@@ -1373,6 +1377,7 @@ impl ChatState {
             loading_tail_rooms: HashSet::new(),
             early_tails: HashMap::new(),
             selected_room_id: None,
+            resume_room_id: None,
             room_jump_active: false,
             composer: new_chat_textarea(),
             composing: false,
@@ -1515,6 +1520,14 @@ impl ChatState {
         &self.composer
     }
 
+    /// Text typed and not yet sent, in the chat composer or the News one:
+    /// what a session moved to another pod would lose (`app/handoff`).
+    pub(crate) fn has_unsent_draft(&self) -> bool {
+        [&self.composer, self.news.composer()]
+            .into_iter()
+            .any(|composer| composer.lines().iter().any(|line| !line.trim().is_empty()))
+    }
+
     pub(crate) fn refresh_composer_theme(&mut self) {
         composer::apply_themed_textarea_style(&mut self.composer, self.composing);
         self.news.refresh_composer_theme();
@@ -1575,10 +1588,25 @@ impl ChatState {
         }
     }
 
+    /// Select `room_id` once the room list confirms it is one of this user's
+    /// rooms (`app/handoff`, a session moved off a draining pod).
+    pub(crate) fn resume_room(&mut self, room_id: Uuid) {
+        self.resume_room_id = Some(room_id);
+    }
+
     pub fn sync_selection(&mut self) {
         if self.rooms.is_empty() {
             self.selected_room_id = None;
             self.room_jump_active = false;
+            return;
+        }
+
+        // A moved session's room wins the first selection that has a list to
+        // check it against; a room the user cannot see falls through.
+        if let Some(resume_id) = self.resume_room_id.take()
+            && self.lists_room(resume_id)
+        {
+            self.selected_room_id = Some(resume_id);
             return;
         }
 
@@ -1589,11 +1617,7 @@ impl ChatState {
             if self.stream_for_room(selected_id).is_some() {
                 return;
             }
-            if self
-                .rooms
-                .iter()
-                .any(|(room, _)| room.id == selected_id && is_chat_list_room(room))
-            {
+            if self.lists_room(selected_id) {
                 return;
             }
         }
@@ -3348,10 +3372,14 @@ impl ChatState {
             return None;
         }
         let room_id = self.selected_room_id?;
+        self.lists_room(room_id).then_some(room_id)
+    }
+
+    /// Whether `room_id` is one of this user's rooms on the chat list.
+    fn lists_room(&self, room_id: Uuid) -> bool {
         self.rooms
             .iter()
             .any(|(room, _)| room.id == room_id && is_chat_list_room(room))
-            .then_some(room_id)
     }
 
     /// Build the flat visual navigation order.
