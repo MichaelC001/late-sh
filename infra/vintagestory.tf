@@ -22,7 +22,9 @@
 #
 # World options (terrain, climate, rules) are not set here; they live in
 # serverconfig.json on the volume. The full list of keys and values is in
-# late-ssh/src/app/door/vintagestory/WORLDCONFIG.md.
+# late-ssh/src/app/door/vintagestory/WORLDCONFIG.md. Mods are not set here
+# either: they are zips in /data/Mods on the volume, listed in that folder's
+# CONTEXT.md.
 #
 # The Games hub card (late-ssh/src/app/door/vintagestory/ui.rs) quotes the
 # version, address, and the settings below to players; its ui_test.rs reads
