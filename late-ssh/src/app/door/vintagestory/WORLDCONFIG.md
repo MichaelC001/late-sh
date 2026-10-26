@@ -26,18 +26,24 @@ the change.
 
 The `surviveandbuild` preset overrides four attribute defaults below:
 `polarEquatorDistance 100000`, `propickNodeSearchRadius 6`,
-`temporalGearRespawnUses 20`, `temporalStormSleeping 0`.
+`temporalGearRespawnUses 20`, `temporalStormSleeping 0`. A dedicated server
+applies the preset to every key the file leaves out: the live save holds
+those values with none of them set by hand.
 
 ## What prod runs
 
-Read off `/data/serverconfig.json` on the pod. Everything not listed here is
-the game default (the tables below), including all the roles, so a
-`suplayer` gets 3 claims and 262144 blocks.
+Read off `/data/serverconfig.json` on the pod, and out of the save itself
+with `/worldconfig <key>` on the console. Everything not listed here is the
+game default (the tables below), including all the roles, so a `suplayer`
+gets 3 claims and 262144 blocks.
 
 ```bash
 kubectl exec deploy/vintagestory -- cat /data/serverconfig.json
-echo '/seed' | kubectl attach -i deploy/vintagestory     # the seed lands in the pod log
+echo '/worldconfig landcover' | kubectl attach -i deploy/vintagestory     # the answer lands in the pod log
 ```
+
+The seed is random and only the save holds it. `/seed` on the console prints
+nothing; an admin types it in game.
 
 Server keys, forced on every boot by `--withconfig` from
 `local.vintagestory_config` in `infra/vintagestory.tf` (a runtime change
@@ -55,39 +61,10 @@ reverts on restart):
 | `AllowFireSpread` | `true` |
 | `PassTimeWhenEmpty` | `false` |
 
-World, set by hand in the file before the first boot and locked into the
-save since:
-
-| Key | Value |
-|-----|-------|
-| `WorldConfig.Seed` | `null`: the game picked a random seed, which only the save holds (`/seed`) |
-| `WorldConfig.PlayStyle` | `surviveandbuild` |
-| `WorldConfig.WorldType` | `standard` |
-| `landcover` | `0.4` |
-| `oceanscale` | `0.75` |
-| `landformScale` | `1.2` |
-| `polarEquatorDistance` | `50000` (overrides the preset's `100000`) |
-
-The first three are one player's tested set for an ocean-travel world with
-real continents (Bruno Willis, "Ocean with continents on 1.21?",
-vintagestory.at/forums/topic/17088): continents one or two in-game days of
-riding across, split by ocean wide enough that sailing is the way over.
-Below about 50% land the land stops connecting up, so separate continents are
-forced. `oceanscale` reads backwards: a low value clumps the land into a few
-big masses, a high one scatters it into small islands (30% / 3.0 gave islands
-too small to find reeds on). The polar distance is our own addition, not part
-of that set: half the preset's, so a sea crossing reaches a different climate
-in half the distance and gives the boat a second reason to exist.
-
-Every other world key is the `surviveandbuild` preset (below) or the
-attribute default. The file also spells out `upheavelCommonness 0.3` and
-`storyStructuresDistScaling 1`, both defaults.
-
-## The next world
-
-The world is due for a reset (`CONTEXT.md`, Operations). The reset writes
-this block into `WorldConfig.WorldConfiguration` and leaves `Seed` `null`, so
-every reset rolls a new random seed:
+World: `PlayStyle` `surviveandbuild`, `WorldType` `standard`, `Seed` `null`,
+and this block in `WorldConfig.WorldConfiguration`, written by hand before the
+world was generated. A reset writes the same block, so each reset rolls a new
+random seed with the same settings:
 
 ```json
 "WorldConfiguration": {
@@ -101,19 +78,33 @@ every reset rolls a new random seed:
   "deathPunishment": "keep",
   "lightningFires": "true",
   "temporalStorms": "off",
-  "temporalRifts": "off"
+  "temporalRifts": "off",
+  "colorAccurateWorldmap": "true"
 }
 ```
 
-It keeps the continent set and the half polar distance above, and drops the
-two keys that only spelled out defaults. On top: tools last 150%, saplings
-grow in 75% of the time (`saplingGrowthRate` is a growth time, so lower is
-faster), the chisel works on most cubic blocks instead of only stone and
-wood, a death keeps the inventory, and lightning starts fires (they spread
-because `AllowFireSpread` is on in Terraform), and no temporal storms or
-rifts for now (the stability meter itself stays on). None of these seven is
-locked, so `/worldconfig` can still move them on the live world. Once the reset runs,
-this block becomes What prod runs.
+The first three are one player's tested set for an ocean-travel world with
+real continents (Bruno Willis, "Ocean with continents on 1.21?",
+vintagestory.at/forums/topic/17088): continents one or two in-game days of
+riding across, split by ocean wide enough that sailing is the way over.
+Below about 50% land the land stops connecting up, so separate continents are
+forced. `oceanscale` reads backwards: a low value clumps the land into a few
+big masses, a high one scatters it into small islands (30% / 3.0 gave islands
+too small to find reeds on). The polar distance is our own addition, not part
+of that set: half the preset's, so a sea crossing reaches a different climate
+in half the distance and gives the boat a second reason to exist. Those four
+are locked.
+
+The rest are unlocked, so `/worldconfig` can still move them on the live
+world: tools last 150%, saplings grow in 75% of the time
+(`saplingGrowthRate` is a growth time, so lower is faster), the chisel works
+on most cubic blocks instead of only stone and wood, a death keeps the
+inventory, lightning starts fires (they spread because `AllowFireSpread` is
+on in Terraform), no temporal storms or rifts for now (the stability meter
+itself stays on), and the world map shows the real terrain colors.
+
+Every other world key is the `surviveandbuild` preset or the attribute
+default.
 
 ## Finding a seed
 
