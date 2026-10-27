@@ -31,18 +31,34 @@ const MIN_WIDTH: u32 = 320;
 /// spell it.
 const TID_ALPHABET: &[u8; 32] = b"234567abcdefghijklmnopqrstuvwxyz";
 
-/// What goes out with the picture.
+/// What goes out.
 pub(crate) struct Post<'a> {
     /// The day's key: the record key is derived from it, so a retry puts
     /// the same record again instead of a second post.
     pub(crate) key: Uuid,
-    pub(crate) png: &'a [u8],
+    pub(crate) embed: Embed<'a>,
     pub(crate) text: &'a str,
-    pub(crate) alt: &'a str,
     /// The self-label the record carries (`state::bluesky_mark`), if any.
     pub(crate) label: Option<&'a str>,
     /// When the post says it was made.
     pub(crate) created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// What the record embeds under the words: the picture with its alt text
+/// (`app.bsky.embed.images`), or, for words alone, a link card with a
+/// thumb (`app.bsky.embed.external`; the app builds one for a post made
+/// by hand, the API does not).
+pub(crate) enum Embed<'a> {
+    Picture {
+        png: &'a [u8],
+        alt: &'a str,
+    },
+    Card {
+        uri: &'a str,
+        title: &'a str,
+        description: &'a str,
+        thumb: &'a [u8],
+    },
 }
 
 #[derive(Deserialize)]
@@ -72,33 +88,54 @@ pub(crate) struct Fitted {
     pub(crate) height: u32,
 }
 
-/// Fit, session, blob, record. The post's URL on bsky.app comes back. The
-/// fit is image work, so it runs on the blocking pool, and first: a
-/// picture that cannot fit spends no login.
+/// Fit, session, blob, record: the picture or the card's thumb is the
+/// blob. The post's URL on bsky.app comes back. The fit is image work, so
+/// it runs on the blocking pool, and first: a picture that cannot fit
+/// spends no login.
 pub(crate) async fn deliver(
     http: &reqwest::Client,
     config: &BlueskyConfig,
     post: Post<'_>,
 ) -> anyhow::Result<String> {
-    let png = post.png.to_vec();
-    let fitted = tokio::task::spawn_blocking(move || fit_under(&png, BLOB_MAX_BYTES)).await??;
+    let image = match &post.embed {
+        Embed::Picture { png, .. } => png.to_vec(),
+        Embed::Card { thumb, .. } => thumb.to_vec(),
+    };
+    let fitted = tokio::task::spawn_blocking(move || fit_under(&image, BLOB_MAX_BYTES)).await??;
     let session = create_session(http, config).await?;
     let blob = upload_blob(http, config, &session, fitted.png).await?;
     let rkey = tid_for(post.key);
+    let embed = match &post.embed {
+        Embed::Picture { alt, .. } => json!({
+            "$type": "app.bsky.embed.images",
+            "images": [{
+                "alt": alt,
+                "image": blob,
+                "aspectRatio": { "width": fitted.width, "height": fitted.height },
+            }],
+        }),
+        Embed::Card {
+            uri,
+            title,
+            description,
+            ..
+        } => json!({
+            "$type": "app.bsky.embed.external",
+            "external": {
+                "uri": uri,
+                "title": title,
+                "description": description,
+                "thumb": blob,
+            },
+        }),
+    };
     let mut record = json!({
         "$type": "app.bsky.feed.post",
         "text": post.text,
         "createdAt": post.created_at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "langs": ["en"],
         "facets": facets(post.text),
-        "embed": {
-            "$type": "app.bsky.embed.images",
-            "images": [{
-                "alt": post.alt,
-                "image": blob,
-                "aspectRatio": { "width": fitted.width, "height": fitted.height },
-            }],
-        },
+        "embed": embed,
     });
     if let Some(label) = post.label {
         record["labels"] = json!({
@@ -238,7 +275,7 @@ pub(crate) fn fit_under(png: &[u8], max_bytes: usize) -> anyhow::Result<Fitted> 
 
 /// The rich-text facets: every `http(s)://` word a link, every `#word` a
 /// tag, by UTF-8 byte range as the protocol counts them. Our own text (a
-/// piece's title goes in dead, `state::title_words`), so a word is
+/// piece's title goes in dead, `state::dead_words`), so a word is
 /// whatever sits between whitespace.
 pub(crate) fn facets(text: &str) -> Vec<Value> {
     let mut facets = Vec::new();

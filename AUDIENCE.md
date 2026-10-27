@@ -282,7 +282,7 @@ Live, in order of evidence behind them:
   one bearer token and two HTTP calls; federating profiles (ActivityPub,
   WebFinger, signed fetches, inbound moderation) is weeks of work and
   sends the visibility people want outward, away from the terminal.
-- **The herald: one picture a day on the Fediverse and Bluesky.** Built
+- **The herald: one post a day on the Fediverse and Bluesky.** Built
   (`late-ssh/src/app/herald/CONTEXT.md`) and live: both accounts post,
   and the `herald_settings` row is on in prod (`/herald off` stops it).
   One post a day, delivered to every network the herald has an account
@@ -299,21 +299,28 @@ Live, in order of evidence behind them:
   `bot` self-label, posting through an app password; it asks that a bot
   never likes, reposts or replies unprompted, so the human half there is
   done from a person's own account.
-  - **What it posts.** One picture a day at 16:00 UTC, by a rotation:
-    on Sundays the week in every game (a scoreboard card, one line per
-    game anyone played with its best and no name: the arcade's daily
-    puzzles and high scores, the Lobby's chess, pool and card games by
-    wins that paid, the doors by their top run), else the newest gallery
-    piece hung in the last week and never posted (credited `~name`,
-    linking the piece's page; each piece goes out once), else
-    yesterday's Artboard snapshot cropped to what is drawn, once it has
-    enough ink to be a picture (linking the gallery), else the Late
-    Edition's front page as a card (the day in numbers, then the heads of
-    the prose columns; linking the edition), else nothing.
-    The scoreboard goes first because it has one day a week and a piece
-    can wait a day; the week's window keeps a backlog from crowding out
-    the board, and the launch from posting a year of pieces. Alt text
-    and the kind's tags. The first design alternated the board with
+  - **What it posts.** One post a day at 16:00 UTC. The operator's word
+    first: a day whose edition carries `#announcements` posts goes out
+    as words alone, the note compressed by the model into one post that
+    links the edition for the note in full, whatever the weekday. Else a
+    picture, by a weekly schedule: on Monday, Tuesday, Thursday and
+    Friday the piece over the door, the splash wall's piece of the day
+    (credited `~name`, linking
+    the piece's page; the wall is one queue in hang order, so the post
+    and the login screen show the same piece), else yesterday's Artboard
+    snapshot cropped to what is drawn, once it has enough ink to be a
+    picture (linking the gallery); on Wednesday and Saturday the Late
+    Edition's front page as a card (the most played arcade game with its
+    ASCII picture, the day in numbers, then the heads of the prose
+    columns; linking the edition); on Sunday the week in every game (a
+    scoreboard card, one line per game anyone played with its best and
+    no name: the arcade's daily puzzles and high scores, the Lobby's
+    chess, pool and card games by wins that paid, the doors by their top
+    run). A day whose kind has nothing falls through to the next, and a
+    day with nothing at all posts nothing.
+    The wall moves on every day whatever the herald posts, so a piece
+    whose day is a paper day or a Sunday hangs over the door unposted,
+    and no piece is posted twice. Alt text and the kind's tags. The first design alternated the board with
     members' PRINTS posters, each once; dropped before launch, since a
     few new posters a month cannot carry a slot.
   - **The tags.** Four at most, two that bring readers and two that
@@ -326,16 +333,18 @@ Live, in order of evidence behind them:
     security talk) bring members. Per kind: the board and gallery pieces
     `#ASCIIart #MastoArt #tildeverse #terminal`;
     the weekly scoreboard `#puzzles #sudoku #tildeverse #terminal`; the paper
-    `#tildeverse #terminal #smolweb`, never #MastoArt. Candidates not
-    taken: #ANSIart (the BBS and coloured-terminal tradition, a smaller
-    crowd), #TUI, #TextArt. Unmeasured: compare recent posters on each
+    `#tildeverse #terminal #smolweb`, never #MastoArt; an announcement
+    `#tildeverse #terminal`, no art tags on a post with no art.
+    Candidates not taken: #ANSIart (the BBS and coloured-terminal
+    tradition, a smaller crowd), #TUI, #TextArt. Unmeasured: compare recent posters on each
     tag's page on the instance before changing a set.
   - **The kinds.** Built (`late-ssh/src/app/herald/CONTEXT.md`, "The
-    post"). Each kind is one PNG route on the front door (late-web's
-    piece page and PNG, the week's games card, the paper's front-page
-    card, all through `late-web/src/pages/shared/board_png.rs`), one
-    candidate read, one text, and one variant of the herald's picture,
-    which breaks the build until every match knows it. A piece is the
+    post"). Each picture kind is one PNG route on the front door
+    (late-web's piece page and PNG, the week's games card, the paper's
+    front-page card, all through `late-web/src/pages/shared/board_png.rs`),
+    one candidate read, one text, and one variant of the herald's
+    picture, which breaks the build until every match knows it; the
+    announcement is the one kind with no route, words alone. A piece is the
     best supply of art the server has: a real picture a member made and
     chose to hang, immutable, credited, with applause. The scoreboard is
     the one kind that shows the whole shelf of games, weekly so it never
@@ -352,14 +361,14 @@ Live, in order of evidence behind them:
     (dull, a handful a month). Further out, each behind a PNG route:
     share cards with the `ssh late.sh` footer, a frame of the tavern or
     the night city, the rare headline events the #lounge feed treats as
-    stories. Unmeasured: how many
-    pieces a week wait, which decides how often the board still gets the
-    slot.
+    stories. How many pieces wait is the wall's queue depth
+    (`late_ssh_artboard_gallery_splash_queue_depth`), which decides how
+    often the board still gets an art day.
   - **What it never posts.** Chat. A frame of #lounge is people's
     messages on the public web; the Artboard, posters and cards are
     things people made to be seen, messages are not.
   - **The rhythm.** One post a day, never two. A muted account never
-    recovers; the rotation is so one slot never repeats, not so there are
+    recovers; the schedule is so one slot never repeats, not so there are
     more slots.
   - **The shape.** A late-ssh domain built like the paper's press: a
     checker on every replica, a `herald_posts` row per UTC day claimed by

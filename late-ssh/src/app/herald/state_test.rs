@@ -5,11 +5,12 @@ use late_core::models::herald::HeraldKind;
 use uuid::Uuid;
 
 use super::state::{
-    ALT_MAX_CHARS, BOARD_MIN_INK, BlueskyMark, BoardCandidate, BoardFound, BoardInk, Crop, Found,
-    HeraldCommand, Look, MastodonPost, PaperCandidate, Picture, PieceCandidate, ScoreLine,
+    ALT_MAX_CHARS, ANNOUNCEMENT_MAX_CHARS, AnnouncementCandidate, AnnouncementFound, BOARD_MIN_INK,
+    BlueskyMark, BoardCandidate, BoardFound, BoardInk, Brief, Choice, Crop, Found, HeraldCommand,
+    LinkCard, Look, MastodonPost, PaperCandidate, Picture, PieceCandidate, ScoreLine,
     ScoreboardCandidate, Warning, Words, alt_text, bluesky_mark, drawn_area, ink_cells,
-    mastodon_post, note_text, parse_herald_command, picked_pieces, piece_window_start,
-    post_due_day, scoreboard_week, shown_day, status_text,
+    mastodon_post, note_text, parse_herald_command, post_due_day, schedule, scoreboard_week,
+    shown_day, status_text,
 };
 
 /// The shortest limit among the networks: Bluesky's 300 graphemes
@@ -69,13 +70,23 @@ fn paper() -> PaperCandidate {
     }
 }
 
+fn announcement() -> AnnouncementCandidate {
+    AnnouncementCandidate {
+        edition: day(24),
+        text: "Server updates no longer kick you out.\n\nOn the late CLI, an idle session moves to the new server by itself.".to_string(),
+        brief: Brief::Model,
+        summary: Some("The world turned.".to_string()),
+    }
+}
+
 /// One of every kind, for the tables below.
-fn every_kind() -> [Picture; 4] {
+fn every_kind() -> [Picture; 5] {
     [
         Picture::Board(board()),
         Picture::Piece(piece()),
         Picture::Scoreboard(scoreboard()),
         Picture::Paper(paper()),
+        Picture::Announcement(announcement()),
     ]
 }
 
@@ -96,7 +107,7 @@ fn the_post_is_due_at_sixteen_utc_and_catches_up_after_it() {
 /// through the row. The whole table, so a moved route shows here.
 #[test]
 fn each_kind_names_its_subject_route_and_page() {
-    let named: Vec<(HeraldKind, String, String, Option<String>)> = every_kind()
+    let named: Vec<(HeraldKind, String, Option<String>, Option<String>)> = every_kind()
         .iter()
         .map(|picture| {
             let stored = serde_json::to_value(picture).expect("serialize");
@@ -119,25 +130,31 @@ fn each_kind_names_its_subject_route_and_page() {
             (
                 HeraldKind::Artboard,
                 "daily:2026-10-22".to_string(),
-                "/gallery/daily:2026-10-22/image.png?crop=3,1,40,12".to_string(),
+                Some("/gallery/daily:2026-10-22/image.png?crop=3,1,40,12".to_string()),
                 Some("/gallery".to_string()),
             ),
             (
                 HeraldKind::Piece,
                 format!("piece:{piece}"),
-                format!("/gallery/pieces/{piece}/image.png"),
+                Some(format!("/gallery/pieces/{piece}/image.png")),
                 Some(format!("/gallery/pieces/{piece}")),
             ),
             (
                 HeraldKind::Scoreboard,
                 "week:2026-10-24".to_string(),
-                "/games/week/2026-10-24/image.png".to_string(),
+                Some("/games/week/2026-10-24/image.png".to_string()),
                 None,
             ),
             (
                 HeraldKind::Paper,
                 "paper:2026-10-24".to_string(),
-                "/paper/2026-10-24/image.png".to_string(),
+                Some("/paper/2026-10-24/image.png".to_string()),
+                Some("/paper/2026-10-24".to_string()),
+            ),
+            (
+                HeraldKind::Announcement,
+                "announcement:2026-10-24".to_string(),
+                None,
                 Some("/paper/2026-10-24".to_string()),
             ),
         ]
@@ -196,7 +213,41 @@ fn the_words_fit_and_never_mention_anyone() {
     );
     assert_eq!(
         tags(Picture::Paper(paper())),
-        "#tildeverse #terminal #smolweb"
+        "#tildeverse #terminal #TUI #smolweb"
+    );
+    assert_eq!(
+        tags(Picture::Announcement(announcement())),
+        "#tildeverse #terminal #TUI"
+    );
+    let announced = status_text(
+        &Picture::Announcement(announcement()),
+        "https://late.sh",
+        Words::Plain,
+    );
+    assert_eq!(
+        announced,
+        "Server updates no longer kick you out.\n\nOn the late CLI, an idle session moves to the new server by itself.\n\nFull notes: https://late.sh/paper/2026-10-24\n\n#tildeverse #terminal #TUI"
+    );
+    assert!(
+        status_text(&Picture::Paper(paper()), "https://late.sh", Words::Plain)
+            .contains("\n\nFull edition: https://late.sh/paper/2026-10-24\n\n"),
+    );
+    assert_eq!(
+        announcement().link_card("https://late.sh"),
+        LinkCard {
+            uri: "https://late.sh/paper/2026-10-24".to_string(),
+            title: "The Late Edition, 24 October 2026".to_string(),
+            description: "The world turned.".to_string(),
+        }
+    );
+    assert_eq!(
+        AnnouncementCandidate {
+            summary: None,
+            ..announcement()
+        }
+        .link_card("https://late.sh")
+        .description,
+        "late.sh's daily paper, printed once a day."
     );
     let credited = status_text(&Picture::Piece(piece()), "https://late.sh", Words::Plain);
     assert!(
@@ -394,7 +445,7 @@ fn the_look_round_trips_and_writes_the_alt() {
         (Picture::Paper(paper()), Look::Drawn),
     ]
     .iter()
-    .map(|(picture, look)| alt_text(picture, look))
+    .map(|(picture, look)| alt_text(picture, look).expect("a picture has alt text"))
     .collect();
     assert_eq!(
         alts,
@@ -411,9 +462,48 @@ fn the_look_round_trips_and_writes_the_alt() {
         reading: Some("word ".repeat(400)),
         ..paper()
     });
-    let alt = alt_text(&long, &Look::Drawn);
+    let alt = alt_text(&long, &Look::Drawn).expect("a picture has alt text");
     assert_eq!(alt.chars().count(), ALT_MAX_CHARS);
     assert!(alt.ends_with('…'));
+    assert_eq!(
+        alt_text(&Picture::Announcement(announcement()), &Look::Drawn),
+        None,
+        "words alone have no picture to describe"
+    );
+}
+
+/// An announcement's words go out plain, dead and cut, whoever wrote
+/// them: markdown markers dropped, a dash a comma, `@` and `#` gone, a
+/// scheme broken but a time kept whole, at most `ANNOUNCEMENT_MAX_CHARS`
+/// with an ellipsis; and under the page and the tags they fit the
+/// tightest network.
+#[test]
+fn an_announcements_words_are_plain_dead_and_cut() {
+    let note = "# Server updates no longer kick you out\n\n## Update your CLI\n\n- Run `curl -fsSL https://cli.late.sh/install.sh | bash`\n- Thanks @mat — see #lounge at 16:00\n";
+    let cut = AnnouncementCandidate::of(day(24), note, Brief::Cut, None);
+    assert_eq!(
+        cut.text,
+        "Server updates no longer kick you out\n\nUpdate your CLI\n\nRun `curl -fsSL https: //cli.late.sh/install.sh | bash`\nThanks mat, see lounge at 16:00"
+    );
+    let long = AnnouncementCandidate::of(day(24), &"word ".repeat(100), Brief::Model, None);
+    assert_eq!(long.text.chars().count(), ANNOUNCEMENT_MAX_CHARS);
+    assert!(long.text.ends_with('…'));
+    let text = status_text(
+        &Picture::Announcement(long),
+        "https://late.sh",
+        Words::Plain,
+    );
+    assert!(
+        text.chars().count() < TEXT_LIMIT,
+        "{}",
+        text.chars().count()
+    );
+    assert!(
+        text.ends_with(
+            "\n\nFull notes: https://late.sh/paper/2026-10-24\n\n#tildeverse #terminal #TUI"
+        ),
+        "{text}"
+    );
 }
 
 fn found_board(cells: Option<usize>) -> BoardFound {
@@ -447,46 +537,82 @@ fn the_board_is_a_post_at_the_ink_bar() {
     );
 }
 
-/// The rotation: the scoreboard on its Sunday, else a waiting piece, else
-/// the board with ink, else the paper, else nothing.
+/// The week's schedule, over the week of Monday 19 October 2026: art on
+/// Monday, Tuesday, Thursday and Friday (the piece over the door, else
+/// the board with ink), the paper on Wednesday and Saturday, the
+/// scoreboard on Sunday, each day falling through to the next kind with
+/// something; a bare day is nothing.
 #[test]
-fn the_rotation_takes_the_first_kind_that_has_something() {
-    let found = |sunday: bool, waiting: bool, ink: Option<usize>, printed: bool| Found {
-        scoreboard: sunday.then(scoreboard),
-        piece: waiting.then(piece),
+fn the_schedule_takes_the_days_first_kind_that_has_something() {
+    use HeraldKind::{Announcement, Artboard, Paper, Piece, Scoreboard};
+    let found = |played: bool, over_the_door: bool, ink: Option<usize>, printed: bool| Found {
+        announcement: None,
+        scoreboard: played.then(scoreboard),
+        piece: over_the_door.then(piece),
         board: found_board(ink),
         paper: printed.then(paper),
     };
     let bar = Some(BOARD_MIN_INK);
-    let picks: Vec<Option<HeraldKind>> = [
-        found(true, true, bar, true),
-        found(false, true, bar, true),
-        found(false, false, bar, true),
-        found(false, false, Some(3), true),
-        found(false, false, None, false),
-    ]
-    .iter()
-    .map(|found| found.picture().map(|picture| picture.kind()))
-    .collect();
+    let week = |found: &Found| -> Vec<Option<HeraldKind>> {
+        (19..=25)
+            .map(|d| {
+                found.choice(day(d)).map(|choice| match choice {
+                    Choice::Picture(picture) => picture.kind(),
+                    Choice::Announcement(_) => HeraldKind::Announcement,
+                })
+            })
+            .collect()
+    };
+    let some = |kinds: [HeraldKind; 7]| kinds.map(Some).to_vec();
+
     assert_eq!(
-        picks,
-        vec![
-            Some(HeraldKind::Scoreboard),
-            Some(HeraldKind::Piece),
-            Some(HeraldKind::Artboard),
-            Some(HeraldKind::Paper),
-            None,
-        ]
+        schedule(day(19)),
+        &[Piece, Artboard, Paper],
+        "a weekday leads with art"
+    );
+    assert_eq!(schedule(day(21)), &[Paper, Piece, Artboard]);
+    assert_eq!(schedule(day(25)), &[Scoreboard, Paper, Piece, Artboard]);
+    assert_eq!(
+        week(&found(true, true, bar, true)),
+        some([Piece, Piece, Paper, Piece, Piece, Paper, Scoreboard]),
+        "everything found: the schedule as written"
+    );
+    assert_eq!(
+        week(&found(false, false, bar, true)),
+        some([Artboard, Artboard, Paper, Artboard, Artboard, Paper, Paper]),
+        "no piece over the door, nobody played: the board on art days, the paper on Sunday"
+    );
+    assert_eq!(
+        week(&found(false, true, Some(3), false)),
+        some([Piece, Piece, Piece, Piece, Piece, Piece, Piece]),
+        "nothing printed, a bare board: the piece every day"
+    );
+    assert_eq!(
+        week(&found(false, false, Some(3), true)),
+        some([Paper, Paper, Paper, Paper, Paper, Paper, Paper]),
+        "only the paper printed"
+    );
+    assert_eq!(week(&found(false, false, None, false)), vec![None; 7]);
+    let spoke = Found {
+        announcement: Some(AnnouncementFound {
+            edition: day(19),
+            text: "A new late CLI is out.".to_string(),
+            summary: None,
+        }),
+        ..found(true, true, bar, true)
+    };
+    assert_eq!(
+        week(&spoke),
+        some([Announcement; 7]),
+        "the operator's word jumps the schedule, whatever the day"
     );
     assert_eq!(
         found(false, false, None, false).describe(),
-        "no piece waiting, no board archived for 2026-10-22, no edition printed"
+        "no announcement, no piece over the door, no board archived for 2026-10-22, no edition printed"
     );
 }
 
-/// The scoreboard falls on Sundays and shows the week to Saturday; a
-/// piece waits a week; the picked pieces read back from their subjects,
-/// and a subject that is not a piece's is refused.
+/// The scoreboard falls on Sundays and shows the week to Saturday.
 #[test]
 fn the_calendar_of_the_kinds() {
     let week: Vec<Option<NaiveDate>> = (19..=25).map(|d| scoreboard_week(day(d))).collect();
@@ -495,14 +621,6 @@ fn the_calendar_of_the_kinds() {
         vec![None, None, None, None, None, None, Some(day(24))],
         "19 October 2026 is a Monday"
     );
-    assert_eq!(piece_window_start(day(25)), day(18));
-    let id = Uuid::from_u128(7);
-    assert_eq!(
-        picked_pieces(&[format!("piece:{id}")]).expect("parse"),
-        vec![id]
-    );
-    assert!(picked_pieces(&["daily:2026-10-22".to_string()]).is_err());
-    assert!(picked_pieces(&["piece:nope".to_string()]).is_err());
 }
 
 /// The crop is the drawn cells with a margin, kept inside the board; a

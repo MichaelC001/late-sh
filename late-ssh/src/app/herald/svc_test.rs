@@ -19,7 +19,8 @@ use uuid::Uuid;
 use super::bluesky::tid_for;
 use super::bluesky_test::png;
 use super::state::{
-    BOARD_MIN_INK, BoardFound, BoardInk, Crop, Found, HeraldCommand, Look, post_due_day, shown_day,
+    BOARD_MIN_INK, BoardFound, BoardInk, Crop, Found, HeraldCommand, Look, post_due_day, schedule,
+    shown_day,
 };
 use super::svc::{
     CommandOutcome, DayWorked, HERALD_CLAIM_WINDOW, HERALD_MAX_ATTEMPTS, HeraldService, NextPost,
@@ -68,6 +69,7 @@ async fn fake_servers() -> (String, Log) {
         .route("/gallery/pieces/{id}/image.png", get(picture))
         .route("/games/week/{last}/image.png", get(picture))
         .route("/paper/{edition}/image.png", get(picture))
+        .route("/static/og-image.png", get(picture))
         .route("/api/v2/media", post(media))
         .route("/api/v1/statuses", post(status))
         .route("/xrpc/com.atproto.server.createSession", post(session))
@@ -638,6 +640,7 @@ async fn the_commands_flip_read_and_post_today_by_hand() {
         CommandOutcome::Preview {
             day: today,
             found: Box::new(Found {
+                announcement: None,
                 scoreboard: None,
                 piece: None,
                 board: BoardFound {
@@ -807,18 +810,35 @@ fn model_on(base: &str) -> AiService {
     AiService::at_endpoint(true, Some("test-key".to_string()), base.to_string())
 }
 
-/// A waiting piece beats the board; the model saw it clean, so both
-/// networks get the picture, credited and linking its page. Picked once:
-/// the next day the rotation falls back to the board.
+/// The first day after today on which the schedule leads with the piece:
+/// the wall shows a piece the day after it was hung at the earliest, and
+/// the test hangs one now.
+fn next_piece_day() -> NaiveDate {
+    let mut day = Utc::now().date_naive() + Duration::days(1);
+    while schedule(day)[0] != HeraldKind::Piece {
+        day += Duration::days(1);
+    }
+    day
+}
+
+/// On an art day the piece over the door beats the board; the model saw
+/// it clean, so both networks get the picture, credited and linking its
+/// page. The wall moves on: the next day has no piece and the board goes
+/// out.
 #[tokio::test]
 async fn a_clean_piece_goes_out_as_a_picture_and_only_once() {
+    use late_core::models::artboard_piece::ArtboardPiece;
+
     let test_db = new_test_db().await;
     let db = test_db.db.clone();
     let client = db.get().await.expect("db client");
     let (base, log) = fake_servers().await;
     HeraldSwitch::set(&client, true).await.expect("switch on");
-    let now = Utc.with_ymd_and_hms(2026, 10, 23, 16, 30, 0).unwrap();
-    let day = now.date_naive();
+    let day = next_piece_day();
+    let now = day
+        .and_hms_opt(16, 30, 0)
+        .expect("half past four")
+        .and_utc();
     daily_board(&client, shown_day(day), BOARD_MIN_INK).await;
     daily_board(&client, shown_day(day + Duration::days(1)), BOARD_MIN_INK).await;
     let artist = late_core::test_utils::create_test_user(&db, "herald-artist").await;
@@ -840,6 +860,14 @@ async fn a_clean_piece_goes_out_as_a_picture_and_only_once() {
     assert_eq!(
         (posted.kind, posted.subject.as_str()),
         (HeraldKind::Piece, format!("piece:{piece}").as_str())
+    );
+    assert_eq!(
+        ArtboardPiece::splash_for_day(&client, day)
+            .await
+            .expect("the wall")
+            .map(|over_the_door| over_the_door.id),
+        Some(piece),
+        "the post is the piece over the door that day"
     );
     {
         let log = log.lock().expect("log");
@@ -881,8 +909,11 @@ async fn a_clean_piece_goes_out_as_a_picture_and_only_once() {
         .expect("posted");
     assert_eq!(
         (next.kind, next.subject.as_str()),
-        (HeraldKind::Artboard, "daily:2026-10-23"),
-        "the piece went out once"
+        (
+            HeraldKind::Artboard,
+            Snapshot::daily_key(shown_day(day + Duration::days(1))).as_str()
+        ),
+        "the wall has no piece the next day"
     );
 }
 
@@ -1011,4 +1042,157 @@ async fn a_page_where_the_picture_should_be_fails_the_day() {
     assert_eq!(log.picture_paths.len(), 1);
     assert!(log.statuses.is_empty());
     assert!(log.records.is_empty());
+}
+
+/// The note of the day, as the operator posts it in `#announcements`.
+const NOTE: &str = "# Server updates no longer kick you out\n\n- A new `late` CLI is out: `curl -fsSL https://cli.late.sh/install.sh | bash`\n- Idle 5 minutes when we ship, and your session moves to the new server by itself.";
+
+/// `NOTE` posted in `#announcements` on the day `edition` covers, and the
+/// edition swept (one public column printed), the way the paper's tests
+/// set a day up.
+async fn announce(db: &late_core::db::Db, client: &Client, edition: NaiveDate, author: &str) {
+    use late_core::models::chat_message::{ChatMessage, ChatMessageParams};
+    use late_core::models::chat_room::ChatRoom;
+    use late_core::models::paper::{PaperEdition, PaperSectionKind, PaperSectionRow};
+
+    let room = ChatRoom::find_non_dm_by_slug(client, "announcements")
+        .await
+        .expect("find announcements")
+        .expect("announcements room");
+    let admin = late_core::test_utils::create_test_user(db, author).await;
+    let message = ChatMessage::create(
+        client,
+        ChatMessageParams {
+            room_id: room.id,
+            user_id: admin.id,
+            body: NOTE.to_string(),
+        },
+    )
+    .await
+    .expect("post the note");
+    let (floor, _) = PaperEdition::window(edition);
+    client
+        .execute(
+            "UPDATE chat_messages SET created = $2 WHERE id = $1",
+            &[&message.id, &(floor + Duration::hours(1))],
+        )
+        .await
+        .expect("backdate the note");
+    assert!(
+        PaperSectionRow::claim_printing(
+            client,
+            edition,
+            PaperSectionKind::Outside,
+            Utc::now() - Duration::minutes(15),
+            3,
+        )
+        .await
+        .expect("claim")
+    );
+    PaperSectionRow::finish(
+        client,
+        edition,
+        PaperSectionKind::Outside,
+        Some("The world turned."),
+    )
+    .await
+    .expect("print");
+}
+
+/// The operator's word goes out the day its edition prints, ahead of the
+/// schedule, as words alone: the model's brief on both networks (no media
+/// on Mastodon, no embed on Bluesky, the edition's page linked), nothing
+/// fetched from late-web and nothing shown to the model but the note; and
+/// when the model's answer is unusable, the note as written, cut.
+#[tokio::test]
+async fn an_announcement_goes_out_as_words_the_day_its_edition_prints() {
+    let test_db = new_test_db().await;
+    let db = test_db.db.clone();
+    let client = db.get().await.expect("db client");
+    let (base, log) = fake_servers().await;
+    HeraldSwitch::set(&client, true).await.expect("switch on");
+    // A Friday: an art day, and a board with ink waits and loses.
+    let now = Utc.with_ymd_and_hms(2026, 10, 23, 16, 30, 0).unwrap();
+    let day = now.date_naive();
+    daily_board(&client, shown_day(day), BOARD_MIN_INK).await;
+    announce(&db, &client, day, "herald-admin").await;
+    log.lock().expect("log").gemini_reply = serde_json::json!({
+        "text": "A new late CLI is out, and server updates no longer kick you out.\n\nIdle five minutes when we ship and your session moves to the new server by itself.",
+    })
+    .to_string();
+    let herald = service(db.clone(), &base, model_on(&base));
+    let mut finished = None;
+
+    assert!(herald.check(now, &mut finished).await);
+    let posted = HeraldPost::posted_on(&client, day)
+        .await
+        .expect("read")
+        .expect("posted");
+    assert_eq!(
+        (posted.kind, posted.subject.as_str()),
+        (HeraldKind::Announcement, "announcement:2026-10-23")
+    );
+    let words = "A new late CLI is out, and server updates no longer kick you out.\n\nIdle five minutes when we ship and your session moves to the new server by itself.\n\nFull notes: https://late.sh/paper/2026-10-23\n\n#tildeverse #terminal #TUI";
+    {
+        let log = log.lock().expect("log");
+        assert_eq!(
+            log.picture_paths,
+            vec!["/static/og-image.png"],
+            "only the card's thumb is fetched"
+        );
+        assert_eq!((log.gemini_calls, log.gemini_images), (1, 0));
+        assert!(log.media_uploads.is_empty(), "no media on Mastodon");
+        assert_eq!(log.blobs.len(), 1, "the thumb");
+        let status = &log.statuses[0].2;
+        assert_eq!(status["status"], words);
+        assert_eq!(status["media_ids"], serde_json::json!([]));
+        assert_eq!(status["sensitive"], false);
+        assert!(status.get("spoiler_text").is_none(), "{status}");
+        let record = &log.records[0].1["record"];
+        assert_eq!(record["text"], words);
+        assert_eq!(record["embed"]["$type"], "app.bsky.embed.external");
+        let external = &record["embed"]["external"];
+        assert_eq!(external["uri"], "https://late.sh/paper/2026-10-23");
+        assert_eq!(external["title"], "The Late Edition, 23 October 2026");
+        assert_eq!(external["description"], "The world turned.");
+        assert!(external.get("thumb").is_some(), "{record}");
+        assert!(record.get("labels").is_none(), "{record}");
+        let facets = record["facets"].as_array().expect("facets");
+        assert!(
+            facets
+                .iter()
+                .any(|facet| { facet["features"][0]["uri"] == "https://late.sh/paper/2026-10-23" }),
+            "{facets:?}"
+        );
+    }
+
+    // The next day, a Saturday: another note, and the model answers junk.
+    let next = day + Duration::days(1);
+    announce(&db, &client, next, "herald-admin-again").await;
+    log.lock().expect("log").gemini_reply = "not json".to_string();
+    assert!(herald.check(now + Duration::days(1), &mut finished).await);
+    let posted = HeraldPost::posted_on(&client, next)
+        .await
+        .expect("read")
+        .expect("posted");
+    assert_eq!(posted.kind, HeraldKind::Announcement);
+    let stored = HeraldPost::stored_pick(&client, next)
+        .await
+        .expect("read")
+        .expect("stored");
+    assert_eq!(stored.picture["Announcement"]["brief"], "cut");
+    let log = log.lock().expect("log");
+    let status = log.statuses[1].2["status"].as_str().expect("text");
+    assert!(
+        status.starts_with(
+            "Server updates no longer kick you out\n\nA new `late` CLI is out: `curl -fsSL https: //cli.late.sh/install.sh | bash`\n"
+        ),
+        "the note as written, dead: {status}"
+    );
+    assert!(
+        status.ends_with(
+            "\n\nFull notes: https://late.sh/paper/2026-10-24\n\n#tildeverse #terminal #TUI"
+        ),
+        "{status}"
+    );
 }
