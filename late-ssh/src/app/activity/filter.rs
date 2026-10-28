@@ -54,8 +54,12 @@ pub fn lounge_includes(event: &ActivityEvent) -> bool {
             ActivityGame::Asterion
             | ActivityGame::Blackjack
             | ActivityGame::Chess
+            | ActivityGame::ChessPuzzle
+            | ActivityGame::WordWheel
+            | ActivityGame::Quartets
             | ActivityGame::LeWord
             | ActivityGame::Minesweeper
+            | ActivityGame::Netwalk
             | ActivityGame::Nonogram
             | ActivityGame::Poker
             | ActivityGame::Realm
@@ -100,8 +104,12 @@ pub fn lounge_includes(event: &ActivityEvent) -> bool {
             // for personal/practice runs), so these are once-per-day-per-board
             // finishes, not high-volume grind — a small "someone beat today's
             // puzzle" story worth sharing.
-            ActivityGame::LeWord
+            ActivityGame::ChessPuzzle
+            | ActivityGame::WordWheel
+            | ActivityGame::Quartets
+            | ActivityGame::LeWord
             | ActivityGame::Minesweeper
+            | ActivityGame::Netwalk
             | ActivityGame::Nonogram
             | ActivityGame::RubiksCube
             | ActivityGame::SlidingPuzzle
