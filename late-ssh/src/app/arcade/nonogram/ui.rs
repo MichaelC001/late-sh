@@ -274,7 +274,7 @@ fn border_line(
 /// Whether the boundary after line `index` (of `len`) is a guide: every fifth
 /// one, never the outer edge.
 fn is_guide(index: usize, len: usize) -> bool {
-    (index + 1) % 5 == 0 && index + 1 < len
+    (index + 1).is_multiple_of(5) && index + 1 < len
 }
 
 fn clue_style(
